@@ -895,16 +895,48 @@ def get_settings_path(fork_name: str) -> Path:
     return Path(config_dir) / fork_name / "User" / "settings.json"
 
 
-def strip_vscode_theme(settings_path: str) -> bool:
-    """Remove iNiR color customizations from a VSCode settings.json.
+THEME_NAME = "iNiR Material"
+THEME_EXTENSION_ID = "inir-material-theme"
+PREV_THEME_KEY = "inir.previousColorTheme"
 
-    Called when the user disables VSCode theming from Settings UI.
-    Removes workbench.colorCustomizations, editor.tokenColorCustomizations,
-    and editor.semanticTokenColorCustomizations entirely.
-    """
+# Extension dirs per fork (separate from config dirs)
+VSCODE_EXT_DIRS = {
+    "code": ".vscode/extensions",
+    "codium": ".vscode-oss/extensions",
+    "code-oss": ".vscode-oss/extensions",
+    "code-insiders": ".vscode-insiders/extensions",
+    "cursor": ".cursor/extensions",
+    "windsurf": ".windsurf/extensions",
+    "windsurf-next": ".windsurf-next/extensions",
+    "qoder": ".qoder/extensions",
+    "antigravity": ".antigravity/extensions",
+    "positron": ".positron/extensions",
+    "void": ".void/extensions",
+    "melty": ".melty/extensions",
+    "pearai": ".pearai/extensions",
+    "aide": ".aide/extensions",
+}
+
+
+def _get_ext_dir(fork_key: str) -> Path:
+    home = Path.home()
+    rel = VSCODE_EXT_DIRS.get(fork_key, f".{fork_key}/extensions")
+    return home / rel
+
+
+def strip_vscode_theme(settings_path: str, fork_key: str = "") -> bool:
+    """Remove iNiR theme extension and settings.json entries."""
+    import shutil
+
+    # Remove extension directory if fork_key is known
+    if fork_key:
+        ext_dir = _get_ext_dir(fork_key) / THEME_EXTENSION_ID
+        if ext_dir.exists():
+            shutil.rmtree(ext_dir, ignore_errors=True)
+
     settings_path = Path(settings_path)
     if not settings_path.exists():
-        return True  # nothing to strip
+        return True
 
     try:
         with open(settings_path, "r") as f:
@@ -913,6 +945,18 @@ def strip_vscode_theme(settings_path: str) -> bool:
         return False
 
     changed = False
+
+    # Restore previous theme
+    if settings.get("workbench.colorTheme") == THEME_NAME:
+        prev = settings.get(PREV_THEME_KEY, "")
+        if prev:
+            settings["workbench.colorTheme"] = prev
+        else:
+            del settings["workbench.colorTheme"]
+        changed = True
+    settings.pop(PREV_THEME_KEY, None)
+
+    # Clean up all injection keys from any previous version
     for key in [
         "workbench.colorCustomizations",
         "editor.tokenColorCustomizations",
@@ -941,6 +985,7 @@ def strip_all_vscode_themes(forks: list = None):
             key
             for key, name in VSCODE_FORKS.items()
             if get_settings_path(name).parent.exists()
+            or (_get_ext_dir(key) / THEME_EXTENSION_ID).exists()
         ]
 
     results = {}
@@ -949,9 +994,7 @@ def strip_all_vscode_themes(forks: list = None):
         if not fork_name:
             continue
         settings_path = get_settings_path(fork_name)
-        if not settings_path.exists():
-            continue
-        success = strip_vscode_theme(str(settings_path))
+        success = strip_vscode_theme(str(settings_path), fork_key)
         results[fork_key] = success
         if success:
             print(f"  ✓ {fork_name}")

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type stringSlice []string
@@ -281,13 +282,55 @@ func generateTheme(colorsPath, terminalJSONPath, scssPath, settingsPath string) 
 			}
 		}
 	}
+
+	// Extension provides theme registration + syntax/semantic tokens.
+	// Only write package.json once — rewriting it mid-session causes
+	// "Unable to read file" errors from VS Code's extension host.
+	extDir := filepath.Join(getExtensionsDir(forkKey), themeExtensionID)
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		return false, fmt.Errorf("failed to create extension dir: %v", err)
+	}
+	pkgPath := filepath.Join(extDir, "package.json")
+	if _, err := os.Stat(pkgPath); os.IsNotExist(err) {
+		if err := writeExtensionManifest(extDir); err != nil {
+			return false, fmt.Errorf("failed to write extension manifest: %v", err)
+		}
+	}
+	themePath := filepath.Join(extDir, "themes", "inir-material-color-theme.json")
+	if err := writeThemeFile(themePath, colors, termColors); err != nil {
+		return false, fmt.Errorf("failed to write theme: %v", err)
+	}
+
+	// Activate theme and force VS Code to re-read from disk.
+	// VS Code caches extension themes in memory — the only way to
+	// trigger a reload is changing workbench.colorTheme in settings.json.
+
 	settings, err := loadSettings(settingsPath)
 	if err != nil {
 		return false, err
 	}
-	settings["workbench.colorCustomizations"] = generateColors(colors, termColors)
-	settings["editor.tokenColorCustomizations"] = map[string]any{"textMateRules": generateSyntax(colors, termColors)}
-	settings["editor.semanticTokenColorCustomizations"] = map[string]any{"enabled": true, "rules": generateSemantic(colors, termColors)}
+	currentTheme, _ := settings["workbench.colorTheme"].(string)
+	if currentTheme != themeName {
+		settings[prevThemeKey] = currentTheme
+	}
+	// Clean up old-style injection from previous versions
+	delete(settings, "workbench.colorCustomizations")
+	delete(settings, "editor.tokenColorCustomizations")
+	delete(settings, "editor.semanticTokenColorCustomizations")
+	if currentTheme == themeName {
+		// Already our theme — toggle away briefly so VS Code reloads
+		toggle, _ := settings[prevThemeKey].(string)
+		if toggle == "" || toggle == themeName {
+			toggle = "Default Dark Modern"
+		}
+		settings["workbench.colorTheme"] = toggle
+		if err := writeSettings(settingsPath, settings); err != nil {
+			return false, err
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	settings["workbench.colorTheme"] = themeName
+
 	if err := writeSettings(settingsPath, settings); err != nil {
 		return false, err
 	}
@@ -476,6 +519,20 @@ func stripTheme(settingsPath string) bool {
 		return false
 	}
 	changed := false
+
+	// Restore previous theme if we're the active one
+	if current, ok := settings["workbench.colorTheme"].(string); ok && current == themeName {
+		if prev, ok := settings[prevThemeKey].(string); ok && prev != "" {
+			settings["workbench.colorTheme"] = prev
+		} else {
+			delete(settings, "workbench.colorTheme")
+		}
+		changed = true
+	}
+	delete(settings, prevThemeKey)
+
+	// Clean up any legacy injection keys from previous versions
+
 	for _, key := range []string{"workbench.colorCustomizations", "editor.tokenColorCustomizations", "editor.semanticTokenColorCustomizations"} {
 		if _, ok := settings[key]; ok {
 			delete(settings, key)
