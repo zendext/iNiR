@@ -1078,6 +1078,7 @@ Scope {
                     readonly property int zoneMargin: 48
 
                     // Grid dots at intersections
+                    readonly property bool gridNonDefault: gridSize !== 32
                     Canvas {
                         anchors.fill: parent
                         visible: editGridOverlay.gridVisible
@@ -1086,14 +1087,34 @@ Scope {
                             ctx.clearRect(0, 0, width, height);
                             const gs = editGridOverlay.gridSize;
                             const dotColor = editGridOverlay.gridColor;
-                            ctx.fillStyle = Qt.rgba(dotColor.r, dotColor.g, dotColor.b, 0.06);
+                            const custom = editGridOverlay.gridNonDefault;
+                            const alpha = custom ? 0.12 : 0.06;
+                            const dotR = custom ? 1.6 : 1.2;
+                            ctx.fillStyle = Qt.rgba(dotColor.r, dotColor.g, dotColor.b, alpha);
                             const cols = Math.floor(width / gs) + 1;
                             const rows = Math.floor(height / gs) + 1;
                             for (let r = 0; r < rows; ++r) {
                                 for (let c = 0; c < cols; ++c) {
                                     ctx.beginPath();
-                                    ctx.arc(c * gs, r * gs, 1.2, 0, 2 * Math.PI);
+                                    ctx.arc(c * gs, r * gs, dotR, 0, 2 * Math.PI);
                                     ctx.fill();
+                                }
+                            }
+                            // Draw subtle grid lines for non-default sizes
+                            if (custom) {
+                                ctx.strokeStyle = Qt.rgba(dotColor.r, dotColor.g, dotColor.b, 0.03);
+                                ctx.lineWidth = 0.5;
+                                for (let c = 0; c < cols; ++c) {
+                                    ctx.beginPath();
+                                    ctx.moveTo(c * gs, 0);
+                                    ctx.lineTo(c * gs, height);
+                                    ctx.stroke();
+                                }
+                                for (let r = 0; r < rows; ++r) {
+                                    ctx.beginPath();
+                                    ctx.moveTo(0, r * gs);
+                                    ctx.lineTo(width, r * gs);
+                                    ctx.stroke();
                                 }
                             }
                         }
@@ -1101,6 +1122,7 @@ Scope {
                         Connections {
                             target: editGridOverlay
                             function onGridSizeChanged() { if (parent?.available) parent.requestPaint() }
+                            function onGridNonDefaultChanged() { if (parent?.available) parent.requestPaint() }
                             function onGridColorChanged() { if (parent?.available) parent.requestPaint() }
                             function onWidthChanged() { if (parent?.available) parent.requestPaint() }
                             function onHeightChanged() { if (parent?.available) parent.requestPaint() }
@@ -1235,9 +1257,10 @@ Scope {
                             RippleButton {
                                 id: gridSizeBtn
                                 readonly property int _gridSize: Config.getNestedValue("background.widgets.editGrid.size", 32)
-                                width: 36; height: 36
+                                readonly property bool _isCustom: _gridSize !== 32
+                                width: gridSizeBtnRow.implicitWidth + 12; height: 36
                                 buttonRadius: Appearance.rounding.full
-                                colBackground: "transparent"
+                                colBackground: _isCustom ? CF.ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.10) : "transparent"
                                 colBackgroundHover: CF.ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.08)
                                 colRipple: CF.ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.12)
                                 downAction: () => {
@@ -1247,13 +1270,24 @@ Scope {
                                     const next = sizes[(idx + 1) % sizes.length];
                                     Config.setNestedValue("background.widgets.editGrid.size", next);
                                 }
-                                contentItem: StyledText {
+                                contentItem: Row {
+                                    id: gridSizeBtnRow
                                     anchors.centerIn: parent
-                                    text: gridSizeBtn._gridSize + ""
-                                    font.pixelSize: Appearance.font.pixelSize.smaller
-                                    font.family: Appearance.font.family.numbers
-                                    font.weight: Font.Medium
-                                    color: Appearance.colors.colOnLayer2
+                                    spacing: 2
+                                    MaterialSymbol {
+                                        text: "grid_4x4"
+                                        iconSize: 14
+                                        color: gridSizeBtn._isCustom ? Appearance.colors.colPrimary : Appearance.colors.colOnLayer2
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    StyledText {
+                                        text: gridSizeBtn._gridSize + ""
+                                        font.pixelSize: Appearance.font.pixelSize.smaller
+                                        font.family: Appearance.font.family.numbers
+                                        font.weight: Font.Medium
+                                        color: gridSizeBtn._isCustom ? Appearance.colors.colPrimary : Appearance.colors.colOnLayer2
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
                                 }
                                 StyledToolTip { text: Translation.tr("Grid size: %1px — click to cycle").arg(gridSizeBtn._gridSize) }
                             }
@@ -1358,7 +1392,14 @@ Scope {
                                 colBackground: "transparent"
                                 colBackgroundHover: CF.ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.08)
                                 colRipple: CF.ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.12)
-                                downAction: () => { GlobalStates.settingsOverlayOpen = true }
+                                downAction: () => {
+                                    if (Config.options?.settingsUi?.overlayMode !== false) {
+                                        GlobalStates.settingsOverlayRequestedPage = 14
+                                        GlobalStates.settingsOverlayOpen = true
+                                    } else {
+                                        Quickshell.execDetached(["/usr/bin/env", "QS_SETTINGS_PAGE=14", Quickshell.shellPath("scripts/inir"), "settings-window"])
+                                    }
+                                }
                                 contentItem: MaterialSymbol {
                                     anchors.centerIn: parent
                                     text: "settings"

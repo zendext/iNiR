@@ -511,6 +511,10 @@ Scope {
         function onSettingsOverlayOpenChanged() {
             if (GlobalStates.settingsOverlayOpen) {
                 root._everOpened = true
+                if (GlobalStates.settingsOverlayRequestedPage >= 0) {
+                    root.overlayCurrentPage = GlobalStates.settingsOverlayRequestedPage
+                    GlobalStates.settingsOverlayRequestedPage = -1
+                }
             }
         }
     }

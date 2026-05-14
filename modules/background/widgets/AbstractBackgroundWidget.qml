@@ -417,7 +417,14 @@ AbstractWidget {
                 colBackground: "transparent"
                 colBackgroundHover: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.08)
                 colRipple: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.12)
-                downAction: () => { GlobalStates.settingsOverlayOpen = true }
+                downAction: () => {
+                    if (Config.options?.settingsUi?.overlayMode !== false) {
+                        GlobalStates.settingsOverlayRequestedPage = 14
+                        GlobalStates.settingsOverlayOpen = true
+                    } else {
+                        Quickshell.execDetached(["/usr/bin/env", "QS_SETTINGS_PAGE=14", Quickshell.shellPath("scripts/inir"), "settings-window"])
+                    }
+                }
                 contentItem: MaterialSymbol {
                     anchors.centerIn: parent
                     text: "settings"

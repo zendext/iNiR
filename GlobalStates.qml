@@ -30,6 +30,7 @@ Singleton {
     property bool altSwitcherOpen: false
     property bool clipboardOpen: false
     property bool settingsOverlayOpen: false
+    property int settingsOverlayRequestedPage: -1 // Set before opening to navigate to a specific page
     property bool regionSelectorOpen: false
     property bool screenLocked: false
     property bool screenLockContainsCharacters: false

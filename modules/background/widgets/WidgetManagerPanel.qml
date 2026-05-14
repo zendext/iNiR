@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -106,7 +107,14 @@ Item {
                 colBackground: "transparent"
                 colBackgroundHover: ColorUtils.applyAlpha(Appearance.colors.colOnLayer1, 0.06)
                 colRipple: ColorUtils.applyAlpha(Appearance.colors.colOnLayer1, 0.10)
-                downAction: () => { GlobalStates.settingsOverlayOpen = true }
+                downAction: () => {
+                    if (Config.options?.settingsUi?.overlayMode !== false) {
+                        GlobalStates.settingsOverlayRequestedPage = 14
+                        GlobalStates.settingsOverlayOpen = true
+                    } else {
+                        Quickshell.execDetached(["/usr/bin/env", "QS_SETTINGS_PAGE=14", Quickshell.shellPath("scripts/inir"), "settings-window"])
+                    }
+                }
                 contentItem: MaterialSymbol { anchors.centerIn: parent; text: "settings"; iconSize: 18; color: Appearance.colors.colOnLayer1 }
                 StyledToolTip { text: Translation.tr("Open widget settings") }
             }
