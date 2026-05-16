@@ -229,6 +229,18 @@ ContentPage {
                         text: Translation.tr("Split visualizer into left/right channels")
                     }
                 }
+                ConfigSpinBox {
+                    icon: "opacity"
+                    text: Translation.tr("Wave opacity")
+                    value: Config.options?.appearance?.cava?.waveOpacity ?? 30
+                    from: 5
+                    to: 100
+                    stepSize: 5
+                    onValueChanged: Config.setNestedValue("appearance.cava.waveOpacity", value)
+                    StyledToolTip {
+                        text: Translation.tr("Fill opacity for wave visualizer (affects all consumers)")
+                    }
+                }
 
                 RippleButton {
                     Layout.fillWidth: true
@@ -241,6 +253,7 @@ ContentPage {
                         Config.setNestedValue("appearance.cava.bars", 0);
                         Config.setNestedValue("appearance.cava.framerate", 60);
                         Config.setNestedValue("appearance.cava.stereo", true);
+                        Config.setNestedValue("appearance.cava.waveOpacity", 30);
                     }
                     contentItem: RowLayout {
                         anchors.centerIn: parent

@@ -25,44 +25,70 @@ AbstractBackgroundWidget {
     resizableAxes: ({ width: "contentWidth", height: "contentHeight" })
 
     readonly property string vizType: Config.getNestedValue("background.widgets.visualizer.vizType", "bars")
+    readonly property int waveOpacity: Config.getNestedValue("background.widgets.visualizer.waveOpacity", -1)
 
     editPopoverContent: Component {
-        Row {
+        ColumnLayout {
             spacing: 8
-            // Mode toggle
-            RippleButton {
-                width: 32; height: 32
-                buttonRadius: Appearance.rounding.full
-                colBackground: "transparent"
-                colBackgroundHover: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.08)
-                colRipple: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.12)
-                anchors.verticalCenter: parent.verticalCenter
-                downAction: () => {
-                    const current = Config.getNestedValue("background.widgets.visualizer.vizType", "bars");
-                    Config.setNestedValue("background.widgets.visualizer.vizType", current === "bars" ? "wave" : "bars");
+
+            RowLayout {
+                spacing: 8
+
+                // Mode toggle
+                RippleButton {
+                    Layout.preferredWidth: 32; Layout.preferredHeight: 32
+                    buttonRadius: Appearance.rounding.full
+                    toggled: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "wave"
+                    colBackground: "transparent"
+                    colBackgroundHover: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.08)
+                    colBackgroundToggled: ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.16)
+                    colBackgroundToggledHover: ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.24)
+                    colRipple: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.12)
+                    downAction: () => {
+                        const current = Config.getNestedValue("background.widgets.visualizer.vizType", "bars");
+                        Config.setNestedValue("background.widgets.visualizer.vizType", current === "bars" ? "wave" : "bars");
+                    }
+                    contentItem: MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "wave" ? "graphic_eq" : "equalizer"
+                        iconSize: 16
+                        color: parent.toggled ? Appearance.colors.colPrimary : Appearance.colors.colOnLayer2
+                    }
+                    StyledToolTip { text: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "wave" ? Translation.tr("Switch to bars") : Translation.tr("Switch to wave") }
                 }
-                contentItem: MaterialSymbol {
-                    anchors.centerIn: parent
-                    text: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "wave" ? "waves" : "equalizer"
-                    iconSize: 16
-                    color: Appearance.colors.colOnLayer2
+
+                // Bar count (bars mode)
+                StyledText {
+                    visible: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "bars"
+                    text: Translation.tr("Bars")
+                    color: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.7)
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.weight: Font.Medium
                 }
-                StyledToolTip { text: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "wave" ? Translation.tr("Wave mode") : Translation.tr("Bars mode") }
-            }
-            // Bar count (only for bars mode)
-            StyledText {
-                visible: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "bars"
-                text: Translation.tr("Bars")
-                color: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.7)
-                font.pixelSize: Appearance.font.pixelSize.smaller
-                font.weight: Font.Medium
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            StyledSpinBox {
-                visible: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "bars"
-                from: 8; to: 128; stepSize: 4
-                value: Config.getNestedValue("background.widgets.visualizer.barCount", 48)
-                onValueModified: Config.setNestedValue("background.widgets.visualizer.barCount", value)
+                StyledSpinBox {
+                    visible: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "bars"
+                    from: 8; to: 128; stepSize: 4
+                    value: Config.getNestedValue("background.widgets.visualizer.barCount", 48)
+                    onValueModified: Config.setNestedValue("background.widgets.visualizer.barCount", value)
+                }
+
+                // Wave opacity (wave mode)
+                StyledText {
+                    visible: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "wave"
+                    text: Translation.tr("Opacity")
+                    color: ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.7)
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.weight: Font.Medium
+                }
+                StyledSpinBox {
+                    visible: Config.getNestedValue("background.widgets.visualizer.vizType", "bars") === "wave"
+                    from: 5; to: 100; stepSize: 5
+                    value: {
+                        const v = Config.getNestedValue("background.widgets.visualizer.waveOpacity", -1);
+                        return v >= 0 ? v : (Config.options?.appearance?.cava?.waveOpacity ?? 30);
+                    }
+                    onValueModified: Config.setNestedValue("background.widgets.visualizer.waveOpacity", value)
+                }
             }
         }
     }
@@ -138,6 +164,7 @@ AbstractBackgroundWidget {
         anchors.margins: Appearance.angelEverywhere || Appearance.inirEverywhere ? 4 : 0
         points: cavaProcess.points
         live: root._active
+        fillOpacity: (root.waveOpacity >= 0 ? root.waveOpacity : (Config.options?.appearance?.cava?.waveOpacity ?? 30)) / 100
         color: Appearance.angelEverywhere ? Appearance.angel.colPrimary
             : Appearance.inirEverywhere ? Appearance.inir.colPrimary
             : Appearance.auroraEverywhere ? Appearance.m3colors.m3primary

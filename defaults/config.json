@@ -57,7 +57,8 @@
             "sensitivity": 100,
             "bars": 0,
             "framerate": 60,
-            "stereo": true
+            "stereo": true,
+            "waveOpacity": 30
         },
         "palette": {
             "type": "auto",

@@ -574,6 +574,7 @@ Singleton {
                     property int bars: 0 // 0 = auto
                     property int framerate: 60 // 30-165
                     property bool stereo: true
+                    property int waveOpacity: 30 // 5-100, fill alpha for WaveVisualizer (0.05–1.0)
                 }
                 property JsonObject palette: JsonObject {
                     property string type: "auto" // Allowed: auto, scheme-content, scheme-expressive, scheme-fidelity, scheme-fruit-salad, scheme-monochrome, scheme-neutral, scheme-rainbow, scheme-tonal-spot
@@ -785,6 +786,7 @@ Singleton {
                         property bool locked: false
                         property string placementStrategy: "free"
                         property string vizType: "bars"
+                        property int waveOpacity: -1 // -1 = use global (appearance.cava.waveOpacity)
                         property int barCount: 48
                         property int barSpacing: 2
                         property int barRadius: 2
