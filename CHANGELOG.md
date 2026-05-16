@@ -5,6 +5,48 @@ All notable changes to iNiR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.0] - 2026-05-16
+
+2.25 is the desktop widgets release. They finally work — edit mode, custom widgets, resize, persistence, the whole thing. The color pipeline got its biggest architectural change in a while with app-palette, and the shell now actually reads the wallpaper to pick text colors instead of guessing. Also, Steam theming moved to Millennium because Adwaita for Steam is dead.
+
+### Added
+- **Desktop widgets v2**: complete rewrite of the widget system. Edit mode with a manager panel, IPC-driven config persistence, resize handles, zone placement, custom widget pipeline with a real SDK (`setSource` for required props, schema key declaration), and popover chips redesigned with `SelectionGroupButton` + `GridLayout`. Fixed approximately 15 critical bugs along the way — VME segfaults, stale-text config overwrites, loader feedback loops, edit controls eating their own clicks, widgets spawning at top-left, zone placement breaking on resize. The kind of PR that needs therapy afterward.
+- **Audio visualizer desktop widget**: waveform/spectrum visualizer as a background desktop widget. Configurable type and position across all presets.
+- **App palette** (`app-palette.json`): semantic intermediate color layer between raw Material You tokens and external apps. Provides contrast-safe tokens (`app_background`, `app_surface`, `app_headerbar_bg`, `app_selection`, `app_border_subtle`, etc.) derived from M3 surface/primary with readable-contrast enforcement (WCAG 4.5:1 minimum). All shell/python theming modules (GTK, Chrome, Spicetify, editors, Zed, Pear Desktop, SDDM, terminals, system24) and matugen templates now prefer app-palette with graceful fallback.
+- **Brightness-aware widget text**: desktop widgets analyze the actual wallpaper region behind them (grayscale average) to pick light/dark text with accent tinting, instead of relying on the global dark/light mode. New `--color-only` mode in the image analysis script does position-aware color without the full region search. Widgets re-analyze on drag end and wallpaper change.
+- **Recording OSD redesign**: redesigned Recorder widget with a real timer, status bar, and game mode section. Auto-hide behavior with `Mod+Shift+R` keybind. Multi-indicator support with `mediaEnabled` toggle. MediaIndicator and MediaOSD layout polished.
+- **Clipboard navigate mode**: keyboard navigation in the clipboard panel. HTML display cleanup, copy operation preserves cursor position. Also added HTML and Unicode sanitization helpers so pasted content doesn't inject garbage.
+- **Sidebar requested-widget navigation**: any component can now request a specific sidebar tab by type (e.g. `"notepad"`) through `GlobalStates.sidebarRightRequestedWidget` without reaching into Persistent state. Both sidebar layouts listen and switch accordingly. Bar notepad button uses this instead of hardcoded tab indices.
+- **Notepad context menu**: right-click context menu in the notepad widget, themed selection colors, and persistent selection so you don't lose your highlight when the sidebar loses focus.
+
+### Changed
+- **Steam theming moved to Millennium**: Adwaita for Steam is deprecated; theming now goes through Millennium's Material-Theme plugin. Updated translations across all locales.
+- **Aurora configurable glass transparency**: style editor now exposes glass opacity. Fixed live reactivity that was broken because Config.revision wasn't being used as a dependency.
+- **Doctor TUI overhaul**: animated steps with palette-aware badges, dot threshold, tagline centering. All deps now required (wlsunset added). Font list cleanup. Quickconfig buttons theme-adaptive. Compact output.
+- **switchwall performance**: batched 24 individual jq config reads into a single mapfile call (62ms → 3ms). Integrated scheme auto-detection into `generate_colors_material.py` (eliminates separate process spawn, saves ~585ms). Net: ~904ms → ~760ms per wallpaper change.
+- **Wallpaper selector performance**: eliminated per-item `magick identify` spawn (thundering herd — N concurrent magick processes on directory open). Lowered thumbnail size from 512px to 256px (4x less memory). Increased batch workers from 1 to 4. Removed per-item OpacityMask FBO.
+- **applycolor module runner**: replaced unbounded fork-all with a sliding window (nproc/2, capped at 4) using `ionice -c 3` + `nice -n 10`. New manifest-based enablement skips disabled targets entirely instead of spawning them to self-exit.
+- **Dock shadow opacity**: per dark/light mode tuning (0.18/0.35) with spread reset for cleaner appearance.
+
+### Fixed
+- **Dock stale toplevel ghost entries**: NiriService window matching could produce false matches on zero-score entries, and `sortedToplevels` could contain stale compositor entries not present in live ToplevelManager. Both now guarded.
+- **Preset theme colors not propagating to external apps** *(#144)*: `FileView.setText()` dropped async writes when `applyPreset()` fired 2-3x rapidly on startup. Replaced 6 FileView instances with a single debounced bash script that writes all generated files atomically. Also added `kde-cli-tools` as a dependency and doctor check — required for Dolphin's "Open With" dialog when `QT_QPA_PLATFORMTHEME=kde`.
+- **VSCode theme not live-reloading on wallpaper change**: file watcher wasn't triggering on the generated palette update.
+- **Media artwork sync across shell**: shared resolver now correctly drives all surfaces.
+- **Sidebar dynamic padding and angel border**: restored when the border-disable flag was set.
+- **Audio mic mute/volume**: backed with `wpctl` instead of unreliable QML PipeWire bindings for the mic path.
+- **Booru providers**: waifu.im tag search (case sensitivity), t.alcy.cc fixes, `/toggle-tags` behavior, zerochan rating filter.
+- **Recording OSD HoverHandler crash**: undefined `hovered` access.
+- **OSD hotZone behavior**: removed autoHideHotZone, keep mask on pill at all times.
+- **Notification popup card shadows**: removed shadow that was visually incorrect on transparent backgrounds.
+- **Overview dashboard weather layout**: Material 3 chips with Flow layout instead of broken grid.
+- **Screenshot clipboard pollution**: previews no longer pollute the clipboard with intermediate screenshot data.
+- **Opus audio codec options**: clarified labels in Settings UI.
+- **Translation generation hitting ARG_MAX** *(#140)*: `gemini-translate.sh` passed the full `en_US.json` (~228 KB) as a shell argument, exceeding the kernel's 128 KB per-argument limit. Refactored to use jq `--rawfile` and pipe payload to curl via stdin.
+
+### Issues / PRs
+- Fixed [#140](https://github.com/snowarch/iNiR/issues/140), [#144](https://github.com/snowarch/iNiR/issues/144).
+
 ## [2.24.0] - 2026-04-30
 
 2.24 is a practical one: screen recording got real controls, keyboard indicators stopped being noisy, media players behave across ii and waffle, and the update flow is finally visible instead of doing spooky background theater.
