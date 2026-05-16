@@ -1424,6 +1424,7 @@ Singleton {
                 property JsonObject annotation: JsonObject {
                     property bool useSatty: false
                 }
+                property string screenshotNameFormat: "ss-%Y%m%d-%H%M%S" // date(1) format for screenshot filenames (without extension)
             }
 
             property JsonObject resources: JsonObject {
@@ -1783,6 +1784,7 @@ Singleton {
                 property int crf: 21
                 property string vaapiFilter: "scale_vaapi=format=nv12:out_range=full"
                 property bool enableFallback: true
+                property string recordingNameFormat: "recording_%Y-%m-%d_%H.%M.%S" // date(1) format for recording filenames (without extension)
                 property JsonObject discordCompress: JsonObject {
                     property bool enabled: false
                     property real targetSizeMb: 10
