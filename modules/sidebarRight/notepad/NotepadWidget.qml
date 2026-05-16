@@ -158,12 +158,23 @@ Item {
                     renderType: Text.NativeRendering
                     font.pixelSize: Appearance.inirEverywhere ? Appearance.font.pixelSize.smaller : Appearance.font.pixelSize.small
                     color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer0
+                    selectionColor: Appearance.angelEverywhere ? Appearance.angel.colPrimary
+                        : Appearance.inirEverywhere ? Appearance.inir.colPrimary
+                        : Appearance.colors.colSecondaryContainer
+                    selectedTextColor: Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
+                        : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary
+                        : Appearance.colors.colOnSecondaryContainer
                     placeholderText: Translation.tr("Write your notes here...")
                     placeholderTextColor: Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.m3colors.m3outline
                     text: Notepad.text
                     selectByMouse: true
+                    persistentSelection: true
                     activeFocusOnTab: true
                     background: null
+
+                    TextInputContextMenu {
+                        target: textArea
+                    }
 
                     Keys.onPressed: (event) => {
                         if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_S) {
