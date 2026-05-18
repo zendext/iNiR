@@ -180,6 +180,7 @@ Singleton {
     // writeAdapter() is async — onSaved fires when done. Suppress reloads
     // while a write is in flight so reload() doesn't drop the write op.
     property bool _writeInFlight: false
+    property bool _pendingWrite: false
     property bool _pendingCustomInject: false
     property bool _pendingReload: false
     property var _customSnapshotForInject: ({})
@@ -260,11 +261,23 @@ Singleton {
         interval: root.readWriteDelay
         repeat: false
         onTriggered: {
+            if (root._writeInFlight) {
+                root._pendingWrite = true;
+                return;
+            }
             root._prepareCustomInject();
+            root._pendingWrite = false;
             root._writeInFlight = true;
             fileReloadTimer.stop();
             configFileView.writeAdapter();
         }
+    }
+
+    Timer {
+        id: customInjectTimer
+        interval: 1
+        repeat: false
+        onTriggered: root._injectCustomDataSync()
     }
 
     // Raw reader for keys the adapter can't handle (property var in JsonObject)
@@ -283,8 +296,12 @@ Singleton {
             root._writeInFlight = false;
             if (root._pendingCustomInject) {
                 root._pendingCustomInject = false;
-                root._injectCustomDataSync();
+                customInjectTimer.restart();
                 return; // inject starts another write, wait for its onSaved
+            }
+            if (root._pendingWrite) {
+                root._pendingWrite = false;
+                fileWriteTimer.restart();
             }
             // Write cycle done — run any deferred reload
             if (root._pendingReload) {
