@@ -936,85 +936,149 @@ check_quickshell_abi() {
                 runtime_qt="$(pkg-config --modversion Qt6Core 2>/dev/null || true)"
             fi
 
-            if [[ -n "$buildtime_qt" && -n "$runtime_qt" ]]; then
-                local build_minor="${buildtime_qt%.*}"
-                local runtime_minor="${runtime_qt%.*}"
-                if [[ "$build_minor" != "$runtime_minor" ]]; then
-                    mismatch_detected=true
-                    mismatch_msg="Quickshell built against Qt $buildtime_qt but system has Qt $runtime_qt"
-                fi
+            if [[ -n "$buildtime_qt" && -n "$runtime_qt" && "$buildtime_qt" != "$runtime_qt" ]]; then
+                # Quickshell warns on patch bumps too (private API can change
+                # between 6.11.0 and 6.11.1), so iNiR must match — full version compare.
+                mismatch_detected=true
+                mismatch_msg="Quickshell built against Qt $buildtime_qt but system has Qt $runtime_qt"
             fi
         fi
     fi
 
     if $mismatch_detected; then
         doctor_fail "Qt/Quickshell ABI mismatch: $mismatch_msg"
-        echo -e "  ${STY_YELLOW}Quickshell uses Qt private APIs that break on minor version bumps.${STY_RST}"
+        echo -e "  ${STY_YELLOW}Quickshell uses Qt private APIs that break on every Qt update.${STY_RST}"
         echo -e "  ${STY_YELLOW}The shell will crash on any UI interaction until quickshell is rebuilt.${STY_RST}"
 
-        # Attempt auto-fix on Arch
-        local can_rebuild=false
-        local rebuild_pkg=""
-        local rebuild_helper=""
+        # Detect how Quickshell was installed so we offer a fix that actually works.
+        # Each distro / install kind needs a different command — there's no universal one.
+        #   arch-aur-foreign     paru/yay -S --rebuild  (truly built locally from AUR)
+        #   arch-repo-binary     paru/yay -Sa          (precompiled in third-party repo like CachyOS)
+        #   arch-repo-official   sudo pacman -Syu      (waits for Arch maintainer rebuild)
+        #   arch-aur-bin         switch to -git        (quickshell-bin is a precompiled tarball)
+        #   fedora-pkg           sudo dnf upgrade      (COPR rebuilds against current Fedora Qt)
+        #   nixos                nixos-rebuild switch  (nixpkgs invalidates on Qt change)
+        #   debian               manual               (no first-party package — compile)
+        #   source               manual               (installed under /usr/local)
+        local install_kind="unknown" install_pkg="" rebuild_cmd="" manual_note=""
 
         if command -v pacman >/dev/null 2>&1; then
-            if pacman -Qi quickshell-git &>/dev/null; then
-                rebuild_pkg="quickshell-git"
-            elif pacman -Qi quickshell-bin &>/dev/null; then
-                rebuild_pkg="quickshell-bin"
+            if pacman -Qi quickshell-bin &>/dev/null; then
+                install_kind="arch-aur-bin"; install_pkg="quickshell-bin"
+            elif pacman -Qi quickshell-git &>/dev/null; then
+                install_pkg="quickshell-git"
+                if pacman -Qm quickshell-git &>/dev/null; then
+                    install_kind="arch-aur-foreign"
+                else
+                    install_kind="arch-repo-binary"
+                fi
             elif pacman -Qi quickshell &>/dev/null; then
-                # Official package — should be rebuilt by maintainer, try reinstall
-                rebuild_pkg="quickshell"
+                install_pkg="quickshell"
+                if pacman -Qm quickshell &>/dev/null; then
+                    install_kind="arch-aur-foreign"
+                else
+                    install_kind="arch-repo-official"
+                fi
             fi
-
-            if [[ -n "$rebuild_pkg" ]]; then
-                for helper in yay paru; do
-                    if command -v "$helper" >/dev/null 2>&1; then
-                        rebuild_helper="$helper"
-                        can_rebuild=true
-                        break
-                    fi
-                done
+        elif command -v rpm >/dev/null 2>&1; then
+            local rpm_q
+            rpm_q="$(rpm -qa 2>/dev/null | grep -E '^quickshell(-git)?-[0-9]' | head -1)"
+            if [[ -n "$rpm_q" ]]; then
+                install_kind="fedora-pkg"
+                install_pkg="${rpm_q%%-[0-9]*}"
             fi
+        elif [[ -d /etc/nixos ]] || [[ -L /run/current-system ]]; then
+            install_kind="nixos"; install_pkg="quickshell"
+        elif command -v dpkg >/dev/null 2>&1 && dpkg -s quickshell &>/dev/null; then
+            install_kind="debian"; install_pkg="quickshell"
+        elif [[ -x /usr/local/bin/quickshell || -x /usr/local/bin/qs ]]; then
+            install_kind="source"
         fi
 
-        if $can_rebuild; then
+        # Pick AUR helper for the arch-* kinds
+        local rebuild_helper=""
+        if [[ "$install_kind" == arch-* ]]; then
+            for h in paru yay; do
+                if command -v "$h" >/dev/null 2>&1; then
+                    rebuild_helper="$h"; break
+                fi
+            done
+        fi
+
+        case "$install_kind" in
+            arch-aur-foreign)
+                if [[ -n "$rebuild_helper" ]]; then
+                    rebuild_cmd="$rebuild_helper -S --rebuild --noconfirm $install_pkg"
+                else
+                    manual_note="Install paru or yay first, then: paru -S --rebuild $install_pkg"
+                fi
+                ;;
+            arch-repo-binary)
+                # Repo packages (CachyOS, chaotic-aur) are precompiled — --rebuild only
+                # re-pulls the same .pkg.tar.zst. -Sa forces an AUR source build.
+                if [[ -n "$rebuild_helper" ]]; then
+                    rebuild_cmd="$rebuild_helper -Sa --noconfirm --skipreview $install_pkg"
+                else
+                    manual_note="Install paru or yay first, then: paru -Sa $install_pkg  (forces AUR source build)"
+                fi
+                ;;
+            arch-repo-official)
+                rebuild_cmd="sudo pacman -Syu"
+                manual_note="If the upgrade ships a quickshell rebuild this is enough. Otherwise switch to AUR quickshell-git for an immediate fix."
+                ;;
+            arch-aur-bin)
+                # quickshell-bin is a precompiled tarball; rebuilding the .pkg won't relink
+                # the binary. The only real fix is to switch to the source-built quickshell-git.
+                if [[ -n "$rebuild_helper" ]]; then
+                    rebuild_cmd="$rebuild_helper -Rdd --noconfirm quickshell-bin && $rebuild_helper -Sa --noconfirm --skipreview quickshell-git"
+                    manual_note="quickshell-bin is precompiled; --rebuild can't help. Switching to source-built quickshell-git."
+                else
+                    manual_note="quickshell-bin is precompiled. Install paru or yay, then: paru -Rdd quickshell-bin && paru -Sa quickshell-git"
+                fi
+                ;;
+            fedora-pkg)
+                rebuild_cmd="sudo dnf upgrade --refresh $install_pkg"
+                manual_note="If the COPR (errornointernet/quickshell) hasn't rebuilt yet, wait for the rebuild or: sudo dnf reinstall $install_pkg"
+                ;;
+            nixos)
+                rebuild_cmd="sudo nixos-rebuild switch --upgrade"
+                manual_note="On flakes: nix flake update && sudo nixos-rebuild switch. Nixpkgs invalidates Quickshell whenever Qt changes."
+                ;;
+            debian)
+                manual_note="Debian/Ubuntu: rebuild from source. See https://quickshell.org/docs/master/guide/install-setup"
+                ;;
+            source)
+                manual_note="Compiled from source. cd into your quickshell checkout, then: cmake --build build && sudo cmake --install build"
+                ;;
+            *)
+                manual_note="Unknown installation method. See https://quickshell.org/docs/master/guide/install-setup"
+                ;;
+        esac
+
+        if [[ -n "$rebuild_cmd" ]]; then
             local do_rebuild=false
             if ! ${ask:-true}; then
                 do_rebuild=true
-            elif tui_confirm "Rebuild $rebuild_pkg to fix ABI mismatch?"; then
+            elif tui_confirm "Rebuild quickshell to fix the ABI mismatch?"; then
                 do_rebuild=true
             fi
-
-            # Determine the right rebuild command:
-            # - Official repo (quickshell): sudo pacman -Syu
-            # - Foreign/AUR package: --rebuild triggers source compilation
-            # - Binary repo (CachyOS, chaotic-aur): -Sa forces AUR source build
-            local rebuild_cmd=""
-            if [[ "$rebuild_pkg" == "quickshell" ]]; then
-                rebuild_cmd="sudo pacman -Syu"
-            elif pacman -Qm "$rebuild_pkg" &>/dev/null; then
-                rebuild_cmd="$rebuild_helper -S --rebuild --noconfirm $rebuild_pkg"
-            else
-                rebuild_cmd="$rebuild_helper -Sa --noconfirm $rebuild_pkg"
-            fi
-
             if $do_rebuild; then
                 echo -e "  ${STY_FAINT}Running: $rebuild_cmd${STY_RST}"
-                if eval "$rebuild_cmd" 2>/dev/null; then
-                    doctor_fix "Rebuilt $rebuild_pkg for current Qt version"
+                # Don't silence — a 5-minute compile with no output is hostile.
+                if eval "$rebuild_cmd"; then
+                    doctor_fix "Rebuilt quickshell ($install_pkg) for the current Qt version"
                     return 0
                 else
-                    echo -e "  ${STY_RED}Rebuild failed. Try manually: ${rebuild_cmd/--noconfirm /}${STY_RST}"
+                    echo -e "  ${STY_RED}Rebuild failed. Try manually: ${rebuild_cmd//--noconfirm /}${STY_RST}"
+                    [[ -n "$manual_note" ]] && echo -e "  ${STY_FAINT}$manual_note${STY_RST}"
                 fi
             else
-                echo -e "  ${STY_YELLOW}To fix manually: ${rebuild_cmd/--noconfirm /}${STY_RST}"
+                echo -e "  ${STY_YELLOW}To fix manually: ${rebuild_cmd//--noconfirm /}${STY_RST}"
+                [[ -n "$manual_note" ]] && echo -e "  ${STY_FAINT}$manual_note${STY_RST}"
             fi
         else
-            echo -e "  ${STY_YELLOW}To fix: rebuild quickshell from source against the current Qt version.${STY_RST}"
-            if command -v pacman >/dev/null 2>&1; then
-                echo -e "  ${STY_YELLOW}On Arch: yay -Sa quickshell-git  (forces AUR source build)${STY_RST}"
-            fi
+            echo -e "  ${STY_YELLOW}No automatic fix available for this install type.${STY_RST}"
+            [[ -n "$manual_note" ]] && echo -e "  ${STY_YELLOW}$manual_note${STY_RST}"
         fi
         return 1
     fi
