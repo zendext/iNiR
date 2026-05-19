@@ -25,6 +25,11 @@ Item {
     MouseArea {
         id: _dragArea
         anchors.fill: parent
+        // When the widget isn't draggable (NotesWidget out of edit mode, locked widgets,
+        // etc.), keep this MouseArea passive so children like TextEdit can receive
+        // clicks and keyboard focus. Otherwise the drag MouseArea swallows the press and
+        // sticky notes / future interactive widgets become un-typeable.
+        enabled: root.draggable
         drag.target: root.draggable ? root : undefined
         cursorShape: (root.draggable && pressed) ? Qt.ClosedHandCursor : root.draggable ? Qt.OpenHandCursor : Qt.ArrowCursor
         onReleased: root.released()

@@ -216,6 +216,8 @@ Item {
             WidgetCard { widgetKey: "visualizer"; widgetIcon: "graphic_eq"; widgetLabel: Translation.tr("Visualizer"); defaultEnabled: false }
             WidgetCard { widgetKey: "systemMonitor"; widgetIcon: "monitor_heart"; widgetLabel: Translation.tr("System Monitor"); defaultEnabled: false }
             WidgetCard { widgetKey: "battery"; widgetIcon: "battery_full"; widgetLabel: Translation.tr("Battery"); defaultEnabled: false }
+            WidgetCard { widgetKey: "notes"; widgetIcon: "sticky_note_2"; widgetLabel: Translation.tr("Notes"); defaultEnabled: false }
+            WidgetCard { widgetKey: "calendarUpcoming"; widgetIcon: "event"; widgetLabel: Translation.tr("Upcoming Events"); defaultEnabled: false }
 
             // ── Custom widgets section ──
             Item { width: 1; height: 8 }

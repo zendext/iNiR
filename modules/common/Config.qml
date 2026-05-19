@@ -893,6 +893,55 @@ Singleton {
                         property real y: 50
                     }
 
+                    property JsonObject notes: JsonObject {
+                        property bool enable: false
+                        property bool locked: false
+                        property string placementStrategy: "free"
+                        property string text: ""
+                        property int fontSize: 14
+                        property string fontFamily: "sans"
+                        property string textAlign: "left"
+                        property int contentWidth: 240
+                        property int contentHeight: 160
+                        property int dim: 0
+                        property int widgetScale: 100
+                        property int widgetOpacity: 100
+                        property bool showBackground: true
+                        property bool showBorder: true
+                        property real backgroundOpacity: 0.10
+                        property real borderWidth: 1
+                        property real borderOpacity: 0.12
+                        property real cornerRadius: -1
+                        property string colorMode: "auto"
+                        property real x: 80
+                        property real y: 80
+                    }
+
+                    property JsonObject calendarUpcoming: JsonObject {
+                        property bool enable: false
+                        property bool locked: false
+                        property string placementStrategy: "free"
+                        property int maxEvents: 5
+                        property bool showDate: true
+                        property bool showTime: true
+                        property bool showLocation: false
+                        property bool groupByDay: true
+                        property int contentWidth: 280
+                        property int contentHeight: 220
+                        property int dim: 0
+                        property int widgetScale: 100
+                        property int widgetOpacity: 100
+                        property bool showBackground: true
+                        property bool showBorder: true
+                        property real backgroundOpacity: 0.10
+                        property real borderWidth: 1
+                        property real borderOpacity: 0.12
+                        property real cornerRadius: -1
+                        property string colorMode: "auto"
+                        property real x: 80
+                        property real y: 80
+                    }
+
                     property JsonObject editGrid: JsonObject {
                         property int size: 32
                         property bool snap: true

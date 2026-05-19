@@ -22,6 +22,8 @@ import qs.modules.background.widgets.weather
 import qs.modules.background.widgets.visualizer
 import qs.modules.background.widgets.systemMonitor
 import qs.modules.background.widgets.battery
+import qs.modules.background.widgets.notes
+import qs.modules.background.widgets.calendar
 import "root:modules/common/functions/parallax.js" as ParallaxMath
 
 Scope {
@@ -1644,6 +1646,34 @@ Scope {
                     Item { id: _hitMask6; x: -30; y: -260; width: (parent?.width ?? 0) + 60; height: (parent?.height ?? 0) + 300 }
                     sourceComponent: BatteryWidget {
                         widgetIndex: 5
+                        screenWidth: bgRoot.screen.width
+                        screenHeight: bgRoot.screen.height
+                        scaledScreenWidth: bgRoot.screen.width
+                        scaledScreenHeight: bgRoot.screen.height
+                        wallpaperScale: 1
+                    }
+                }
+
+                FadeLoader {
+                    shown: bgRoot._widgetEnabled("notes", false)
+                    containmentMask: GlobalStates.widgetEditMode ? _hitMask7 : null
+                    Item { id: _hitMask7; x: -30; y: -260; width: (parent?.width ?? 0) + 60; height: (parent?.height ?? 0) + 300 }
+                    sourceComponent: NotesWidget {
+                        widgetIndex: 6
+                        screenWidth: bgRoot.screen.width
+                        screenHeight: bgRoot.screen.height
+                        scaledScreenWidth: bgRoot.screen.width
+                        scaledScreenHeight: bgRoot.screen.height
+                        wallpaperScale: 1
+                    }
+                }
+
+                FadeLoader {
+                    shown: bgRoot._widgetEnabled("calendarUpcoming", false)
+                    containmentMask: GlobalStates.widgetEditMode ? _hitMask8 : null
+                    Item { id: _hitMask8; x: -30; y: -260; width: (parent?.width ?? 0) + 60; height: (parent?.height ?? 0) + 300 }
+                    sourceComponent: CalendarUpcomingWidget {
+                        widgetIndex: 7
                         screenWidth: bgRoot.screen.width
                         screenHeight: bgRoot.screen.height
                         scaledScreenWidth: bgRoot.screen.width
