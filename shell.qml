@@ -1,4 +1,5 @@
 //@ pragma UseQApplication
+//@ pragma ShellId inir
 // DISABLED: webapps — requires quickshell-webengine rebuild, re-enable when ready
 //-@ pragma EnableQtWebEngineQuick
 //@ pragma Env QS_NO_RELOAD_POPUP=1
