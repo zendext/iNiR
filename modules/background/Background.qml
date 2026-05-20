@@ -1089,38 +1089,34 @@ Scope {
                 }
                 readonly property bool useParallax: wallpaperContainer.useParallax && !bgRoot.backdropActive
                 anchors {
-                    left: useParallax ? wallpaperContainer.left : parent.left
-                    right: useParallax ? wallpaperContainer.right : parent.right
-                    top: useParallax ? wallpaperContainer.top : parent.top
-                    bottom: useParallax ? wallpaperContainer.bottom : parent.bottom
-                    readonly property real parallaxFactor: bgRoot.parallaxWidgetDepth
-                    leftMargin: useParallax ? (bgRoot.parallaxTotalX * wallpaperContainer.activeValueX * (1 - parallaxFactor)) : 0
-                    topMargin: useParallax ? (bgRoot.parallaxTotalY * wallpaperContainer.activeValueY * (1 - parallaxFactor)) : 0
-                    Behavior on leftMargin {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    bottom: parent.bottom
+                }
+                // Parallax widget depth: translate the canvas as a whole to create
+                // layered movement relative to the wallpaper.
+                transform: Translate {
+                    x: widgetCanvas._parallaxActive ? (bgRoot.parallaxTotalX * wallpaperContainer.activeValueX * (1 - bgRoot.parallaxWidgetDepth)) : 0
+                    y: widgetCanvas._parallaxActive ? (bgRoot.parallaxTotalY * wallpaperContainer.activeValueY * (1 - bgRoot.parallaxWidgetDepth)) : 0
+                    Behavior on x {
                         enabled: Appearance.animationsEnabled
                             && ((!bgRoot.parallaxTransitionActive && bgRoot.parallaxResumeProgress >= 1)
                                 || bgRoot._parallaxWaitingCrossfader)
                         animation: NumberAnimation { duration: Appearance.animation.elementMove.duration; easing.type: Appearance.animation.elementMove.type; easing.bezierCurve: Appearance.animation.elementMove.bezierCurve }
                     }
-                    Behavior on topMargin {
+                    Behavior on y {
                         enabled: Appearance.animationsEnabled
                             && ((!bgRoot.parallaxTransitionActive && bgRoot.parallaxResumeProgress >= 1)
                                 || bgRoot._parallaxWaitingCrossfader)
                         animation: NumberAnimation { duration: Appearance.animation.elementMove.duration; easing.type: Appearance.animation.elementMove.type; easing.bezierCurve: Appearance.animation.elementMove.bezierCurve }
                     }
                 }
-                width: useParallax ? wallpaperContainer.width : parent.width
-                height: useParallax ? wallpaperContainer.height : parent.height
-                states: State {
-                    name: "centered"
-                    when: GlobalStates.screenLocked || bgRoot.wallpaperSafetyTriggered || bgRoot.backdropActive
-                    PropertyChanges { target: widgetCanvas; width: parent.width; height: parent.height }
-                    AnchorChanges { target: widgetCanvas; anchors { left: undefined; right: undefined; top: undefined; bottom: undefined } }
-                }
-                transitions: Transition {
-                    PropertyAnimation { properties: "width,height"; duration: Appearance.animation.elementMove.duration; easing.type: Appearance.animation.elementMove.type; easing.bezierCurve: Appearance.animation.elementMove.bezierCurve }
-                    AnchorAnimation { duration: Appearance.animation.elementMove.duration; easing.type: Appearance.animation.elementMove.type; easing.bezierCurve: Appearance.animation.elementMove.bezierCurve }
-                }
+                width: parent.width
+                height: parent.height
+                // Disable parallax transform when locked/safe/backdrop
+                readonly property bool _parallaxActive: useParallax
+                    && !GlobalStates.screenLocked && !bgRoot.wallpaperSafetyTriggered && !bgRoot.backdropActive
 
                 // ── Edit Mode Scrim ──────────────────────────────
                 Rectangle {

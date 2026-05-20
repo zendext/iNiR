@@ -603,7 +603,8 @@ AbstractWidget {
             id: rhArea
             anchors.fill: parent
             anchors.margins: -4
-            hoverEnabled: root._resizeVisible && root.containsMouse
+            hoverEnabled: root._resizeVisible
+            visible: root._resizeVisible
             cursorShape: {
                 if ((rh.resizeLeft && rh.resizeTop) || (rh.resizeRight && rh.resizeBottom)) return Qt.SizeFDiagCursor;
                 if ((rh.resizeRight && rh.resizeTop) || (rh.resizeLeft && rh.resizeBottom)) return Qt.SizeBDiagCursor;
