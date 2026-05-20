@@ -5,6 +5,22 @@ All notable changes to iNiR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.1] - 2026-05-20
+
+Quickshell 0.3 + Qt 6.11.1 compatibility release. Fixes the #1 regression (settings not persisting) and several related issues surfaced by the update.
+
+### Fixed
+- **Config writes not persisting across reload** *(#150)*: QS 0.3's JsonAdapter no longer emits `onSaved` when nested JsonObjects are mutated via JS assignment. Replaced `writeAdapter()` with direct JSON serialization via `setText()`, bypassing the broken dirty-detection entirely. Safety timer unsticks the write lock on edge cases.
+- **Static wallpaper (JPG/PNG) crash** *(#146)*: disabled `mipmap: true` on WallpaperCrossfader Image slots. Qt 6.11's multithreaded mipmap generator has a race condition causing segfaults on large images. Mipmap is unnecessary for screen-sized rendering.
+- **AwwwBackend binary detection failures** *(#148)*: probe now checks `/usr/bin/awww` directly instead of relying on login shell (`bash -lc`). Fixes false "binaries unavailable" on setups where PATH isn't populated in login shells.
+- **ABI check crash-loops the service**: when running as systemd service (`--session`), the ABI mismatch handler now attempts a noninteractive rebuild before exiting. Prevents indefinite crash loops after a Qt patch bump.
+- **Notification layout**: fixed `padding` reference ambiguity and `contentColumn` anchors in NotificationItem.
+
+### Added
+- **Flatpak app launcher fallback** *(#149)*: `AppLauncher.launch()` now tries `DesktopEntries.heuristicLookup()` for single-word commands. Flatpak apps with `.desktop` files launch correctly even when the binary isn't in PATH.
+- **ShellId pragma for QS 0.3**: pinned `pragma ShellId inir` so symlinked configs don't get different shell IDs after QS stopped canonicalizing paths.
+- **`inir logs --full`**: new flag reads the binary qslog directly, bypassing `QT_LOGGING_RULES` filtering. Essential for debugging since journalctl hides real errors.
+
 ## [2.25.0] - 2026-05-16
 
 2.25 is the desktop widgets release. They finally work — edit mode, custom widgets, resize, persistence, the whole thing. The color pipeline got its biggest architectural change in a while with app-palette, and the shell now actually reads the wallpaper to pick text colors instead of guessing. Also, Steam theming moved to Millennium because Adwaita for Steam is dead.
