@@ -216,7 +216,7 @@ Item {
     FadeLoader {
         id: secondHandLoader
         z: root.secondHandStyle === "line" ? 2 : 3
-        shown: Config.options.time.secondPrecision && root.secondHandStyle !== "hide"
+        shown: root.secondHandStyle !== "hide"
         anchors.fill: parent
         sourceComponent: SecondHand {
             id: secondHand
