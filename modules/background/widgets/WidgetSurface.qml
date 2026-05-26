@@ -81,7 +81,8 @@ Rectangle {
         sourceSize.width: root.screenWidth
         sourceSize.height: root.screenHeight
 
-        layer.enabled: root._glass && !Appearance.compositorBlurActive
+        // OPTIMIZATION: Release FBO when widget is not visible
+        layer.enabled: root._glass && !Appearance.compositorBlurActive && root.visible
         layer.effect: MultiEffect {
             source: blurredWallpaper
             anchors.fill: source
