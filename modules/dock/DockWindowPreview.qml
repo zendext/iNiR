@@ -96,10 +96,15 @@ Button {
 
             RippleButton {
                 id: closeButton
-                visible: root.hovered
+                opacity: root.hovered ? 1 : 0
+                visible: opacity > 0
                 implicitWidth: 20
                 implicitHeight: 20
                 buttonRadius: Appearance.rounding.full
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
                 colBackground: "transparent"
                 colBackgroundHover: ColorUtils.transparentize(Appearance.colors.colError, 0.8)
                 colRipple: ColorUtils.transparentize(Appearance.colors.colError, 0.6)

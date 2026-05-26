@@ -32,6 +32,7 @@ GroupButton {
             anchors.centerIn: parent
             iconSize: 22
             fill: button.toggled ? 1 : 0
+            animateFill: true
             color: Appearance.angelEverywhere
                 ? (button.toggled ? Appearance.angel.colOnPrimary : Appearance.angel.colText)
                 : Appearance.inirEverywhere 

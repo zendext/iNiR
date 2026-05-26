@@ -48,18 +48,21 @@ DialogListItem {
                     elide: Text.ElideRight
                     text: root.device?.name || Translation.tr("Unknown device")
                 }
-                StyledText {
-                    visible: (root.device?.connected || root.device?.paired) ?? false
+                Revealer {
+                    vertical: true
+                    reveal: (root.device?.connected || root.device?.paired) ?? false
                     Layout.fillWidth: true
-                    font.pixelSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext
-                    elide: Text.ElideRight
-                    text: {
-                        if (!root.device?.paired) return "";
-                        let statusText = root.device?.connected ? Translation.tr("Connected") : Translation.tr("Paired");
-                        if (!root.device?.batteryAvailable) return statusText;
-                        statusText += ` • ${Math.round(root.device?.battery * 100)}%`;
-                        return statusText;
+                    StyledText {
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext
+                        elide: Text.ElideRight
+                        text: {
+                            if (!root.device?.paired) return "";
+                            let statusText = root.device?.connected ? Translation.tr("Connected") : Translation.tr("Paired");
+                            if (!root.device?.batteryAvailable) return statusText;
+                            statusText += ` • ${Math.round(root.device?.battery * 100)}%`;
+                            return statusText;
+                        }
                     }
                 }
             }
@@ -76,34 +79,49 @@ DialogListItem {
             }
         }
 
-        RowLayout {
-            visible: root.expanded
-            Layout.topMargin: 8
-            Item {
-                Layout.fillWidth: true
-            }
-            ActionButton {
-                buttonText: root.device?.connected ? Translation.tr("Disconnect") : Translation.tr("Connect")
+        Item {
+            Layout.fillWidth: true
+            visible: implicitHeight > 0
+            implicitHeight: root.expanded ? actionsRow.implicitHeight : 0
+            Layout.topMargin: root.expanded ? 8 : 0
+            clip: true
 
-                onClicked: {
-                    if (root.device?.connected) {
-                        root.device.disconnect();
-                    } else {
-                        root.device.trusted = true;
-                        root.device.connect();
+            Behavior on implicitHeight {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+            }
+            Behavior on Layout.topMargin {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+            }
+
+            RowLayout {
+                id: actionsRow
+                width: parent.width
+
+                Item { Layout.fillWidth: true }
+                ActionButton {
+                    buttonText: root.device?.connected ? Translation.tr("Disconnect") : Translation.tr("Connect")
+
+                    onClicked: {
+                        if (root.device?.connected) {
+                            root.device.disconnect();
+                        } else {
+                            root.device.trusted = true;
+                            root.device.connect();
+                        }
                     }
                 }
-            }
-            ActionButton {
-                visible: root.device?.paired ?? false
-                colBackground: Appearance.colors.colError
-                colBackgroundHover: Appearance.colors.colErrorHover
-                colRipple: Appearance.colors.colErrorActive
-                colText: Appearance.colors.colOnError
-
-                buttonText: Translation.tr("Forget")
-                onClicked: {
-                    root.device?.forget();
+                Revealer {
+                    reveal: root.device?.paired ?? false
+                    ActionButton {
+                        colBackground: Appearance.colors.colError
+                        colBackgroundHover: Appearance.colors.colErrorHover
+                        colRipple: Appearance.colors.colErrorActive
+                        colText: Appearance.colors.colOnError
+                        buttonText: Translation.tr("Forget")
+                        onClicked: root.device?.forget()
+                    }
                 }
             }
         }

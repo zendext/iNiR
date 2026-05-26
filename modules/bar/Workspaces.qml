@@ -325,7 +325,7 @@ Item {
         z: 2
         visible: !root.columnMode
         // Make active ws indicator, which has a brighter color, smaller to look like it is of the same size as ws occupied highlight
-        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Appearance.rounding.full
+        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Math.min(width, height) / 2
         color: Appearance.angelEverywhere ? Appearance.angel.colPrimary : Appearance.colors.colPrimary
 
         anchors {
@@ -563,7 +563,7 @@ Item {
     Rectangle {
         z: 2
         visible: root.columnMode && root.currentWindowIndex >= 0
-        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Appearance.rounding.full
+        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Math.min(width, height) / 2
         color: Appearance.angelEverywhere ? Appearance.angel.colPrimary : Appearance.colors.colPrimary
 
         anchors {

@@ -27,6 +27,30 @@ Item {
     readonly property bool showQuickActionsSection: Config.options?.controlPanel?.showQuickActionsSection ?? true
     
     implicitHeight: background.implicitHeight
+
+    // ── Staggered section entrance on panel open ──────────────────
+    property int _entranceCascade: GlobalStates.controlPanelOpen ? 99 : -1
+
+    Timer {
+        id: _entranceCascadeTimer
+        interval: 45
+        repeat: true
+        onTriggered: {
+            if (root._entranceCascade < 7) root._entranceCascade++
+            else stop()
+        }
+    }
+
+    Connections {
+        id: _cascadeConnections
+        target: GlobalStates
+        function onControlPanelOpenChanged() {
+            if (GlobalStates.controlPanelOpen) {
+                root._entranceCascade = -1
+                _entranceCascadeTimer.start()
+            }
+        }
+    }
     
     readonly property bool inirEverywhere: Appearance.inirEverywhere
     readonly property bool angelEverywhere: Appearance.angelEverywhere
@@ -147,15 +171,23 @@ Item {
                 spacing: root.compactMode ? 8 : 10
 
                 // Header with User Profile
-                ProfileHeader {}
+                ProfileHeader {
+                    opacity: root._entranceCascade >= 0 ? 1 : 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
+                }
 
                 // Date/Time header
-                DateTimeHeader {}
+                DateTimeHeader {
+                    opacity: root._entranceCascade >= 1 ? 1 : 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
+                }
 
                 // Media Section
                 Loader {
                     Layout.fillWidth: true
                     active: root.showMediaSection
+                    opacity: root._entranceCascade >= 2 ? 1 : 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                     sourceComponent: Component { MediaSection {} }
                 }
 
@@ -163,6 +195,8 @@ Item {
                 Loader {
                     Layout.fillWidth: true
                     active: root.showWallpaperSection
+                    opacity: root._entranceCascade >= 3 ? 1 : 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                     sourceComponent: Component { WallpaperSection {} }
                 }
 
@@ -170,6 +204,8 @@ Item {
                 Loader {
                     Layout.fillWidth: true
                     active: root.showWeatherSection
+                    opacity: root._entranceCascade >= 4 ? 1 : 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                     sourceComponent: Component { WeatherSection {} }
                 }
 
@@ -177,6 +213,8 @@ Item {
                 Loader {
                     Layout.fillWidth: true
                     active: root.showSystemSection
+                    opacity: root._entranceCascade >= 5 ? 1 : 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                     sourceComponent: Component { SystemSection {} }
                 }
 
@@ -184,6 +222,8 @@ Item {
                 Loader {
                     Layout.fillWidth: true
                     active: root.showSlidersSection
+                    opacity: root._entranceCascade >= 6 ? 1 : 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                     sourceComponent: Component { SlidersSection {} }
                 }
 
@@ -191,6 +231,8 @@ Item {
                 Loader {
                     Layout.fillWidth: true
                     active: root.showQuickActionsSection
+                    opacity: root._entranceCascade >= 7 ? 1 : 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                     sourceComponent: Component { QuickActionsSection {} }
                 }
 

@@ -95,7 +95,7 @@ Item {
                 x: tabBar.currentIndex * fullTabSize + (fullTabSize - targetWidth) / 2
 
                 color: Appearance.colors.colPrimary
-                radius: Appearance.rounding.full
+                radius: Math.min(width, height) / 2
 
                 Behavior on x {
                     enabled: tabIndicator.enableIndicatorAnimation && Appearance.animationsEnabled

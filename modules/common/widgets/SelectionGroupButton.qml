@@ -33,27 +33,55 @@ GroupButton {
         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive : Appearance.colors.colSecondaryContainerActive
 
     contentItem: RowLayout {
-        spacing: 4 * (root.buttonText?.length > 0)
+        spacing: root.buttonIcon?.length > 0 && root.buttonText?.length > 0 ? 4 : 0
 
-        Loader {
+        Behavior on spacing {
+            enabled: Appearance.animationsEnabled
+            animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+        }
+
+        Item {
+            id: iconReveal
             Layout.alignment: Qt.AlignVCenter
-            active: root.buttonIcon && root.buttonIcon.length > 0
-            visible: active
-            sourceComponent: Item {
-                implicitWidth: materialSymbol.implicitWidth
-                MaterialSymbol {
-                    id: materialSymbol
-                    anchors.centerIn: parent
-                    text: root.buttonIcon
-                    iconSize: Appearance.font.pixelSize.larger
-                    color: root.toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSecondaryContainer
-                }
+            implicitWidth: root.buttonIcon?.length > 0 ? materialSymbol.implicitWidth : 0
+            implicitHeight: materialSymbol.implicitHeight
+            opacity: root.buttonIcon?.length > 0 ? 1 : 0
+            visible: opacity > 0
+            clip: true
+
+            Behavior on implicitWidth {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+            }
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
+
+            MaterialSymbol {
+                id: materialSymbol
+                anchors.centerIn: parent
+                text: root.buttonIcon
+                iconSize: Appearance.font.pixelSize.larger
+                color: root.toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSecondaryContainer
             }
         }
 
         Item {
             implicitWidth: root.buttonText?.length > 0 ? textItem.implicitWidth : 0
             implicitHeight: textMetrics.height // Force height to that of regular text
+            opacity: root.buttonText?.length > 0 ? 1 : 0
+            visible: opacity > 0
+            clip: true
+
+            Behavior on implicitWidth {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+            }
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
 
             TextMetrics {
                 id: textMetrics

@@ -43,7 +43,7 @@ Switch {
     indicator: Rectangle {
         width: (root.pressed || root.down) ? (28 * root.scale) : root.checked ? (24 * root.scale) : (16 * root.scale)
         height: (root.pressed || root.down) ? (28 * root.scale) : root.checked ? (24 * root.scale) : (16 * root.scale)
-        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Appearance.rounding.full
+        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Math.min(width, height) / 2
         color: root.checked ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary : Appearance.m3colors.m3onPrimary)
             : (Appearance.angelEverywhere ? Appearance.angel.colBorder : Appearance.m3colors.m3outline)
         anchors.verticalCenter: parent.verticalCenter

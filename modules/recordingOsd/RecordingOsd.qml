@@ -547,6 +547,7 @@ Scope {
             text: btn.iconName
             iconSize: Appearance.font.pixelSize.larger
             fill: btn.filled ? 1 : 0
+            animateFill: true
             color: btn.iconColor
             opacity: btn.dimmed ? 0.4 : 1.0
         }

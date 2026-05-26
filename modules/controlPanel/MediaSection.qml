@@ -16,8 +16,13 @@ import "root:"
 Item {
     id: root
     Layout.fillWidth: true
-    implicitHeight: visible ? card.implicitHeight : 0
-    visible: hasPlayer
+    implicitHeight: hasPlayer ? card.implicitHeight : 0
+    visible: implicitHeight > 0
+
+    Behavior on implicitHeight {
+        enabled: Appearance.animationsEnabled
+        NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+    }
     readonly property bool compactMode: Config.options?.controlPanel?.compactMode ?? true
     
     readonly property MprisPlayer player: MprisController.activePlayer
@@ -106,8 +111,12 @@ Item {
             cache: false
             smooth: true
             mipmap: true
-            opacity: root.inirEverywhere ? 0.15 : (root.auroraEverywhere ? 0.25 : 0.5)
-            visible: root.displayedArtFilePath !== ""
+            opacity: root.displayedArtFilePath !== "" ? (root.inirEverywhere ? 0.15 : (root.auroraEverywhere ? 0.25 : 0.5)) : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
 
             layer.enabled: Appearance.effectsEnabled
             layer.effect: MultiEffect {
@@ -189,7 +198,12 @@ Item {
                     anchors.fill: parent
                     color: Appearance.angelEverywhere ? Appearance.angel.colGlassCard
                         : root.inirEverywhere ? root.jiraColLayer2 : (root.blendedColors?.colLayer1 ?? Appearance.colors.colLayer1)
-                    visible: !root.downloaded
+                    opacity: !root.downloaded ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
                     
                     MaterialSymbol {
                         anchors.centerIn: parent
@@ -222,8 +236,12 @@ Item {
                     color: Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
                         : root.inirEverywhere ? root.jiraColTextSecondary : (root.blendedColors?.colSubtext ?? Appearance.colors.colSubtext)
                     elide: Text.ElideRight
-                    visible: text !== ""
-                    opacity: 0.7
+                    opacity: text !== "" ? 0.7 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
                 }
 
                 Item { Layout.fillHeight: true }

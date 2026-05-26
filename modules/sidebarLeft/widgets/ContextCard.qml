@@ -93,7 +93,12 @@ Item {
 
                     // Cycle badge for pomodoro
                     Rectangle {
-                        visible: timerView.activeTimer === "pomodoro"
+                        scale: timerView.activeTimer === "pomodoro" ? 1 : 0
+                        visible: scale > 0
+                        Behavior on scale {
+                            enabled: Appearance.animationsEnabled
+                            NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                        }
                         implicitWidth: cycleText.implicitWidth + 8
                         implicitHeight: 16
                         radius: 8
@@ -158,7 +163,12 @@ Item {
                 // Progress
                 StyledProgressBar {
                     Layout.fillWidth: true
-                    visible: timerView.activeTimer !== "stopwatch"
+                    opacity: timerView.activeTimer !== "stopwatch" ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                    }
                     value: timerView.activeTimer === "pomodoro"
                         ? TimerService.pomodoroSecondsLeft / (TimerService.pomodoroLapDuration || 1)
                         : TimerService.countdownSecondsLeft / (TimerService.countdownDuration || 1)
@@ -211,7 +221,12 @@ Item {
                         StyledText {
                             Layout.fillWidth: true
                             text: Weather.visibleCity
-                            visible: Weather.showVisibleCity
+                            opacity: Weather.showVisibleCity ? 1 : 0
+                            visible: opacity > 0
+                            Behavior on opacity {
+                                enabled: Appearance.animationsEnabled
+                                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                            }
                             font.pixelSize: Appearance.font.pixelSize.smallest
                             color: Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext
                             elide: Text.ElideRight

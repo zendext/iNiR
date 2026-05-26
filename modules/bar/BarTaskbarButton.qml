@@ -434,14 +434,20 @@ RippleButton {
 
                     // Fallback single dot
                     Rectangle {
-                        visible: !root.appIsActive && root.hasWindows && Config.options?.dock?.showAllWindowDots === false
+                        opacity: (!root.appIsActive && root.hasWindows && Config.options?.dock?.showAllWindowDots === false) ? 1 : 0
+                        visible: opacity > 0
                         width: root.vertical ? 2 : 3
                         height: root.vertical ? 3 : 2
-                        radius: 1
+                        radius: Math.min(width, height) / 2
                         color: ColorUtils.transparentize(
                             Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
                             : Appearance.inirEverywhere ? Appearance.inir.colText
                             : Appearance.colors.colOnLayer0, 0.5)
+
+                        Behavior on opacity {
+                            enabled: Appearance.animationsEnabled
+                            animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                        }
                     }
                 }
             }

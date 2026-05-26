@@ -58,20 +58,47 @@ Item {
             enabled: Appearance.animationsEnabled
             animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration }
         }
+        Behavior on implicitWidth {
+            enabled: Appearance.animationsEnabled
+            animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+        }
 
         RowLayout {
             id: chipContent
             anchors.centerIn: parent
-            spacing: 4
+            spacing: (root.chipIcon.length > 0 || root.removable) ? 4 : 0
+
+            Behavior on spacing {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+            }
 
             // Optional leading icon
-            MaterialSymbol {
-                visible: root.chipIcon.length > 0
-                text: root.chipIcon
-                iconSize: 16
-                color: closeArea.containsMouse
-                    ? Appearance.colors.colOnErrorContainer
-                    : Appearance.colors.colOnSecondaryContainer
+            Item {
+                implicitWidth: root.chipIcon.length > 0 ? leadingIcon.implicitWidth : 0
+                implicitHeight: leadingIcon.implicitHeight
+                opacity: root.chipIcon.length > 0 ? 1 : 0
+                visible: opacity > 0
+                clip: true
+
+                Behavior on implicitWidth {
+                    enabled: Appearance.animationsEnabled
+                    animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+                }
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
+
+                MaterialSymbol {
+                    id: leadingIcon
+                    anchors.centerIn: parent
+                    text: root.chipIcon
+                    iconSize: 16
+                    color: closeArea.containsMouse
+                        ? Appearance.colors.colOnErrorContainer
+                        : Appearance.colors.colOnSecondaryContainer
+                }
             }
 
             StyledText {
@@ -85,9 +112,20 @@ Item {
 
             // Close icon
             Item {
-                visible: root.removable
-                implicitWidth: 16
+                visible: opacity > 0
+                opacity: root.removable ? 1 : 0
+                implicitWidth: root.removable ? 16 : 0
                 implicitHeight: 16
+                clip: true
+
+                Behavior on implicitWidth {
+                    enabled: Appearance.animationsEnabled
+                    animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+                }
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
 
                 MaterialSymbol {
                     anchors.centerIn: parent
@@ -114,6 +152,11 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: root.activated()
+
+            Behavior on anchors.rightMargin {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+            }
         }
 
         // Close button click area

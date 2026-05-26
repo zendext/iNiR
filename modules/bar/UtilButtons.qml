@@ -73,7 +73,8 @@ Item {
 
                         // Pulsating indicator dot when recording
                         Rectangle {
-                            visible: recordButtonWrapper.isRecording
+                            scale: recordButtonWrapper.isRecording ? 1 : 0
+                            visible: scale > 0
                             width: 6
                             height: 6
                             radius: 3
@@ -81,6 +82,15 @@ Item {
                             anchors {
                                 top: parent.top
                                 right: parent.right
+                            }
+
+                            Behavior on scale {
+                                enabled: Appearance.animationsEnabled
+                                NumberAnimation {
+                                    duration: Appearance.animation.elementMoveFast.duration
+                                    easing.type: Appearance.animation.elementMoveFast.type
+                                    easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+                                }
                             }
 
                             SequentialAnimation on opacity {
@@ -189,6 +199,7 @@ Item {
                         anchors.centerIn: parent
                         horizontalAlignment: Qt.AlignHCenter
                         fill: micButton.isInUse ? 1 : 0
+                        animateFill: true
                         text: micButton.isMuted ? "mic_off" : "mic"
                         iconSize: Appearance.font.pixelSize.large
                         color: micButton.isInUse && !micButton.isMuted
@@ -200,12 +211,22 @@ Item {
                     }
 
                     Rectangle {
-                        visible: micButton.isInUse && !micButton.isMuted
+                        scale: micButton.isInUse && !micButton.isMuted ? 1 : 0
+                        visible: scale > 0
                         width: 6
                         height: 6
                         radius: 3
                         color: Appearance.inirEverywhere ? Appearance.inir.colError : Appearance.colors.colError
                         anchors { top: parent.top; right: parent.right }
+
+                        Behavior on scale {
+                            enabled: Appearance.animationsEnabled
+                            NumberAnimation {
+                                duration: Appearance.animation.elementMoveFast.duration
+                                easing.type: Appearance.animation.elementMoveFast.type
+                                easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+                            }
+                        }
 
                         SequentialAnimation on opacity {
                             running: micButton.isInUse && !micButton.isMuted
@@ -249,6 +270,7 @@ Item {
                         anchors.centerIn: parent
                         horizontalAlignment: Qt.AlignHCenter
                         fill: screenCastButton.isCasting ? 1 : 0
+                        animateFill: true
                         text: "visibility"
                         iconSize: Appearance.font.pixelSize.large
                         color: screenCastButton.isCasting
@@ -257,7 +279,8 @@ Item {
                     }
 
                     Rectangle {
-                        visible: screenCastButton.isCasting
+                        scale: screenCastButton.isCasting ? 1 : 0
+                        visible: scale > 0
                         width: 6
                         height: 6
                         radius: 3
@@ -265,6 +288,15 @@ Item {
                         anchors {
                             top: parent.top
                             right: parent.right
+                        }
+
+                        Behavior on scale {
+                            enabled: Appearance.animationsEnabled
+                            NumberAnimation {
+                                duration: Appearance.animation.elementMoveFast.duration
+                                easing.type: Appearance.animation.elementMoveFast.type
+                                easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+                            }
                         }
 
                         SequentialAnimation on opacity {

@@ -9,8 +9,13 @@ import qs.modules.common.functions
 Rectangle {
     id: root
     Layout.fillWidth: true
-    implicitHeight: visible ? contentLayout.implicitHeight + 16 : 0
-    visible: Weather.enabled && Weather.data.temp && !Weather.data.temp.startsWith("--")
+    implicitHeight: (Weather.enabled && Weather.data.temp && !Weather.data.temp.startsWith("--")) ? contentLayout.implicitHeight + 16 : 0
+    visible: implicitHeight > 0
+
+    Behavior on implicitHeight {
+        enabled: Appearance.animationsEnabled
+        NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+    }
     readonly property bool compactMode: Config.options?.controlPanel?.compactMode ?? true
     
     readonly property bool inirEverywhere: Appearance.inirEverywhere

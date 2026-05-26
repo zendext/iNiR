@@ -368,11 +368,11 @@ Item {
                         RowLayout {
                             Layout.alignment: Qt.AlignRight
                             spacing: 8
-                            visible: Notifications.list.length > 0 || Notifications.silent
 
+                            Revealer {
+                                reveal: Notifications.list.length > 0
                             Row {
                                 spacing: 4
-                                visible: Notifications.list.length > 0
                                 MaterialSymbol {
                                     text: "notifications"
                                     iconSize: 14
@@ -386,10 +386,12 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                             }
+                            }
 
+                            Revealer {
+                                reveal: Notifications.silent
                             Row {
                                 spacing: 4
-                                visible: Notifications.silent
                                 MaterialSymbol {
                                     text: "do_not_disturb_on"
                                     iconSize: 14
@@ -403,6 +405,7 @@ Item {
                                     color: root.colPrimary
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
+                            }
                             }
                         }
                     }
@@ -466,12 +469,14 @@ Item {
                           active: Network.wifiEnabled
                           onClicked: Network.toggleWifi()
                       }
+                      Revealer {
+                          reveal: BluetoothStatus.available
                       QuickToggle {
                           icon: BluetoothStatus.enabled ? "bluetooth" : "bluetooth_disabled"
                           label: Translation.tr("Bluetooth")
                           active: BluetoothStatus.enabled
-                          visible: BluetoothStatus.available
                           onClicked: BluetoothStatus.toggle()
+                      }
                       }
                       QuickToggle {
                           icon: Notifications.silent ? "notifications_off" : "notifications"
@@ -571,8 +576,9 @@ Item {
             Rectangle {
                 id: mediaCard
                 Layout.fillWidth: true
-                visible: root.cfgMedia && root.hasPlayer
-                implicitHeight: mediaContent.implicitHeight + 24
+                visible: implicitHeight > 0
+                implicitHeight: (root.cfgMedia && root.hasPlayer) ? (mediaContent.implicitHeight + 24) : 0
+                Behavior on implicitHeight { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveEnter.duration; easing.type: Appearance.animation.elementMoveEnter.type; easing.bezierCurve: Appearance.animation.elementMoveEnter.bezierCurve } }
                 radius: root.cardRadius
                 color: root.inirStyle ? root.colCard : "transparent"
                 border.width: root.bw
@@ -815,8 +821,9 @@ Item {
             Rectangle {
                 id: weatherCard
                 Layout.fillWidth: true
-                visible: root.cfgWeather && Weather.enabled && (Weather.data?.temp ?? "") !== "" && !(Weather.data?.temp ?? "").startsWith("--")
-                implicitHeight: Math.max(weatherContent.implicitHeight + 24, root.weatherCardMinHeight)
+                visible: implicitHeight > 0
+                implicitHeight: (root.cfgWeather && Weather.enabled && (Weather.data?.temp ?? "") !== "" && !(Weather.data?.temp ?? "").startsWith("--")) ? Math.max(weatherContent.implicitHeight + 24, root.weatherCardMinHeight) : 0
+                Behavior on implicitHeight { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveEnter.duration; easing.type: Appearance.animation.elementMoveEnter.type; easing.bezierCurve: Appearance.animation.elementMoveEnter.bezierCurve } }
                 radius: root.cardRadius
                 color: root.inirStyle ? root.colCard : "transparent"
                 border.width: root.bw
@@ -885,7 +892,12 @@ Item {
 
                             StyledText {
                                 text: Weather.visibleCity
-                                visible: Weather.showVisibleCity
+                                opacity: Weather.showVisibleCity ? 1 : 0
+                                visible: opacity > 0
+                                Behavior on opacity {
+                                    enabled: Appearance.animationsEnabled
+                                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                                }
                                 font.pixelSize: Appearance.font.pixelSize.smallest
                                 color: root.colSubtext
                                 elide: Text.ElideRight
@@ -1012,7 +1024,9 @@ Item {
                                     }
 
                                     StyledText {
-                                        visible: ResourceUsage.cpuTemp > 0
+                                        opacity: ResourceUsage.cpuTemp > 0 ? 1 : 0
+                                        visible: opacity > 0
+                                        Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
                                         text: ResourceUsage.cpuTemp + "°C"
                                         font { pixelSize: Appearance.font.pixelSize.smallest; family: Appearance.font.family.numbers }
                                         color: ResourceUsage.cpuTemp > 80 ? Appearance.colors.colError
@@ -1177,11 +1191,13 @@ Item {
                                     : Battery.isCharging ? Appearance.colors.colTertiary
                                     : root.colSubtext
                             }
-                            StyledText {
-                                visible: Battery.isCharging
-                                text: "· " + Translation.tr("Charging")
-                                font.pixelSize: Appearance.font.pixelSize.smallest
-                                color: Appearance.colors.colTertiary
+                            Revealer {
+                                reveal: Battery.isCharging
+                                StyledText {
+                                    text: "· " + Translation.tr("Charging")
+                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    color: Appearance.colors.colTertiary
+                                }
                             }
                             Item { Layout.fillWidth: true }
                         }
@@ -1263,15 +1279,11 @@ Item {
                 text: toggle.icon
                 iconSize: 22
                 fill: toggle.active ? 1 : 0
+                animateFill: true
                 color: toggle.active ? root.colOnPrimary
                     : (root.angelStyle ? Appearance.angel.colText
                         : root.inirStyle ? Appearance.inir.colText
                         : Appearance.colors.colOnLayer1)
-
-                Behavior on fill {
-                    enabled: Appearance.animationsEnabled
-                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration }
-                }
                 Behavior on color {
                     enabled: Appearance.animationsEnabled
                     animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }

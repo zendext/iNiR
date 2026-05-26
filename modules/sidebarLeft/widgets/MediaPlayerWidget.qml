@@ -237,7 +237,12 @@ Item {
                     anchors.fill: parent
                     color: Appearance.angelEverywhere ? Appearance.angel.colGlassCard
                         : Appearance.inirEverywhere ? root.jiraColLayer2 : (blendedColors?.colLayer1 ?? Appearance.colors.colLayer1)
-                    visible: !root.downloaded
+                    opacity: root.downloaded ? 0 : 1
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                    }
                     
                     MaterialSymbol {
                         anchors.centerIn: parent

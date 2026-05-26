@@ -33,6 +33,11 @@ ProgressBar {
         weight: text.length > 2 ? Font.Medium : Font.DemiBold
     }
 
+    Behavior on value {
+        enabled: Appearance.animationsEnabled
+        animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+    }
+
     background: Item {
         implicitHeight: valueBarHeight
         implicitWidth: valueBarWidth
@@ -41,7 +46,7 @@ ProgressBar {
     contentItem: Rectangle {
         id: contentItem
         anchors.fill: parent
-        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Appearance.rounding.full
+        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Math.min(width, height) / 2
         color: root.trackColor
         visible: false
 
@@ -77,6 +82,15 @@ ProgressBar {
 
             radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall : Appearance.rounding.unsharpen
             color: root.highlightColor
+
+            Behavior on width {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
+            Behavior on height {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
         }
     }
 

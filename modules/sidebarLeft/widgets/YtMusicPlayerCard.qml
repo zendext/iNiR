@@ -102,8 +102,12 @@ Item {
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             cache: false
-            opacity: Appearance.inirEverywhere ? 0.15 : (Appearance.auroraEverywhere ? 0.25 : 0.5)
-            visible: root.downloaded
+            opacity: root.downloaded ? (Appearance.inirEverywhere ? 0.15 : (Appearance.auroraEverywhere ? 0.25 : 0.5)) : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+            }
             layer.enabled: Appearance.effectsEnabled
             layer.effect: MultiEffect { blurEnabled: true; blur: 0.2; blurMax: 16; saturation: 0.2 }
         }
@@ -171,22 +175,37 @@ Item {
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     cache: false
-                    visible: root.downloaded
+                    opacity: root.downloaded ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                    }
                 }
 
                 MaterialSymbol {
                     anchors.centerIn: parent
-                    visible: !root.downloaded
                     text: "music_note"
                     iconSize: 32
                     color: root.colTextSecondary
+                    opacity: root.downloaded ? 0 : 1
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                    }
                 }
 
                 // Loading overlay
                 Rectangle {
                     anchors.fill: parent
                     color: ColorUtils.transparentize(root.colBg, 0.5)
-                    visible: YtMusic.loading
+                    opacity: YtMusic.loading ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                    }
 
                     MaterialLoadingIndicator { anchors.centerIn: parent; implicitSize: 24; loading: true }
                 }
@@ -200,7 +219,12 @@ Item {
                     height: 16
                     radius: Appearance.rounding.unsharpen
                     color: ColorUtils.transparentize(root.colBg, 0.4)
-                    visible: root.isPlaying && !YtMusic.loading
+                    scale: (root.isPlaying && !YtMusic.loading) ? 1 : 0
+                    visible: scale > 0
+                    Behavior on scale {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                    }
 
                     Row {
                         anchors.centerIn: parent
@@ -402,6 +426,7 @@ Item {
                             text: parent.isLiked ? "favorite" : "favorite_border"
                             iconSize: 13
                             fill: parent.isLiked ? 1 : 0
+                            animateFill: true
                             color: parent.isLiked ? Appearance.colors.colError : root.colTextSecondary
                         }
                         StyledToolTip { text: parent.isLiked ? Translation.tr("Remove from Liked") : Translation.tr("Add to Liked") }

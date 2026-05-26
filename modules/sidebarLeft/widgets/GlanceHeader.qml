@@ -54,7 +54,11 @@ Item {
                         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface : (Appearance.colors.colTertiaryContainerHover ?? Appearance.colors.colTertiaryContainer)
                     colRipple: Appearance.inirEverywhere ? Appearance.inir.colLayer1Active
                         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive : (Appearance.colors.colTertiaryContainerActive ?? Appearance.colors.colTertiaryContainer)
-                    visible: GameMode.active && (Config.options?.sidebar?.widgets?.glance?.showGameMode ?? true)
+                    opacity: GameMode.active && (Config.options?.sidebar?.widgets?.glance?.showGameMode ?? true) ? 1 : 0
+                    visible: opacity > 0
+                    scale: opacity
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve } }
+                    Behavior on scale { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve } }
                     onClicked: GameMode.toggle()
 
                     contentItem: Item {
@@ -81,7 +85,11 @@ Item {
                         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface : Appearance.colors.colPrimaryContainerHover
                     colRipple: Appearance.inirEverywhere ? Appearance.inir.colLayer1Active
                         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive : Appearance.colors.colPrimaryContainerActive
-                    visible: Notifications.silent && (Config.options?.sidebar?.widgets?.glance?.showDnd ?? true)
+                    opacity: Notifications.silent && (Config.options?.sidebar?.widgets?.glance?.showDnd ?? true) ? 1 : 0
+                    visible: opacity > 0
+                    scale: opacity
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve } }
+                    Behavior on scale { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve } }
                     onClicked: Notifications.toggleSilent()
 
                     contentItem: Item {
@@ -101,7 +109,9 @@ Item {
                 Item {
                     implicitWidth: volumeBtn.implicitWidth
                     implicitHeight: volumeBtn.implicitHeight
-                    visible: Audio.sink !== null && (Config.options?.sidebar?.widgets?.glance?.showVolume ?? true)
+                    opacity: Audio.sink !== null && (Config.options?.sidebar?.widgets?.glance?.showVolume ?? true) ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve } }
 
                     RippleButton {
                         id: volumeBtn
@@ -128,10 +138,10 @@ Item {
                                           (Audio.sink?.audio?.volume ?? 0) < 0.5 ? "volume_down" : "volume_up"
                                     iconSize: 18
                                     fill: Audio.sink?.audio?.muted ? 1 : 0
+                                    animateFill: true
                                     color: Audio.sink?.audio?.muted
                                         ? (Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext)
                                         : (Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer0)
-                                    Behavior on fill { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration } }
                                     Behavior on color { enabled: Appearance.animationsEnabled; animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve } }
                                 }
 

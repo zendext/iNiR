@@ -449,6 +449,7 @@ Item {
                             text: entry?.icon ?? "settings"
                             iconSize: Appearance.font.pixelSize.huge
                             fill: (isPackage && entry.pkg?.installed) ? 1 : 0
+                            animateFill: true
                             color: {
                                 if (isPackage && entry.pkg?.installed)
                                     return Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary
@@ -566,7 +567,12 @@ Item {
                     // Action hint on hover/focus
                     StyledText {
                         Layout.fillWidth: false
-                        visible: delegateBtn.hovered || delegateBtn.isHighlighted
+                        opacity: (delegateBtn.hovered || delegateBtn.isHighlighted) ? 1 : 0
+                        visible: opacity > 0
+                        Behavior on opacity {
+                            enabled: Appearance.animationsEnabled
+                            NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                        }
                         text: isAction
                             ? (entry?.action?.verb ?? Translation.tr("Run"))
                             : (root.isPackageRemove ? Translation.tr("Remove") : Translation.tr("Install"))
@@ -588,7 +594,12 @@ Item {
 
         // ── Loading indicator ──
         RowLayout {
-            visible: root.showLoading
+            opacity: root.showLoading ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+            }
             Layout.fillWidth: true
             Layout.topMargin: 12
             Layout.bottomMargin: 12
@@ -609,7 +620,12 @@ Item {
 
         // ── Empty state ──
         ColumnLayout {
-            visible: root.showEmpty
+            opacity: root.showEmpty ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+            }
             Layout.fillWidth: true
             Layout.topMargin: 20
             Layout.bottomMargin: 20

@@ -170,10 +170,15 @@ Rectangle {
             }
         }
 
-        // Action buttons - only show on hover for cleaner look
+        // Action buttons - morph in on hover
         Row {
             spacing: 2
-            visible: root.hovered || root.isCurrentTrack
+            opacity: (root.hovered || root.isCurrentTrack) ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+            }
 
             // Add to playlist
             IconButton {

@@ -165,6 +165,7 @@ TabButton {
                     text: buttonIcon
                     iconSize: Appearance.font.pixelSize.huge
                     fill: selected ? 1 : 0
+                    animateFill: true
                     color: selected ? Appearance.colors.colPrimary : Appearance.colors.colOnLayer1
                     Behavior on color {
                         animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }

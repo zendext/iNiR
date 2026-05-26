@@ -23,20 +23,24 @@ Item {
             text: DateTime.timeDisplay
         }
 
-        StyledText {
-            visible: root.showDate
-            font.pixelSize: Appearance.font.pixelSize.small
-            color: Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
-                : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1
-            text: "•"
+        Revealer {
+            reveal: root.showDate
+            StyledText {
+                font.pixelSize: Appearance.font.pixelSize.small
+                color: Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
+                    : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1
+                text: "•"
+            }
         }
 
-        StyledText {
-            visible: root.showDate
-            font.pixelSize: Appearance.font.pixelSize.small
-            color: Appearance.angelEverywhere ? Appearance.angel.colText
-                : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1
-            text: DateTime.date
+        Revealer {
+            reveal: root.showDate
+            StyledText {
+                font.pixelSize: Appearance.font.pixelSize.small
+                color: Appearance.angelEverywhere ? Appearance.angel.colText
+                    : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1
+                text: DateTime.date
+            }
         }
     }
 

@@ -661,12 +661,13 @@ Item { // Bar content region
                         iconSize: Appearance.font.pixelSize.larger
                         color: rightSidebarButton.colText
                     }
-                    MaterialSymbol {
-                        Layout.leftMargin: indicatorsRowLayout.realSpacing
-                        visible: BluetoothStatus.available
-                        text: BluetoothStatus.activeIcon
-                        iconSize: Appearance.font.pixelSize.larger
-                        color: rightSidebarButton.colText
+                    Revealer {
+                        reveal: BluetoothStatus.available
+                        MaterialSymbol {
+                            text: BluetoothStatus.activeIcon
+                            iconSize: Appearance.font.pixelSize.larger
+                            color: rightSidebarButton.colText
+                        }
                     }
                 }
             }

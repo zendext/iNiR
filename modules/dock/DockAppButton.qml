@@ -499,7 +499,7 @@ DockButton {
                                 return index === root.focusedWindowIndex;
                             }
 
-                            radius: Appearance.angelEverywhere ? 0 : Appearance.rounding.full
+                            radius: Appearance.angelEverywhere ? 0 : Math.min(width, height) / 2
                             implicitWidth: Appearance.angelEverywhere
                                 ? (isFocusedWindow ? 14 : 6)
                                 : (isFocusedWindow ? root.countDotWidth : root.countDotHeight)
@@ -514,17 +514,27 @@ DockButton {
                                 enabled: Appearance.animationsEnabled
                                 NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
                             }
+                            Behavior on color {
+                                enabled: Appearance.animationsEnabled
+                                animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                            }
                         }
                     }
 
                     // Fallback: single indicator when showAllDots is off and app is inactive
                     Rectangle {
-                        visible: !root.appIsActive && root.hasWindows && Config.options?.dock?.showAllWindowDots === false
+                        opacity: (!root.appIsActive && root.hasWindows && Config.options?.dock?.showAllWindowDots === false) ? 1 : 0
+                        visible: opacity > 0
                         width: Appearance.angelEverywhere ? 6 : 5
                         height: Appearance.angelEverywhere ? 2 : 5
-                        radius: Appearance.angelEverywhere ? 0 : 2.5
+                        radius: Appearance.angelEverywhere ? 0 : Math.min(width, height) / 2
                         color: ColorUtils.transparentize(Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
                             : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer0, 0.5)
+
+                        Behavior on opacity {
+                            enabled: Appearance.animationsEnabled
+                            animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                        }
                     }
                 }
             }

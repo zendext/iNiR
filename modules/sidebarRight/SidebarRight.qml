@@ -111,17 +111,49 @@ Scope {
         Component {
             id: contentStackComponent
             Item {
+                id: contentStack
                 anchors.fill: parent
+                readonly property bool isCompact: (Config?.options?.sidebar?.layout ?? "default") === "compact"
 
-                FadeLoader {
+                Loader {
+                    id: defaultLoader
                     anchors.fill: parent
-                    shown: (Config?.options?.sidebar?.layout ?? "default") === "default"
+                    active: !contentStack.isCompact || opacity > 0
+                    opacity: contentStack.isCompact ? 0 : 1
+                    visible: opacity > 0
+                    scale: contentStack.isCompact ? 0.96 : 1
+                    transformOrigin: Item.Center
+
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
+                    Behavior on scale {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+                    }
+
                     sourceComponent: defaultContentComponent
                 }
 
-                FadeLoader {
+                Loader {
+                    id: compactLoader
                     anchors.fill: parent
-                    shown: (Config?.options?.sidebar?.layout ?? "default") === "compact"
+                    active: contentStack.isCompact || opacity > 0
+                    opacity: contentStack.isCompact ? 1 : 0
+                    visible: opacity > 0
+                    scale: contentStack.isCompact ? 1 : 0.96
+                    transformOrigin: Item.Center
+
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
+                    Behavior on scale {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+                    }
+
                     sourceComponent: compactContentComponent
                 }
             }

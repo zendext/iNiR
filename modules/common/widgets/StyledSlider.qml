@@ -172,7 +172,7 @@ Slider {
         x: root.handleMargins + (normalizedValue * root.effectiveDraggingWidth) - (root.trackDotSize / 2)
         width: root.trackDotSize
         height: root.trackDotSize
-        radius: Appearance.rounding.full
+        radius: Math.min(width, height) / 2
         color: normalizedValue > root.visualPosition ? root.dotColor : root.dotColorHighlighted
 
         Behavior on color {
@@ -255,7 +255,7 @@ Slider {
                         wavyFill.requestPaint()
                     }
                 }
-            }   
+            }
         }
 
         // Fill right
@@ -291,10 +291,15 @@ Slider {
         implicitHeight: root.handleHeight
         x: root.handleMargins + (root.visualPosition * root.effectiveDraggingWidth) - (implicitWidth / 2)
         anchors.verticalCenter: parent.verticalCenter
-        radius: Appearance.rounding.full
+        radius: Math.min(width, height) / 2
         color: root.handleColor
 
         Behavior on implicitWidth {
+            enabled: Appearance.animationsEnabled
+            animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+        }
+        Behavior on implicitHeight {
+            enabled: Appearance.animationsEnabled
             animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
         }
 

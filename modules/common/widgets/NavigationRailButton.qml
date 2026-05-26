@@ -175,6 +175,7 @@ TabButton {
                 anchors.centerIn: parent
                 iconSize: 24
                 fill: toggled ? 1 : 0
+                animateFill: true
                 font.weight: (toggled || root.hovered) ? Font.DemiBold : Font.Normal
                 text: buttonIcon
                 color: toggled
@@ -190,8 +191,10 @@ TabButton {
         StyledText {
             id: itemText
             // Only show text when expanded - when collapsed, use PopupToolTip instead
-            visible: root.expanded
+            visible: opacity > 0
             opacity: root.expanded ? 1 : 0
+            width: root.expanded ? implicitWidth : 0
+            clip: true
             anchors {
                 left: itemIconBackground.right
                 verticalCenter: itemIconBackground.verticalCenter
@@ -204,6 +207,14 @@ TabButton {
                 NumberAnimation {
                     duration: Appearance.animation.elementMoveFast.duration
                     easing.type: Appearance.animation.elementMoveFast.type
+                }
+            }
+            Behavior on width {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation {
+                    duration: Appearance.animation.elementResize.duration
+                    easing.type: Appearance.animation.elementResize.type
+                    easing.bezierCurve: Appearance.animation.elementResize.bezierCurve
                 }
             }
         }

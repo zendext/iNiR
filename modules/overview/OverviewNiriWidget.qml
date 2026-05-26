@@ -742,7 +742,11 @@ Item {
                             source: AppSearch.getIconSource(windowData.app_id || windowData.appId || "")
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
-                            visible: !windowPreview.visible
+                            opacity: windowPreview.visible ? 0.6 : 1.0
+                            Behavior on opacity {
+                                enabled: Appearance.animationsEnabled
+                                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                            }
                             scale: windowItem.hovered ? 1.08 : 1.0
                             Behavior on scale {
                                 enabled: Appearance.animationsEnabled

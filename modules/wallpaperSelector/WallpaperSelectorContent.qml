@@ -286,6 +286,7 @@ MouseArea {
                                     iconSize: Appearance.font.pixelSize.larger
                                     text: quickDirButton.modelData.icon
                                     fill: quickDirButton.toggled ? 1 : 0
+                                    animateFill: true
                                 }
                                 StyledText {
                                     Layout.fillWidth: true

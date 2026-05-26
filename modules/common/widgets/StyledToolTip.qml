@@ -23,6 +23,7 @@ PopupToolTip {
         font: root.font
         text: root.text
         shown: false
+        position: root.position
         horizontalPadding: root.horizontalPadding
         verticalPadding: root.verticalPadding
     }

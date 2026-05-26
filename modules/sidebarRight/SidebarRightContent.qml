@@ -92,6 +92,41 @@ Item {
     implicitHeight: sidebarRightBackground.implicitHeight
     implicitWidth: sidebarRightBackground.implicitWidth
 
+    // ── Staggered section entrance (first instantiation only) ──────────────────
+    property int _entranceCascade: -1
+    property bool _cascadeCompleted: false
+
+    Timer {
+        id: _entranceCascadeTimer
+        interval: 50
+        repeat: true
+        onTriggered: {
+            if (root._entranceCascade < 5) root._entranceCascade++
+            else { stop(); root._cascadeCompleted = true }
+        }
+    }
+
+    Component.onCompleted: {
+        if (GlobalStates.sidebarRightOpen) {
+            _entranceCascadeTimer.start()
+        } else {
+            // Content pre-loaded while sidebar closed — skip cascade
+            root._entranceCascade = 99
+            root._cascadeCompleted = true
+        }
+    }
+
+    Connections {
+        id: _cascadeConnections
+        target: GlobalStates
+        function onSidebarRightOpenChanged() {
+            if (GlobalStates.sidebarRightOpen && !root._cascadeCompleted) {
+                root._entranceCascade = -1
+                _entranceCascadeTimer.start()
+            }
+        }
+    }
+
     StyledRectangularShadow {
         target: sidebarRightBackground
         visible: !Appearance.inirEverywhere && !Appearance.gameModeMinimal
@@ -218,6 +253,8 @@ Item {
                 // Layout.margins: 10
                 Layout.topMargin: 5
                 Layout.bottomMargin: 0
+                opacity: root._entranceCascade >= 0 ? 1 : 0
+                Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
             }
 
             Loader {
@@ -230,16 +267,22 @@ Item {
                     if (!configQuickSliders?.showMic && !configQuickSliders?.showVolume && !configQuickSliders?.showBrightness) return false;
                     return true;
                 }
+                opacity: root._entranceCascade >= 1 ? 1 : 0
+                Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                 sourceComponent: QuickSliders {}
             }
 
             LoaderedQuickPanelImplementation {
                 styleName: "classic"
+                opacity: root._entranceCascade >= 2 ? 1 : 0
+                Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                 sourceComponent: ClassicQuickPanel {}
             }
 
             LoaderedQuickPanelImplementation {
                 styleName: "android"
+                opacity: root._entranceCascade >= 2 ? 1 : 0
+                Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                 sourceComponent: AndroidQuickPanel {
                     editMode: root.editMode
                 }
@@ -249,6 +292,8 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillHeight: true
                 Layout.fillWidth: true
+                opacity: root._entranceCascade >= 3 ? 1 : 0
+                Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
             }
 
             BottomWidgetGroup {
@@ -257,6 +302,8 @@ Item {
                 Layout.fillHeight: false
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
+                opacity: root._entranceCascade >= 4 ? 1 : 0
+                Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                 
                 onOpenEventsDialog: (editEvent) => {
                     root.eventsDialogEditEvent = editEvent;

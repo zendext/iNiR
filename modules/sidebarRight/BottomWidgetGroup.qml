@@ -29,8 +29,13 @@ Rectangle {
     clip: true
 
     AngelPartialBorder { targetRadius: root.radius; coverage: 0.5 }
-    visible: tabs.length > 0
-    implicitHeight: visible ? (collapsed ? collapsedBottomWidgetGroupRow.implicitHeight : bottomWidgetGroupRow.implicitHeight) : 0
+    visible: implicitHeight > 0
+    implicitHeight: (tabs.length > 0) ? (collapsed ? collapsedBottomWidgetGroupRow.implicitHeight : bottomWidgetGroupRow.implicitHeight) : 0
+
+    Behavior on implicitHeight {
+        enabled: Appearance.animationsEnabled
+        animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+    }
     property int selectedTab: Persistent.states?.sidebar?.bottomGroup?.tab ?? 0
     property bool collapsed: Persistent.states?.sidebar?.bottomGroup?.collapsed ?? false
     
@@ -329,7 +334,9 @@ Rectangle {
                 anchors.left: railFlickable.left
                 anchors.right: railFlickable.right
                 height: 20
-                visible: railFlickable.contentY > 0 && !Appearance.auroraEverywhere
+                opacity: (railFlickable.contentY > 0 && !Appearance.auroraEverywhere) ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: Appearance.angelEverywhere ? Appearance.angel.colGlassCard : Appearance.inirEverywhere ? Appearance.inir.colLayer1 : Appearance.colors.colLayer1 }
                     GradientStop { position: 1.0; color: "transparent" }
@@ -342,7 +349,9 @@ Rectangle {
                 anchors.left: railFlickable.left
                 anchors.right: railFlickable.right
                 height: 20
-                visible: railFlickable.contentHeight > railFlickable.height && railFlickable.contentY < (railFlickable.contentHeight - railFlickable.height) && !Appearance.auroraEverywhere
+                opacity: (railFlickable.contentHeight > railFlickable.height && railFlickable.contentY < (railFlickable.contentHeight - railFlickable.height) && !Appearance.auroraEverywhere) ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: "transparent" }
                     GradientStop { position: 1.0; color: Appearance.angelEverywhere ? Appearance.angel.colGlassCard : Appearance.inirEverywhere ? Appearance.inir.colLayer1 : Appearance.colors.colLayer1 }

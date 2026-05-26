@@ -24,27 +24,42 @@ Loader {
             spacing: Appearance.sizes.spacingSmall
 
             MaterialSymbol {
-                visible: KeyboardIndicators.capsLockVisible
+                opacity: KeyboardIndicators.capsLockVisible ? 1 : 0
+                visible: opacity > 0
                 text: KeyboardIndicators.capsMaterialIcon
                 iconSize: Appearance.font.pixelSize.large
                 fill: 1
                 color: root.color
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
             }
 
             MaterialSymbol {
-                visible: KeyboardIndicators.numLockVisible
+                opacity: KeyboardIndicators.numLockVisible ? 1 : 0
+                visible: opacity > 0
                 text: KeyboardIndicators.numMaterialIcon
                 iconSize: Appearance.font.pixelSize.large
                 fill: 1
                 color: root.color
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
             }
 
             StyledText {
-                visible: KeyboardIndicators.layoutVisible
+                opacity: KeyboardIndicators.layoutVisible ? 1 : 0
+                visible: opacity > 0
                 horizontalAlignment: Text.AlignHCenter
                 text: KeyboardIndicators.currentLayoutCodeInline
                 font.pixelSize: Appearance.font.pixelSize.small
                 color: root.color
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
             }
         }
 
@@ -55,29 +70,44 @@ Loader {
             spacing: Appearance.sizes.spacingSmall / 2
 
             MaterialSymbol {
-                visible: KeyboardIndicators.capsLockVisible
+                opacity: KeyboardIndicators.capsLockVisible ? 1 : 0
+                visible: opacity > 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: KeyboardIndicators.capsMaterialIcon
                 iconSize: Appearance.font.pixelSize.large
                 fill: 1
                 color: root.color
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
             }
 
             MaterialSymbol {
-                visible: KeyboardIndicators.numLockVisible
+                opacity: KeyboardIndicators.numLockVisible ? 1 : 0
+                visible: opacity > 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: KeyboardIndicators.numMaterialIcon
                 iconSize: Appearance.font.pixelSize.large
                 fill: 1
                 color: root.color
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
             }
 
             StyledText {
-                visible: KeyboardIndicators.layoutVisible
+                opacity: KeyboardIndicators.layoutVisible ? 1 : 0
+                visible: opacity > 0
                 horizontalAlignment: Text.AlignHCenter
                 text: KeyboardIndicators.currentLayoutCodeMultiline
                 font.pixelSize: text.includes("\n") ? Appearance.font.pixelSize.smallie : Appearance.font.pixelSize.small
                 color: root.color
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
             }
         }
     }

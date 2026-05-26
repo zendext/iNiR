@@ -45,6 +45,10 @@ Item {
         anchors.centerIn: parent
         text: root.text
         shown: false
+        position: root.anchorEdges === Edges.Top ? "top"
+                : root.anchorEdges === Edges.Left ? "left"
+                : root.anchorEdges === Edges.Right ? "right"
+                : "bottom"
         horizontalPadding: root.horizontalPadding
         verticalPadding: root.verticalPadding
     }

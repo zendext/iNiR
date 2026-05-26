@@ -62,7 +62,12 @@ Item {
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 0
-                    visible: root.editMode
+                    opacity: root.editMode ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
 
                     // Minutes input
                     Rectangle {
@@ -184,7 +189,12 @@ Item {
                 // Static time display when running/paused
                 StyledText {
                     Layout.alignment: Qt.AlignHCenter
-                    visible: !root.editMode
+                    opacity: !root.editMode ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
                     text: {
                         const totalSeconds = TimerService.countdownSecondsLeft;
                         const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -212,7 +222,12 @@ Item {
             Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: 10
             spacing: 6
-            visible: root.editMode
+            opacity: root.editMode ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
 
             Repeater {
                 model: [

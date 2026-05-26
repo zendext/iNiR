@@ -14,6 +14,12 @@ RippleButton {
     property real elementSpacing: 5
     implicitWidth: expanded ? (Math.max(contentRowLayout.implicitWidth + 10 * 2, baseSize)) : baseSize
     implicitHeight: baseSize
+
+    Behavior on implicitWidth {
+        enabled: Appearance.animationsEnabled
+        NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+    }
+
     buttonRadius: Appearance.angelEverywhere ? Appearance.angel.roundingNormal : (baseSize / 14 * 4)
     colBackground: Appearance.angelEverywhere ? Appearance.angel.colGlassCard
                  : Appearance.inirEverywhere ? Appearance.inir.colPrimaryContainer

@@ -56,7 +56,12 @@ RippleButton {
 
         // Multi-colored event indicator dots
         Row {
-            visible: button.eventCount > 0 && !button.isHeader
+            scale: (button.eventCount > 0 && !button.isHeader) ? 1 : 0
+            visible: scale > 0
+            Behavior on scale {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 3
@@ -98,7 +103,12 @@ RippleButton {
 
             // Overflow indicator when more than 3 sources
             StyledText {
-                visible: (button.sourceColors?.length ?? 0) > 3
+                opacity: (button.sourceColors?.length ?? 0) > 3 ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
                 text: "+"
                 font.pixelSize: 7
                 font.weight: Font.Bold

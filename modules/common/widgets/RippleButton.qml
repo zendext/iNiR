@@ -47,6 +47,16 @@ Button {
             colBackground), root.enabled ? 0 : 1)
     property color rippleColor: root.toggled ? colRippleToggled : colRipple
 
+    Behavior on opacity {
+        enabled: Appearance.animationsEnabled
+        animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+    }
+
+    Behavior on buttonEffectiveRadius {
+        enabled: Appearance.animationsEnabled
+        animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+    }
+
     function startRipple(x, y) {
         const stateY = buttonBackground.y;
         rippleAnim.x = x;
@@ -161,9 +171,10 @@ Button {
             : "transparent"
         Behavior on border.color {
             enabled: Appearance.animationsEnabled
-            ColorAnimation { duration: 150 }
+            animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
         }
         Behavior on color {
+            enabled: Appearance.animationsEnabled
             animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
         }
 
@@ -187,6 +198,7 @@ Button {
             property real rippleHeight: 0
 
             Behavior on opacity {
+                enabled: Appearance.animationsEnabled
                 animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
             }
 

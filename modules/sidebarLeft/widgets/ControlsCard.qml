@@ -111,6 +111,7 @@ Item {
                 text: btnIcon
                 iconSize: 22
                 fill: active ? 1 : 0
+                animateFill: true
                 color: active
                     ? (Appearance.angelEverywhere ? Appearance.angel.colPrimary
                         : Appearance.inirEverywhere ? Appearance.inir.colPrimary

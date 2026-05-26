@@ -637,13 +637,16 @@ Item {
                         elide: Text.ElideRight
                     }
 
-                    StyledText {
+                    Revealer {
+                        vertical: true
+                        reveal: chip.value !== ""
                         Layout.fillWidth: true
-                        visible: chip.value !== ""
-                        text: chip.value
-                        font.pixelSize: Appearance.font.pixelSize.smallest
-                        color: chip._colSub
-                        elide: Text.ElideRight
+                        StyledText {
+                            text: chip.value
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            color: chip._colSub
+                            elide: Text.ElideRight
+                        }
                     }
                 }
 
@@ -1050,6 +1053,7 @@ Item {
                                     anchors.centerIn: parent
                                     iconSize: 24
                                     fill: navItem.isActive ? 1 : 0
+                                    animateFill: true
                                     font.weight: (navItem.isActive || navMA.containsMouse) ? Font.DemiBold : Font.Normal
                                     text: navItem.modelData.icon
                                     color: navItem.isActive
@@ -1065,7 +1069,12 @@ Item {
                                 // ── Notification badge ──────────
                                 Rectangle {
                                     id: notifBadge
-                                    visible: navItem.isNotifications && root.notificationCount > 0 && !navItem.isActive
+                                    visible: opacity > 0
+                                    opacity: (navItem.isNotifications && root.notificationCount > 0 && !navItem.isActive) ? 1 : 0
+                                    Behavior on opacity {
+                                        enabled: Appearance.animationsEnabled
+                                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                                    }
                                     anchors {
                                         top: parent.top
                                         right: parent.right
@@ -1399,9 +1408,13 @@ Item {
                             spacing: controlsRoot.controlsInlineGap
                             
                             // Move buttons (visible in edit mode)
-                            RowLayout {
+                            Revealer {
+                                vertical: true
+                                reveal: root.layoutEditMode
                                 Layout.fillWidth: true
-                                visible: root.layoutEditMode
+                            RowLayout {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
                                 spacing: controlsRoot.controlsInlineGap
                                 
                                 StyledText {
@@ -1450,6 +1463,7 @@ Item {
                                     contentItem: MaterialSymbol { anchors.centerIn: parent; text: "arrow_downward"; iconSize: 16; color: bg.inirEverywhere ? Appearance.inir.colText : bg.angelEverywhere ? Appearance.angel.colText : Appearance.colors.colOnLayer1 }
                                     StyledToolTip { text: Translation.tr("Move down") }
                                 }
+                            }
                             }
                             
                             // Section content based on modelData
@@ -1621,13 +1635,17 @@ Item {
                     // Notification list
                     CenterWidgetGroup {
                         anchors.fill: parent
-                        visible: root.notificationCount > 0
+                        opacity: root.notificationCount > 0 ? 1 : 0
+                        visible: opacity > 0
+                        Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                     }
 
                     // Enhanced empty state placeholder
                     EmptyNotificationsPlaceholder {
                         anchors.fill: parent
-                        visible: root.notificationCount === 0
+                        opacity: root.notificationCount === 0 ? 1 : 0
+                        visible: opacity > 0
+                        Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
                     }
                 }
             }
@@ -1797,31 +1815,34 @@ Item {
             }
 
             // Badge (notification count)
-            Rectangle {
-                visible: sectionHeader.badgeText !== ""
-                implicitWidth: Math.max(18, badgeLabelInHeader.implicitWidth + 8)
-                implicitHeight: 18
-                radius: 9
-                color: bg.inirEverywhere  ? Appearance.inir.colSecondaryContainer
-                     : bg.angelEverywhere ? ColorUtils.transparentize(Appearance.angel.colPrimary, 0.70)
-                     : Appearance.colors.colSecondaryContainer
+            Revealer {
+                reveal: sectionHeader.badgeText !== ""
+                Rectangle {
+                    implicitWidth: Math.max(18, badgeLabelInHeader.implicitWidth + 8)
+                    implicitHeight: 18
+                    radius: 9
+                    color: bg.inirEverywhere  ? Appearance.inir.colSecondaryContainer
+                         : bg.angelEverywhere ? ColorUtils.transparentize(Appearance.angel.colPrimary, 0.70)
+                         : Appearance.colors.colSecondaryContainer
 
-                StyledText {
-                    id: badgeLabelInHeader
-                    anchors.centerIn: parent
-                    text: sectionHeader.badgeText
-                    font.pixelSize: Appearance.font.pixelSize.smallest
-                    font.weight: Font.Bold
-                    font.family: Appearance.font.family.numbers
-                    color: bg.inirEverywhere  ? Appearance.inir.colOnSecondaryContainer
-                         : bg.angelEverywhere ? Appearance.angel.colOnPrimary
-                         : Appearance.m3colors.m3onSecondaryContainer
+                    StyledText {
+                        id: badgeLabelInHeader
+                        anchors.centerIn: parent
+                        text: sectionHeader.badgeText
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        font.weight: Font.Bold
+                        font.family: Appearance.font.family.numbers
+                        color: bg.inirEverywhere  ? Appearance.inir.colOnSecondaryContainer
+                             : bg.angelEverywhere ? Appearance.angel.colOnPrimary
+                             : Appearance.m3colors.m3onSecondaryContainer
+                    }
                 }
             }
 
             // Secondary action button
+            Revealer {
+                reveal: sectionHeader.showSecondaryAction
             RippleButton {
-                visible: sectionHeader.showSecondaryAction
                 implicitWidth: 28; implicitHeight: 28
                 buttonRadius: bg.angelEverywhere ? Appearance.angel.roundingSmall
                     : bg.inirEverywhere ? Appearance.inir.roundingSmall : 14
@@ -1844,10 +1865,12 @@ Item {
                     text: sectionHeader.secondaryActionTooltip
                 }
             }
+            }
 
             // Primary action button
+            Revealer {
+                reveal: sectionHeader.showAction
             RippleButton {
-                visible: sectionHeader.showAction
                 implicitWidth: 28; implicitHeight: 28
                 buttonRadius: bg.angelEverywhere ? Appearance.angel.roundingSmall
                     : bg.inirEverywhere ? Appearance.inir.roundingSmall : 14
@@ -1865,7 +1888,7 @@ Item {
                 onClicked: sectionHeader.actionClicked()
                 contentItem: MaterialSymbol {
                     anchors.centerIn: parent; text: sectionHeader.actionIcon; iconSize: 16
-                    fill: sectionHeader.actionToggled ? 1 : 0
+                    fill: sectionHeader.actionToggled ? 1 : 0; animateFill: true
                     color: sectionHeader.actionToggled
                         ? (bg.inirEverywhere  ? Appearance.inir.colOnSecondaryContainer
                          : bg.angelEverywhere ? Appearance.angel.colOnPrimary
@@ -1878,6 +1901,7 @@ Item {
                     position: "left"
                     text: sectionHeader.actionTooltip
                 }
+            }
             }
         }
     }
@@ -2176,6 +2200,7 @@ Item {
                         text: qaBtn.icon
                         iconSize: 17
                         fill: qaBtn.toggled ? 1 : 0
+                        animateFill: true
                         color: qaBtn.toggled ? qaBtn._colOnToggle : qaBtn._colPrimary
                     }
                 }

@@ -85,13 +85,32 @@ Item {
     // and uses accent color; others are narrow and dimmed.
     Row {
         id: indicatorRow
-        visible: root.hasWindows
+        opacity: root.hasWindows ? 1 : 0
+        visible: opacity > 0
+        scale: root.hasWindows ? 1 : 0
         spacing: 3
         // Always below the icon, centered — matches Panel mode positioning
         anchors {
             bottom: parent.bottom
             bottomMargin: 3
             horizontalCenter: parent.horizontalCenter
+        }
+
+        Behavior on opacity {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation {
+                duration: Appearance.animation.elementMoveFast.duration
+                easing.type: Appearance.animation.elementMoveFast.type
+                easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+            }
+        }
+        Behavior on scale {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation {
+                duration: Appearance.animation.elementMoveFast.duration
+                easing.type: Appearance.animation.elementMoveFast.type
+                easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+            }
         }
 
         // Config options — same as panel mode
@@ -117,7 +136,7 @@ Item {
                     return index === root.focusedWindowIndex
                 }
 
-                radius: Appearance.angelEverywhere ? 0 : Appearance.rounding.full
+                radius: Appearance.angelEverywhere ? 0 : Math.min(width, height) / 2
                 implicitWidth: Appearance.angelEverywhere
                     ? (isFocused ? 14 : 6)
                     : (isFocused ? 10 : 4)
@@ -144,14 +163,24 @@ Item {
 
         // Fallback: single dim dot when showAllDots is off and app is inactive
         Rectangle {
-            visible: !root.appIsActive && root.hasWindows && !indicatorRow.showAllDots
+            opacity: !root.appIsActive && root.hasWindows && !indicatorRow.showAllDots ? 1 : 0
+            visible: opacity > 0
             width: Appearance.angelEverywhere ? 6 : 5
             height: Appearance.angelEverywhere ? 2 : 5
-            radius: Appearance.angelEverywhere ? 0 : 2.5
+            radius: Appearance.angelEverywhere ? 0 : Math.min(width, height) / 2
             color: ColorUtils.transparentize(
                 Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
               : Appearance.inirEverywhere  ? Appearance.inir.colText
               : Appearance.colors.colOnLayer0, 0.5)
+
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation {
+                    duration: Appearance.animation.elementMoveFast.duration
+                    easing.type: Appearance.animation.elementMoveFast.type
+                    easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+                }
+            }
         }
     }
 }

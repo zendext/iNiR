@@ -29,6 +29,14 @@ Item {
         implicitHeight: root.expanded ? itemHeight : baseHighlightHeight
         implicitWidth: visible ? (tabBarColumn.children[root.currentIndex]?.visualWidth ?? 56) : 0
 
+        Behavior on implicitWidth {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+        }
+        Behavior on implicitHeight {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+        }
         Behavior on anchors.topMargin {
             NumberAnimation {
                 duration: Appearance.animationCurves.expressiveFastSpatialDuration

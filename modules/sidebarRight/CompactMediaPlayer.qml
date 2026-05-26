@@ -20,8 +20,13 @@ import Qt5Compat.GraphicalEffects as GE
 Item {
     id: root
 
-    visible: MprisController.activePlayer !== null
-    implicitHeight: visible ? playerCard.implicitHeight : 0
+    visible: implicitHeight > 0
+    implicitHeight: (MprisController.activePlayer !== null) ? playerCard.implicitHeight : 0
+
+    Behavior on implicitHeight {
+        enabled: Appearance.animationsEnabled
+        animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+    }
 
     // ── Core media state ──────────────────────────────────────────
     PlayerBase {
@@ -105,8 +110,12 @@ Item {
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             cache: false
-            visible: playerBase.displayedArtFilePath !== ""
-            opacity: root.artBgOpacity
+            opacity: playerBase.displayedArtFilePath !== "" ? root.artBgOpacity : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
 
             layer.enabled: Appearance.effectsEnabled
             layer.effect: MultiEffect {
@@ -133,7 +142,12 @@ Item {
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                     height: parent.height * 0.6
-                    visible: playerBase.downloaded
+                    opacity: playerBase.downloaded ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
                     gradient: Gradient {
                         orientation: Gradient.Vertical
                         GradientStop { position: 0.0; color: "transparent" }
@@ -164,8 +178,13 @@ Item {
                             color: "transparent"
                             border.width: 2
                             border.color: ColorUtils.transparentize(root.accentColor, 0.65)
-                            visible: playerBase.downloaded && playerBase.effectiveIsPlaying
+                            opacity: playerBase.downloaded && playerBase.effectiveIsPlaying ? 1 : 0
+                            visible: opacity > 0
 
+                            Behavior on opacity {
+                                enabled: Appearance.animationsEnabled
+                                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                            }
                             Behavior on border.color {
                                 enabled: Appearance.animationsEnabled
                                 ColorAnimation { duration: Appearance.animation.elementMoveFast.duration }
@@ -226,10 +245,10 @@ Item {
                         spacing: 1
 
                         // Player identity — tap to switch (multi-player only)
-                        Item {
+                        Revealer {
+                            vertical: true
+                            reveal: (MprisController.displayPlayers?.length ?? 0) > 1
                             Layout.fillWidth: true
-                            visible: (MprisController.displayPlayers?.length ?? 0) > 1
-                            implicitHeight: identityRow.implicitHeight
 
                             RowLayout {
                                 id: identityRow
@@ -286,10 +305,14 @@ Item {
                         }
 
                         // Time + expand button
-                        RowLayout {
+                        Revealer {
+                            vertical: true
+                            reveal: playerBase.effectiveLength > 0
                             Layout.fillWidth: true
+                        RowLayout {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
                             spacing: 3
-                            visible: playerBase.effectiveLength > 0
 
                             StyledText {
                                 text: _formatTime(playerBase.effectivePosition)
@@ -331,6 +354,7 @@ Item {
                                 StyledToolTip { text: Translation.tr("Open full player") }
                             }
                         }
+                        }
                     }
                 }
             }
@@ -365,13 +389,15 @@ Item {
                 Layout.bottomMargin: 8
                 spacing: 2
 
-                TransportBtn {
-                    visible: MprisController.shuffleSupported
-                    icon: "shuffle"
-                    toggled: MprisController.hasShuffle
-                    onClicked: MprisController.setShuffle(!MprisController.hasShuffle)
-                    tooltipText: Translation.tr("Shuffle")
-                    small: true
+                Revealer {
+                    reveal: MprisController.shuffleSupported
+                    TransportBtn {
+                        icon: "shuffle"
+                        toggled: MprisController.hasShuffle
+                        onClicked: MprisController.setShuffle(!MprisController.hasShuffle)
+                        tooltipText: Translation.tr("Shuffle")
+                        small: true
+                    }
                 }
 
                 Item { Layout.fillWidth: true }
@@ -452,16 +478,18 @@ Item {
 
                 Item { Layout.fillWidth: true }
 
-                TransportBtn {
-                    visible: MprisController.loopSupported
-                    icon: MprisController.loopState === 2 ? "repeat_one" : "repeat"
-                    toggled: MprisController.loopState !== 0
-                    onClicked: {
-                        const next = (MprisController.loopState + 1) % 3
-                        MprisController.setLoopState(next)
+                Revealer {
+                    reveal: MprisController.loopSupported
+                    TransportBtn {
+                        icon: MprisController.loopState === 2 ? "repeat_one" : "repeat"
+                        toggled: MprisController.loopState !== 0
+                        onClicked: {
+                            const next = (MprisController.loopState + 1) % 3
+                            MprisController.setLoopState(next)
+                        }
+                        tooltipText: Translation.tr("Loop")
+                        small: true
                     }
-                    tooltipText: Translation.tr("Loop")
-                    small: true
                 }
             }
         }
@@ -528,6 +556,15 @@ Item {
         implicitWidth: small ? 30 : 34
         implicitHeight: small ? 30 : 34
 
+        Behavior on implicitWidth {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+        }
+        Behavior on implicitHeight {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+        }
+
         Rectangle {
             anchors.fill: parent
             radius: root.angelStyle ? Appearance.angel.roundingSmall
@@ -555,6 +592,7 @@ Item {
                 text: tBtn.icon
                 iconSize: tBtn.small ? 18 : 22
                 fill: tBtn.iconFill || tBtn.toggled ? 1 : 0
+                animateFill: true
                 color: tBtn.toggled
                     ? (root.inirStyle ? Appearance.inir.colOnSecondaryContainer
                         : root.accentColor)

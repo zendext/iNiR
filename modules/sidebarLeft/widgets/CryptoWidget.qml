@@ -240,9 +240,14 @@ Item {
                 Item { Layout.fillWidth: true }
 
                 Rectangle {
-                    visible: root.loading
                     width: 6; height: 6; radius: 3
                     color: Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary
+                    scale: root.loading ? 1 : 0
+                    visible: scale > 0
+                    Behavior on scale {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+                    }
                     opacity: 0.6
                     SequentialAnimation on opacity {
                         running: root.loading && Appearance.animationsEnabled

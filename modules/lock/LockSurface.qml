@@ -370,9 +370,10 @@ MouseArea {
                 spacing: 16
 
                 // WiFi
+                Revealer {
+                    reveal: Network.wifiEnabled
                 Row {
                     spacing: 4
-                    visible: Network.wifiEnabled
 
                     MaterialSymbol {
                         anchors.verticalCenter: parent.verticalCenter
@@ -402,10 +403,12 @@ MouseArea {
                         }
                     }
                 }
+                }
 
                 // Bluetooth
+                Revealer {
+                    reveal: BluetoothStatus.enabled
                 MaterialSymbol {
-                    visible: BluetoothStatus.enabled
                     anchors.verticalCenter: parent.verticalCenter
                     text: BluetoothStatus.connected ? "bluetooth_connected" : "bluetooth"
                     iconSize: 16
@@ -416,6 +419,7 @@ MouseArea {
                         horizontalOffset: 0; verticalOffset: 1; radius: 4; samples: 9
                         color: Qt.rgba(0, 0, 0, 0.4)
                     }
+                }
                 }
 
                 // Volume
@@ -454,10 +458,11 @@ MouseArea {
                 }
 
                 // Battery (laptop only)
+                Revealer {
+                    reveal: UPower.displayDevice?.isPresent ?? false
                 Row {
                     id: topBatteryRow
                     spacing: 4
-                    visible: UPower.displayDevice?.isPresent ?? false
 
                     readonly property int batteryLevel: Math.round((UPower.displayDevice?.percentage ?? 0) * 100)
                     readonly property bool isCharging: UPower.displayDevice?.state === UPowerDeviceState.Charging
@@ -496,6 +501,7 @@ MouseArea {
                             color: Qt.rgba(0, 0, 0, 0.4)
                         }
                     }
+                }
                 }
             }
         }

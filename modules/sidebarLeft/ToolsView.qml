@@ -357,6 +357,7 @@ Item {
                 text: profileIcon
                 iconSize: 20
                 fill: isActive ? 1 : 0
+                animateFill: true
                 color: isActive ? Appearance.colors.colOnPrimary : root.colText
             }
             StyledText {

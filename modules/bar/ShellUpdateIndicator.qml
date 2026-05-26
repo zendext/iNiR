@@ -13,9 +13,14 @@ import qs.modules.common.functions
 MouseArea {
     id: root
 
-    visible: ShellUpdates.showUpdate || ShellUpdates.isUpdating
-    implicitWidth: visible ? pill.width : 0
+    visible: implicitWidth > 0
+    implicitWidth: (ShellUpdates.showUpdate || ShellUpdates.isUpdating) ? pill.width : 0
     implicitHeight: Appearance.sizes.barHeight
+
+    Behavior on implicitWidth {
+        enabled: Appearance.animationsEnabled
+        animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+    }
 
     hoverEnabled: true
     cursorShape: ShellUpdates.isUpdating ? Qt.ArrowCursor : Qt.PointingHandCursor

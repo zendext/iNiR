@@ -281,7 +281,12 @@ RippleButton {
         // Action text
         StyledText {
             Layout.fillWidth: false
-            visible: (root.hovered || root.isHighlighted)
+            opacity: (root.hovered || root.isHighlighted) ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+            }
             id: clickAction
             font.pixelSize: Appearance.font.pixelSize.normal
             color: root.isHighlighted ? root.selectedTextColor : root.normalTextColor

@@ -83,7 +83,7 @@ MouseArea {
         return Appearance.colors.colOnLayer1
     }
 
-    visible: anyActive || showPinnedIdle
+    visible: implicitWidth > 0
     implicitWidth: (anyActive || showPinnedIdle) ? pill.width + 4 : 0
     implicitHeight: Appearance.sizes.barHeight
 
@@ -211,12 +211,30 @@ MouseArea {
             Layout.alignment: Qt.AlignVCenter
         }
 
-        MaterialSymbol {
-            visible: root.paused
-            text: "pause"
-            iconSize: Appearance.font.pixelSize.small
-            color: Appearance.inirEverywhere ? Appearance.inir.colTextMuted : Appearance.colors.colOnLayer1Inactive
+        Item {
             Layout.alignment: Qt.AlignVCenter
+            implicitWidth: root.paused ? pauseIcon.implicitWidth : 0
+            implicitHeight: pauseIcon.implicitHeight
+            opacity: root.paused ? 1 : 0
+            visible: opacity > 0
+            clip: true
+
+            Behavior on implicitWidth {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
+            }
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
+
+            MaterialSymbol {
+                id: pauseIcon
+                anchors.centerIn: parent
+                text: "pause"
+                iconSize: Appearance.font.pixelSize.small
+                color: Appearance.inirEverywhere ? Appearance.inir.colTextMuted : Appearance.colors.colOnLayer1Inactive
+            }
         }
     }
 

@@ -245,7 +245,12 @@ RippleButton {
         // Action text
         StyledText {
             Layout.fillWidth: false
-            visible: (root.hovered || root.focus)
+            opacity: (root.hovered || root.focus) ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+            }
             id: clickAction
             font.pixelSize: Appearance.font.pixelSize.normal
             color: Appearance.inirEverywhere ? Appearance.inir.colOnSelection : Appearance.colors.colOnPrimaryContainer
@@ -258,7 +263,12 @@ RippleButton {
             Layout.topMargin: root.buttonVerticalPadding
             Layout.bottomMargin: -root.buttonVerticalPadding
             spacing: 4
-            visible: root.hovered || root.focus || root.isSelected
+            opacity: (root.hovered || root.focus || root.isSelected) ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic }
+            }
             
             Repeater {
                 model: (root.entry?.actions ?? []).slice(0, 4)

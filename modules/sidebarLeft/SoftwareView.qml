@@ -499,6 +499,7 @@ Item {
                     : "block"
                 iconSize: 20
                 fill: card.isInstalled ? 1 : 0
+                animateFill: true
                 color: card.isInstalled
                     ? (Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary)
                     : card.isAvailable ? root.colText

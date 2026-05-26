@@ -83,7 +83,8 @@ ColumnLayout {
             : "transparent"
         
         Behavior on color {
-            ColorAnimation { duration: 100 }
+            enabled: Appearance.animationsEnabled
+            animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
         }
 
         RowLayout {
@@ -111,13 +112,14 @@ ColumnLayout {
             // Expand/collapse indicator
             MaterialSymbol {
                 visible: root.collapsible
-                text: root.expanded ? "expand_less" : "expand_more"
+                text: "expand_more"
                 iconSize: Appearance.font.pixelSize.large
                 color: Appearance.colors.colSubtext
-                
-                rotation: root.expanded ? 0 : 0
-                Behavior on text {
-                    enabled: false
+
+                rotation: root.expanded ? 180 : 0
+                Behavior on rotation {
+                    enabled: Appearance.animationsEnabled
+                    animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
                 }
             }
         }
@@ -143,9 +145,11 @@ ColumnLayout {
         clip: true
         
         Behavior on implicitHeight {
+            enabled: Appearance.animationsEnabled
             NumberAnimation {
                 duration: root.animationDuration
-                easing.type: Easing.OutCubic
+                easing.type: Appearance.animation.elementMove.type
+                easing.bezierCurve: Appearance.animation.elementMove.bezierCurve
             }
         }
 
@@ -154,10 +158,22 @@ ColumnLayout {
             width: parent.width
             spacing: 4
             opacity: root.expanded ? 1 : 0
+            y: root.expanded ? 0 : -8
             
             Behavior on opacity {
+                enabled: Appearance.animationsEnabled
                 NumberAnimation {
-                    duration: root.animationDuration / 2
+                    duration: Appearance.animation.elementMoveFast.duration
+                    easing.type: Appearance.animation.elementMoveFast.type
+                    easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve
+                }
+            }
+            Behavior on y {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation {
+                    duration: root.animationDuration
+                    easing.type: Appearance.animation.elementMove.type
+                    easing.bezierCurve: Appearance.animation.elementMove.bezierCurve
                 }
             }
         }

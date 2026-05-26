@@ -64,7 +64,12 @@ Item {
 
             // Stats badge
             Rectangle {
-                visible: textArea.text.length > 0
+                scale: textArea.text.length > 0 ? 1 : 0
+                visible: scale > 0
+                Behavior on scale {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
                 implicitWidth: statsRow.implicitWidth + 12
                 implicitHeight: 22
                 radius: 11
@@ -150,7 +155,12 @@ Item {
                                 // Close button (only when multiple tabs)
                                 MaterialSymbol {
                                     id: closeBtn
-                                    visible: tabCount > 1
+                                    opacity: tabCount > 1 ? 1 : 0
+                                    visible: opacity > 0
+                                    Behavior on opacity {
+                                        enabled: Appearance.animationsEnabled
+                                        NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                                    }
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: "close"
                                     iconSize: 12

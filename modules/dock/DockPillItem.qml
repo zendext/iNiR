@@ -59,7 +59,9 @@ Item {
 
     Row {
         id: indicatorRow
-        visible: root.hasWindows && !Appearance.gameModeMinimal
+        opacity: (root.hasWindows && !Appearance.gameModeMinimal) ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Easing.OutCubic } }
         spacing: 3
         // Always below the icon, centered — matches Panel mode positioning
         anchors {
@@ -106,29 +108,35 @@ Item {
 
                 Behavior on implicitWidth {
                     enabled: Appearance.animationsEnabled
-                    NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
                 }
                 Behavior on implicitHeight {
                     enabled: Appearance.animationsEnabled
-                    NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
                 }
                 Behavior on color {
                     enabled: Appearance.animationsEnabled
-                    ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
+                    ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
                 }
             }
         }
 
         // Fallback: single dim dot when showAllDots is off and app is inactive
         Rectangle {
-            visible: !root.appIsActive && root.hasWindows && !root.showAllDots
+            opacity: (!root.appIsActive && root.hasWindows && !root.showAllDots) ? 1 : 0
+            visible: opacity > 0
             width:  Appearance.angelEverywhere ? 6 : 5
             height: Appearance.angelEverywhere ? 2 : 5
-            radius: Appearance.angelEverywhere ? 0 : 2.5
+            radius: Appearance.angelEverywhere ? 0 : Math.min(width, height) / 2
             color: ColorUtils.transparentize(
                 Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
               : Appearance.inirEverywhere  ? Appearance.inir.colText
               : Appearance.colors.colOnLayer0, 0.5)
+
+            Behavior on opacity {
+                enabled: Appearance.animationsEnabled
+                animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
         }
     }
 
@@ -140,20 +148,22 @@ Item {
         color: root._pillBg
         border.width: root._pillBorderWidth
         border.color: root._pillBorder
-        visible: root.appIsActive
+        visible: opacity > 0
         opacity: root.appIsActive ? 1 : 0
 
         Behavior on opacity {
             enabled: Appearance.animationsEnabled
-            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
         }
         Behavior on color {
             enabled: Appearance.animationsEnabled
-            ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
+            ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
         }
 
         AngelPartialBorder {
-            visible: Appearance.angelEverywhere
+            opacity: Appearance.angelEverywhere ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity { enabled: Appearance.animationsEnabled; NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve } }
             targetRadius: pillRect.radius
         }
     }

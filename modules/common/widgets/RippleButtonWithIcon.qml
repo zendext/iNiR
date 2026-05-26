@@ -28,6 +28,7 @@ RippleButton {
             iconSize: Appearance.font.pixelSize.larger
             color: Appearance.colors.colOnSecondaryContainer
             fill: buttonWithIconRoot.materialIconFill ? 1 : 0
+            animateFill: true
             forceNerd: buttonWithIconRoot.nerdIcon !== ""
         }
         Loader {

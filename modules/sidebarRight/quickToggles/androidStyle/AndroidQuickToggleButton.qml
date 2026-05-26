@@ -131,6 +131,7 @@ GroupButton {
         MaterialSymbol {
             anchors.centerIn: parent
             fill: root.toggled ? 1 : 0
+            animateFill: true
             iconSize: 24
             color: root.colIcon
             text: root.buttonIcon
