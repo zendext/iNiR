@@ -774,6 +774,13 @@ Singleton {
             property JsonObject background: JsonObject {
                 property JsonObject widgets: JsonObject {
                     property int dynamicOpacity: 0 // 0-100: reduce widget opacity when windows are on current workspace
+                    property JsonObject powerSaving: JsonObject {
+                        property bool enable: true
+                        property bool pauseOnGameMode: true
+                        property bool pauseOnFullscreen: true
+                        property bool pauseWhenWindowsPresent: true
+                        property bool showPausedEffect: true
+                    }
                     property list<string> screenList: []
                     property JsonObject clock: JsonObject {
                         property bool enable: true

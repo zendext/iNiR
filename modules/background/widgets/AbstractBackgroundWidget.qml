@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import qs
@@ -283,6 +284,27 @@ AbstractWidget {
 
     // Effective animation state: animations enabled AND power active
     readonly property bool animationsActive: Appearance.animationsEnabled && root.powerActive
+
+    // Visual feedback when paused - desaturation + slight dim
+    // Config option to disable visual effect if user only wants GPU savings
+    readonly property bool _showPausedEffect: Config.options?.background?.widgets?.powerSaving?.showPausedEffect ?? true
+    readonly property real _pausedSaturation: root.powerActive ? 0 : -0.7  // -0.7 = mostly grayscale
+    readonly property real _pausedBrightness: root.powerActive ? 0 : -0.15 // slight dim
+    
+    layer.enabled: !root.powerActive && root._showPausedEffect && root.visible
+    layer.effect: MultiEffect {
+        saturation: root._pausedSaturation
+        brightness: root._pausedBrightness
+        
+        Behavior on saturation {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+        }
+        Behavior on brightness {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+        }
+    }
 
     // No Item.scale — widgets use scaleFactor for layout math to avoid bitmap blur
 

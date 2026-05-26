@@ -370,6 +370,13 @@
         },
         "widgets": {
             "screenList": [],
+            "powerSaving": {
+                "enable": true,
+                "pauseOnGameMode": true,
+                "pauseOnFullscreen": true,
+                "pauseWhenWindowsPresent": true,
+                "showPausedEffect": true
+            },
             "clock": {
                 "cookie": {
                     "aiStyling": false,
