@@ -664,9 +664,11 @@ Item { // Bar content region
                         text: Network.materialSymbol
                         iconSize: Appearance.font.pixelSize.larger
                         color: rightSidebarButton.colText
+                        Layout.rightMargin: BluetoothStatus.available ? indicatorsRowLayout.realSpacing : 0
                     }
                     Revealer {
                         reveal: BluetoothStatus.available
+                        Layout.rightMargin: indicatorsRowLayout.realSpacing
                         MaterialSymbol {
                             text: BluetoothStatus.activeIcon
                             iconSize: Appearance.font.pixelSize.larger
