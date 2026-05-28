@@ -866,6 +866,186 @@ check_service_unit_health() {
     fi
 }
 
+check_stale_local_quickshell() {
+    # Detect a stale quickshell binary in ~/.local/bin or /usr/local/bin that
+    # shadows the system package. This is the #1 cause of "qs --version always
+    # reports 0.2" even after the system package was updated.
+    local qs_path
+    qs_path="$(command -v qs 2>/dev/null || true)"
+    [[ -z "$qs_path" ]] && { doctor_pass "No stale local quickshell"; return 0; }
+
+    local qs_real
+    qs_real="$(readlink -f "$qs_path" 2>/dev/null || printf '%s' "$qs_path")"
+
+    # Only flag local builds
+    case "$qs_real" in
+        "$HOME"/.local/bin/*|/usr/local/bin/*) ;;
+        *) doctor_pass "No stale local quickshell"; return 0 ;;
+    esac
+
+    # Check if a system quickshell also exists
+    local system_qs=""
+    if [[ -x /usr/bin/qs ]]; then
+        system_qs="/usr/bin/qs"
+    elif [[ -x /usr/bin/quickshell ]]; then
+        system_qs="/usr/bin/quickshell"
+    fi
+    [[ -z "$system_qs" ]] && { doctor_pass "No stale local quickshell"; return 0; }
+
+    # Compare versions
+    if command -v strings >/dev/null 2>&1; then
+        local local_ver system_ver
+        local_ver="$(strings "$qs_real" 2>/dev/null | grep -oP '\b0\.\d+\.\d+\b' | head -1 || true)"
+        system_ver="$(strings "$system_qs" 2>/dev/null | grep -oP '\b0\.\d+\.\d+\b' | head -1 || true)"
+        if [[ -n "$local_ver" && -n "$system_ver" && "$local_ver" != "$system_ver" ]]; then
+            doctor_fail "Stale local quickshell shadows system package"
+            echo -e "  ${STY_YELLOW}Local:  $qs_real ($local_ver)${STY_RST}"
+            echo -e "  ${STY_YELLOW}System: $system_qs ($system_ver)${STY_RST}"
+            echo -e "  ${STY_FAINT}Fix: rm $qs_real${STY_RST}"
+            if [[ -L "$qs_path" && "$qs_path" != "$qs_real" ]]; then
+                echo -e "  ${STY_FAINT}Also: rm $qs_path${STY_RST}"
+            fi
+            return 1
+        fi
+    fi
+
+    doctor_pass "No stale local quickshell"
+}
+
+# Pure ABI detection: returns 0 if compatible, 1 if mismatch.
+# Sets globals: _doctor_abi_msg, _doctor_abi_buildtime, _doctor_abi_runtime
+_doctor_abi_detect() {
+    _doctor_abi_msg=""
+    _doctor_abi_buildtime=""
+    _doctor_abi_runtime=""
+
+    if ! command -v qs >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local qs_stderr qs_combined mismatch_detected mismatch_msg
+    qs_stderr="$(qs --version 2>&1 >/dev/null || true)"
+    qs_combined="$(qs --version 2>&1 || true)"
+
+    mismatch_detected=false
+    mismatch_msg=""
+
+    if echo "$qs_stderr" | grep -qiE "built against Qt|Qt.*mismatch|incompatible Qt"; then
+        mismatch_detected=true
+        mismatch_msg="$(echo "$qs_stderr" | grep -iE "built against Qt|Qt.*mismatch|incompatible Qt" | head -1)"
+    elif echo "$qs_combined" | grep -qiE "built against Qt|Qt.*mismatch|incompatible Qt"; then
+        mismatch_detected=true
+        mismatch_msg="$(echo "$qs_combined" | grep -iE "built against Qt|Qt.*mismatch|incompatible Qt" | head -1)"
+    fi
+
+    if ! $mismatch_detected; then
+        local qs_path buildtime_qt runtime_qt
+        qs_path="$(command -v qs 2>/dev/null || true)"
+        if [[ -n "$qs_path" ]]; then
+            if command -v strings >/dev/null 2>&1; then
+                buildtime_qt="$(strings "$qs_path" 2>/dev/null | grep -P '^6\.\d+\.\d+$' | head -1 || true)"
+            fi
+            if [[ -L /usr/lib/libQt6Core.so.6 ]]; then
+                runtime_qt="$(readlink -f /usr/lib/libQt6Core.so.6 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+$' || true)"
+            fi
+            if [[ -z "$runtime_qt" ]] && command -v pkg-config >/dev/null 2>&1; then
+                runtime_qt="$(pkg-config --modversion Qt6Core 2>/dev/null || true)"
+            fi
+            if [[ -n "$buildtime_qt" && -n "$runtime_qt" && "$buildtime_qt" != "$runtime_qt" ]]; then
+                mismatch_detected=true
+                mismatch_msg="Quickshell built against Qt $buildtime_qt but system has Qt $runtime_qt"
+            fi
+            _doctor_abi_buildtime="$buildtime_qt"
+            _doctor_abi_runtime="$runtime_qt"
+        fi
+    fi
+
+    if $mismatch_detected; then
+        _doctor_abi_msg="$mismatch_msg"
+        return 1
+    fi
+    return 0
+}
+
+# Pure rebuild command computation: echoes the command or nothing.
+_doctor_abi_rebuild_cmd() {
+    local install_kind="unknown" install_pkg="" rebuild_helper=""
+
+    if command -v pacman >/dev/null 2>&1; then
+        if pacman -Qi quickshell-bin &>/dev/null; then
+            install_kind="arch-aur-bin"; install_pkg="quickshell-bin"
+        elif pacman -Qi quickshell-git &>/dev/null; then
+            install_pkg="quickshell-git"
+            if pacman -Qm quickshell-git &>/dev/null; then
+                install_kind="arch-aur-foreign"
+            else
+                install_kind="arch-repo-binary"
+            fi
+        elif pacman -Qi quickshell &>/dev/null; then
+            install_pkg="quickshell"
+            if pacman -Qm quickshell &>/dev/null; then
+                install_kind="arch-aur-foreign"
+            else
+                install_kind="arch-repo-official"
+            fi
+        fi
+    elif command -v rpm >/dev/null 2>&1; then
+        local rpm_q
+        rpm_q="$(rpm -qa 2>/dev/null | grep -E '^quickshell(-git)?-[0-9]' | head -1)"
+        if [[ -n "$rpm_q" ]]; then
+            install_kind="fedora-pkg"
+            install_pkg="${rpm_q%%-[0-9]*}"
+        fi
+    elif [[ -d /etc/nixos ]] || [[ -L /run/current-system ]]; then
+        install_kind="nixos"; install_pkg="quickshell"
+    elif command -v dpkg >/dev/null 2>&1 && dpkg -s quickshell &>/dev/null; then
+        install_kind="debian"; install_pkg="quickshell"
+    elif [[ -x /usr/local/bin/quickshell || -x /usr/local/bin/qs ]]; then
+        install_kind="source"
+    fi
+
+    if [[ "$install_kind" == arch-* ]]; then
+        for h in paru yay; do
+            if command -v "$h" >/dev/null 2>&1; then
+                rebuild_helper="$h"; break
+            fi
+        done
+    fi
+
+    case "$install_kind" in
+        arch-aur-foreign)
+            if [[ -n "$rebuild_helper" ]]; then
+                printf '%s -S --rebuild --noconfirm %s' "$rebuild_helper" "$install_pkg"
+            fi
+            ;;
+        arch-repo-binary)
+            if [[ -n "$rebuild_helper" ]]; then
+                printf '%s -Sa --noconfirm --skipreview %s' "$rebuild_helper" "$install_pkg"
+            fi
+            ;;
+        arch-repo-official)
+            # pacman -Syu only works if the repo already has a fresh rebuild.
+            # Most of the time it doesn't — switch to AUR quickshell-git for immediate fix.
+            if [[ -n "$rebuild_helper" ]]; then
+                printf 'sudo pacman -Rdd --noconfirm quickshell && %s -S --noconfirm quickshell-git' "$rebuild_helper"
+            else
+                printf 'sudo pacman -Syu'
+            fi
+            ;;
+        arch-aur-bin)
+            if [[ -n "$rebuild_helper" ]]; then
+                printf '%s -Rdd --noconfirm quickshell-bin && %s -Sa --noconfirm --skipreview quickshell-git' "$rebuild_helper" "$rebuild_helper"
+            fi
+            ;;
+        fedora-pkg)
+            printf 'sudo dnf upgrade --refresh %s' "$install_pkg"
+            ;;
+        nixos)
+            printf 'sudo nixos-rebuild switch --upgrade'
+            ;;
+    esac
+}
+
 check_quickshell_abi() {
     # Quickshell uses Qt private APIs — any Qt minor version bump (e.g. 6.10→6.11)
     # breaks ABI and requires rebuilding quickshell. This is the #1 cause of
@@ -877,199 +1057,25 @@ check_quickshell_abi() {
         return 0
     fi
 
-    # qs --version prints version info to stdout, but Qt ABI mismatch warnings
-    # go to stderr at library load time before anything else runs
-    local qs_stderr
-    qs_stderr="$(qs --version 2>&1 >/dev/null || true)"
-
-    # Also check combined output in case the warning format differs
-    local qs_combined
-    qs_combined="$(qs --version 2>&1 || true)"
-
-    local mismatch_detected=false
-    local mismatch_msg=""
-
-    if echo "$qs_stderr" | grep -qiE "built against Qt|Qt.*mismatch|incompatible Qt"; then
-        mismatch_detected=true
-        mismatch_msg="$(echo "$qs_stderr" | grep -iE "built against Qt|Qt.*mismatch|incompatible Qt" | head -1)"
-    elif echo "$qs_combined" | grep -qiE "built against Qt|Qt.*mismatch|incompatible Qt"; then
-        mismatch_detected=true
-        mismatch_msg="$(echo "$qs_combined" | grep -iE "built against Qt|Qt.*mismatch|incompatible Qt" | head -1)"
+    if _doctor_abi_detect; then
+        doctor_pass "Quickshell/Qt ABI compatible"
+        return 0
     fi
 
-    # Secondary check: compare compile-time vs runtime Qt versions
-    # ldd always shows the current system lib (not what qs was built against), so
-    # we extract the compile-time Qt version from the qs binary via strings, and
-    # the runtime Qt version from the libQt6Core.so symlink target.
-    if ! $mismatch_detected; then
-        local qs_path
-        qs_path="$(command -v qs 2>/dev/null || true)"
-        if [[ -n "$qs_path" ]]; then
-            local buildtime_qt=""
-            local runtime_qt=""
+    doctor_fail "Qt/Quickshell ABI mismatch: $_doctor_abi_msg"
+    echo -e "  ${STY_YELLOW}Quickshell uses Qt private APIs that break on every Qt update.${STY_RST}"
+    echo -e "  ${STY_YELLOW}The shell will crash on any UI interaction until quickshell is rebuilt.${STY_RST}"
 
-            # Compile-time Qt version embedded in qs binary
-            if command -v strings >/dev/null 2>&1; then
-                buildtime_qt="$(strings "$qs_path" 2>/dev/null | grep -P '^6\.\d+\.\d+$' | head -1 || true)"
-            fi
-
-            # Runtime Qt version from library symlink or pkg-config
-            if [[ -L /usr/lib/libQt6Core.so.6 ]]; then
-                runtime_qt="$(readlink -f /usr/lib/libQt6Core.so.6 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+$' || true)"
-            fi
-            if [[ -z "$runtime_qt" ]] && command -v pkg-config >/dev/null 2>&1; then
-                runtime_qt="$(pkg-config --modversion Qt6Core 2>/dev/null || true)"
-            fi
-
-            if [[ -n "$buildtime_qt" && -n "$runtime_qt" && "$buildtime_qt" != "$runtime_qt" ]]; then
-                # Quickshell warns on patch bumps too (private API can change
-                # between 6.11.0 and 6.11.1), so iNiR must match — full version compare.
-                mismatch_detected=true
-                mismatch_msg="Quickshell built against Qt $buildtime_qt but system has Qt $runtime_qt"
-            fi
-        fi
+    local _rebuild_cmd
+    _rebuild_cmd="$(_doctor_abi_rebuild_cmd)"
+    if [[ -n "$_rebuild_cmd" ]]; then
+        echo -e "  ${STY_YELLOW}To fix: ${_rebuild_cmd//--noconfirm /}${STY_RST}"
+        echo -e "  ${STY_FAINT}Or run: inir doctor --fix-abi${STY_RST}"
+    else
+        echo -e "  ${STY_YELLOW}No automatic fix available for this install type.${STY_RST}"
+        echo -e "  ${STY_FAINT}See: https://quickshell.org/docs/master/guide/install-setup${STY_RST}"
     fi
-
-    if $mismatch_detected; then
-        doctor_fail "Qt/Quickshell ABI mismatch: $mismatch_msg"
-        echo -e "  ${STY_YELLOW}Quickshell uses Qt private APIs that break on every Qt update.${STY_RST}"
-        echo -e "  ${STY_YELLOW}The shell will crash on any UI interaction until quickshell is rebuilt.${STY_RST}"
-
-        # Detect how Quickshell was installed so we offer a fix that actually works.
-        # Each distro / install kind needs a different command — there's no universal one.
-        #   arch-aur-foreign     paru/yay -S --rebuild  (truly built locally from AUR)
-        #   arch-repo-binary     paru/yay -Sa          (precompiled in third-party repo like CachyOS)
-        #   arch-repo-official   sudo pacman -Syu      (waits for Arch maintainer rebuild)
-        #   arch-aur-bin         switch to -git        (quickshell-bin is a precompiled tarball)
-        #   fedora-pkg           sudo dnf upgrade      (COPR rebuilds against current Fedora Qt)
-        #   nixos                nixos-rebuild switch  (nixpkgs invalidates on Qt change)
-        #   debian               manual               (no first-party package — compile)
-        #   source               manual               (installed under /usr/local)
-        local install_kind="unknown" install_pkg="" rebuild_cmd="" manual_note=""
-
-        if command -v pacman >/dev/null 2>&1; then
-            if pacman -Qi quickshell-bin &>/dev/null; then
-                install_kind="arch-aur-bin"; install_pkg="quickshell-bin"
-            elif pacman -Qi quickshell-git &>/dev/null; then
-                install_pkg="quickshell-git"
-                if pacman -Qm quickshell-git &>/dev/null; then
-                    install_kind="arch-aur-foreign"
-                else
-                    install_kind="arch-repo-binary"
-                fi
-            elif pacman -Qi quickshell &>/dev/null; then
-                install_pkg="quickshell"
-                if pacman -Qm quickshell &>/dev/null; then
-                    install_kind="arch-aur-foreign"
-                else
-                    install_kind="arch-repo-official"
-                fi
-            fi
-        elif command -v rpm >/dev/null 2>&1; then
-            local rpm_q
-            rpm_q="$(rpm -qa 2>/dev/null | grep -E '^quickshell(-git)?-[0-9]' | head -1)"
-            if [[ -n "$rpm_q" ]]; then
-                install_kind="fedora-pkg"
-                install_pkg="${rpm_q%%-[0-9]*}"
-            fi
-        elif [[ -d /etc/nixos ]] || [[ -L /run/current-system ]]; then
-            install_kind="nixos"; install_pkg="quickshell"
-        elif command -v dpkg >/dev/null 2>&1 && dpkg -s quickshell &>/dev/null; then
-            install_kind="debian"; install_pkg="quickshell"
-        elif [[ -x /usr/local/bin/quickshell || -x /usr/local/bin/qs ]]; then
-            install_kind="source"
-        fi
-
-        # Pick AUR helper for the arch-* kinds
-        local rebuild_helper=""
-        if [[ "$install_kind" == arch-* ]]; then
-            for h in paru yay; do
-                if command -v "$h" >/dev/null 2>&1; then
-                    rebuild_helper="$h"; break
-                fi
-            done
-        fi
-
-        case "$install_kind" in
-            arch-aur-foreign)
-                if [[ -n "$rebuild_helper" ]]; then
-                    rebuild_cmd="$rebuild_helper -S --rebuild --noconfirm $install_pkg"
-                else
-                    manual_note="Install paru or yay first, then: paru -S --rebuild $install_pkg"
-                fi
-                ;;
-            arch-repo-binary)
-                # Repo packages (CachyOS, chaotic-aur) are precompiled — --rebuild only
-                # re-pulls the same .pkg.tar.zst. -Sa forces an AUR source build.
-                if [[ -n "$rebuild_helper" ]]; then
-                    rebuild_cmd="$rebuild_helper -Sa --noconfirm --skipreview $install_pkg"
-                else
-                    manual_note="Install paru or yay first, then: paru -Sa $install_pkg  (forces AUR source build)"
-                fi
-                ;;
-            arch-repo-official)
-                rebuild_cmd="sudo pacman -Syu"
-                manual_note="If the upgrade ships a quickshell rebuild this is enough. Otherwise switch to AUR quickshell-git for an immediate fix."
-                ;;
-            arch-aur-bin)
-                # quickshell-bin is a precompiled tarball; rebuilding the .pkg won't relink
-                # the binary. The only real fix is to switch to the source-built quickshell-git.
-                if [[ -n "$rebuild_helper" ]]; then
-                    rebuild_cmd="$rebuild_helper -Rdd --noconfirm quickshell-bin && $rebuild_helper -Sa --noconfirm --skipreview quickshell-git"
-                    manual_note="quickshell-bin is precompiled; --rebuild can't help. Switching to source-built quickshell-git."
-                else
-                    manual_note="quickshell-bin is precompiled. Install paru or yay, then: paru -Rdd quickshell-bin && paru -Sa quickshell-git"
-                fi
-                ;;
-            fedora-pkg)
-                rebuild_cmd="sudo dnf upgrade --refresh $install_pkg"
-                manual_note="If the COPR (errornointernet/quickshell) hasn't rebuilt yet, wait for the rebuild or: sudo dnf reinstall $install_pkg"
-                ;;
-            nixos)
-                rebuild_cmd="sudo nixos-rebuild switch --upgrade"
-                manual_note="On flakes: nix flake update && sudo nixos-rebuild switch. Nixpkgs invalidates Quickshell whenever Qt changes."
-                ;;
-            debian)
-                manual_note="Debian/Ubuntu: rebuild from source. See https://quickshell.org/docs/master/guide/install-setup"
-                ;;
-            source)
-                manual_note="Compiled from source. cd into your quickshell checkout, then: cmake --build build && sudo cmake --install build"
-                ;;
-            *)
-                manual_note="Unknown installation method. See https://quickshell.org/docs/master/guide/install-setup"
-                ;;
-        esac
-
-        if [[ -n "$rebuild_cmd" ]]; then
-            local do_rebuild=false
-            if ! ${ask:-true}; then
-                do_rebuild=true
-            elif tui_confirm "Rebuild quickshell to fix the ABI mismatch?"; then
-                do_rebuild=true
-            fi
-            if $do_rebuild; then
-                echo -e "  ${STY_FAINT}Running: $rebuild_cmd${STY_RST}"
-                # Don't silence — a 5-minute compile with no output is hostile.
-                if eval "$rebuild_cmd"; then
-                    doctor_fix "Rebuilt quickshell ($install_pkg) for the current Qt version"
-                    return 0
-                else
-                    echo -e "  ${STY_RED}Rebuild failed. Try manually: ${rebuild_cmd//--noconfirm /}${STY_RST}"
-                    [[ -n "$manual_note" ]] && echo -e "  ${STY_FAINT}$manual_note${STY_RST}"
-                fi
-            else
-                echo -e "  ${STY_YELLOW}To fix manually: ${rebuild_cmd//--noconfirm /}${STY_RST}"
-                [[ -n "$manual_note" ]] && echo -e "  ${STY_FAINT}$manual_note${STY_RST}"
-            fi
-        else
-            echo -e "  ${STY_YELLOW}No automatic fix available for this install type.${STY_RST}"
-            [[ -n "$manual_note" ]] && echo -e "  ${STY_YELLOW}$manual_note${STY_RST}"
-        fi
-        return 1
-    fi
-
-    doctor_pass "Quickshell/Qt ABI compatible"
-    return 0
+    return 1
 }
 
 check_quickshell_loads() {
@@ -1561,7 +1567,7 @@ _doctor_run_step() {
 }
 
 run_doctor_with_fixes() {
-    local total_steps=22
+    local total_steps=23
     local doctor_started_at=$SECONDS
     doctor_passed=0
     doctor_failed=0
@@ -1601,15 +1607,72 @@ run_doctor_with_fixes() {
     _doctor_run_step 11 $total_steps "Checking user service"         check_service_unit_health
     _doctor_run_step 12 $total_steps "Checking Niri compositor"      check_niri_running
     _doctor_run_step 13 $total_steps "Checking Python packages"      check_python_packages
-    _doctor_run_step 14 $total_steps "Checking Quickshell/Qt ABI"    check_quickshell_abi
-    _doctor_run_step 15 $total_steps "Checking Quickshell"           check_quickshell_loads
-    _doctor_run_step 16 $total_steps "Checking theme colors"         check_matugen_colors
-    _doctor_run_step 17 $total_steps "Checking Qt theming"           check_qt_theming
-    _doctor_run_step 18 $total_steps "Checking conflicting services" check_conflicting_services
-    _doctor_run_step 19 $total_steps "Checking conflicting shells"   check_conflicting_shells
-    _doctor_run_step 20 $total_steps "Checking wallpaper health"     check_wallpaper_health
-    _doctor_run_step 21 $total_steps "Checking environment variables" check_environment_vars
-    _doctor_run_step 22 $total_steps "Checking Niri config"          check_niri_config
+    _doctor_run_step 14 $total_steps "Checking stale local quickshell" check_stale_local_quickshell
+
+    # Step 15 pre-check: detect ABI mismatch and offer a visible rebuild.
+    # We do this OUTSIDE _doctor_run_step so the rebuild gets live TTY feedback
+    # instead of being swallowed by the tempfile capture.
+    if ! _doctor_abi_detect; then
+        echo ""
+        tui_error "Qt/Quickshell ABI mismatch detected"
+        echo -e "  ${STY_YELLOW}$_doctor_abi_msg${STY_RST}"
+        echo -e "  ${STY_YELLOW}Quickshell will crash on any UI interaction until rebuilt.${STY_RST}"
+
+        local _rebuild_cmd
+        _rebuild_cmd="$(_doctor_abi_rebuild_cmd)"
+        if [[ -n "$_rebuild_cmd" ]] && $ask && [[ -t 0 && -t 1 ]]; then
+            echo ""
+            if tui_confirm "Rebuild quickshell to fix the ABI mismatch?"; then
+                echo ""
+                echo -e "  ${STY_FAINT}Rebuilding quickshell against the current Qt version...${STY_RST}"
+                echo -e "  ${STY_FAINT}(This may take 2-5 minutes. timeout: 15 minutes)${STY_RST}"
+                echo ""
+
+                # Cache sudo credentials so the rebuild doesn't hang on a hidden prompt
+                if [[ "$_rebuild_cmd" == *"sudo"* ]] || [[ "$_rebuild_cmd" == *"pacman"* ]] || [[ "$_rebuild_cmd" == *"dnf"* ]]; then
+                    echo "Enter sudo password (cached for this session):"
+                    sudo -v || true
+                fi
+
+                local _rebuild_rc=0
+                if command -v timeout >/dev/null 2>&1; then
+                    timeout 15m bash -c "${_rebuild_cmd//--noconfirm/}" || _rebuild_rc=$?
+                else
+                    eval "${_rebuild_cmd//--noconfirm/}" || _rebuild_rc=$?
+                fi
+
+                if [[ $_rebuild_rc -eq 124 ]]; then
+                    echo ""
+                    echo -e "  ${STY_RED}Rebuild timed out after 15 minutes.${STY_RST}"
+                elif [[ $_rebuild_rc -ne 0 ]]; then
+                    echo ""
+                    echo -e "  ${STY_RED}Rebuild failed (exit $_rebuild_rc).${STY_RST}"
+                else
+                    rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/inir/abi-check" 2>/dev/null
+                    if _doctor_abi_detect; then
+                        echo ""
+                        echo -e "  ${STY_GREEN}Quickshell rebuilt successfully. ABI mismatch resolved.${STY_RST}"
+                        doctor_fixed=$((doctor_fixed + 1))
+                    else
+                        echo ""
+                        echo -e "  ${STY_YELLOW}Rebuild finished but mismatch persists.${STY_RST}"
+                        echo -e "  ${STY_FAINT}A stale local binary may be shadowing the system package.${STY_RST}"
+                    fi
+                fi
+            fi
+        fi
+        echo ""
+    fi
+
+    _doctor_run_step 15 $total_steps "Checking Quickshell/Qt ABI"    check_quickshell_abi
+    _doctor_run_step 16 $total_steps "Checking Quickshell"           check_quickshell_loads
+    _doctor_run_step 17 $total_steps "Checking theme colors"         check_matugen_colors
+    _doctor_run_step 18 $total_steps "Checking Qt theming"           check_qt_theming
+    _doctor_run_step 19 $total_steps "Checking conflicting services" check_conflicting_services
+    _doctor_run_step 20 $total_steps "Checking conflicting shells"   check_conflicting_shells
+    _doctor_run_step 21 $total_steps "Checking wallpaper health"     check_wallpaper_health
+    _doctor_run_step 22 $total_steps "Checking environment variables" check_environment_vars
+    _doctor_run_step 23 $total_steps "Checking Niri config"          check_niri_config
 
     echo ""
     tui_divider

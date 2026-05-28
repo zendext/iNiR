@@ -353,6 +353,46 @@ require_qs() {
     fi
 }
 
+# --- Stale local Quickshell detection ---------------------------------------
+# Returns 0 and prints a message if a stale quickshell binary in ~/.local/bin
+# or /usr/local/bin shadows the system package. This is the #1 cause of
+# "quickshell always reports 0.2" after an update.
+_inir_detect_stale_local_qs() {
+    local qs_path
+    qs_path="$(command -v qs 2>/dev/null || command -v quickshell 2>/dev/null || true)"
+    [[ -z "$qs_path" ]] && return 1
+
+    local qs_real
+    qs_real="$(readlink -f "$qs_path" 2>/dev/null || printf '%s' "$qs_path")"
+
+    # Only care about local builds that shadow system packages
+    case "$qs_real" in
+        "$HOME"/.local/bin/*|/usr/local/bin/*) ;;
+        *) return 1 ;;
+    esac
+
+    # Check if a system quickshell also exists
+    local system_qs=""
+    if [[ -x /usr/bin/qs ]]; then
+        system_qs="/usr/bin/qs"
+    elif [[ -x /usr/bin/quickshell ]]; then
+        system_qs="/usr/bin/quickshell"
+    fi
+    [[ -z "$system_qs" ]] && return 1
+
+    # Compare versions via strings
+    if command -v strings >/dev/null 2>&1; then
+        local local_ver system_ver
+        local_ver="$(strings "$qs_real" 2>/dev/null | grep -oP '\b0\.\d+\.\d+\b' | head -1 || true)"
+        system_ver="$(strings "$system_qs" 2>/dev/null | grep -oP '\b0\.\d+\.\d+\b' | head -1 || true)"
+        if [[ -n "$local_ver" && -n "$system_ver" && "$local_ver" != "$system_ver" ]]; then
+            printf '%s' "$qs_real"
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # --- Quickshell install-kind detection ----------------------------------------
 # Returns "kind:pkgname". Used by check_qs_abi() and `inir doctor --fix-abi`.
 # Each kind needs a different rebuild path — there is no universal command:
@@ -503,16 +543,47 @@ _inir_run_quickshell_rebuild() {
     echo "" >&2
     echo "iNiR: rebuilding quickshell against the current Qt version..." >&2
     echo "      This compiles from source and may take 2-5 minutes." >&2
+    echo "      (timeout: 15 minutes to avoid indefinite hangs)" >&2
     echo "" >&2
-    if eval "$cmd"; then
-        rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/inir/abi-check" 2>/dev/null
+
+    local rebuild_rc=0
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 15m bash -c "$cmd" || rebuild_rc=$?
+    else
+        eval "$cmd" || rebuild_rc=$?
+    fi
+
+    if [[ "$rebuild_rc" -eq 124 ]]; then
         echo "" >&2
-        echo "iNiR: Quickshell rebuilt successfully. Run 'inir restart' to apply." >&2
+        echo "iNiR: rebuild timed out after 15 minutes." >&2
+        echo "      The AUR helper may be waiting for input or the build is stuck." >&2
+        echo "      Try manually: ${cmd//--noconfirm /}" >&2
+        return 1
+    elif [[ "$rebuild_rc" -ne 0 ]]; then
+        echo "" >&2
+        echo "iNiR: rebuild failed (exit $rebuild_rc). Try manually:" >&2
+        echo "      ${cmd//--noconfirm /}" >&2
+        return 1
+    fi
+
+    # Post-rebuild verification: did the mismatch actually get fixed?
+    rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/inir/abi-check" 2>/dev/null
+    if _inir_quickshell_abi_status; then
+        echo "" >&2
+        echo "iNiR: Quickshell rebuilt successfully and ABI mismatch is resolved." >&2
+        echo "      Run 'inir restart' to apply the new binary." >&2
         return 0
     fi
+
     echo "" >&2
-    echo "iNiR: rebuild failed. Try manually:" >&2
-    echo "      ${cmd}" >&2
+    echo "iNiR: rebuild finished but ABI mismatch persists — $_inir_abi_msg" >&2
+    echo "      A stale local binary may be shadowing the system package." >&2
+    local stale_qs
+    if stale_qs="$(_inir_detect_stale_local_qs)" && [[ -n "$stale_qs" ]]; then
+        echo "      Stale local binary detected: $stale_qs" >&2
+        echo "      Remove it: rm $stale_qs" >&2
+    fi
+    echo "      Try manually: ${cmd//--noconfirm /}" >&2
     return 1
 }
 
@@ -1082,6 +1153,16 @@ check_qs_abi() {
     echo "" >&2
     echo "ERROR: Qt/Quickshell ABI mismatch detected" >&2
     echo "  $mismatch_msg" >&2
+
+    # Detect stale local binary shadowing the system package
+    local stale_qs
+    if stale_qs="$(_inir_detect_stale_local_qs)" && [[ -n "$stale_qs" ]]; then
+        echo "" >&2
+        echo "NOTE: A stale local quickshell binary is shadowing the system package:" >&2
+        echo "      $stale_qs" >&2
+        echo "      Remove it: rm $stale_qs" >&2
+    fi
+
     echo "" >&2
     echo "Quickshell was built against a different Qt version than what is installed." >&2
     echo "The shell will crash on any UI interaction until quickshell is rebuilt." >&2
