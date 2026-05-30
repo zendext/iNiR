@@ -1129,13 +1129,7 @@ Scope {
                                                         : Appearance.auroraEverywhere
                                                             ? Appearance.aurora.colElevatedSurface
                                                             : CF.ColorUtils.transparentize(Appearance.colors.colLayer1Hover, 0.5)
-                                                colBackgroundHover: Appearance.angelEverywhere
-                                                    ? Appearance.angel.colGlassCardHover
-                                                    : Appearance.inirEverywhere
-                                                        ? Appearance.inir.colLayer1Hover
-                                                        : Appearance.auroraEverywhere
-                                                            ? Appearance.aurora.colSubSurfaceHover
-                                                            : Appearance.colors.colLayer1Hover
+                                                colBackgroundHover: Appearance.colLayer1Hover
 
                                                 onClicked: overlayCurrentPage = pageRealIndex
 

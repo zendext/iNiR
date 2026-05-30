@@ -126,6 +126,17 @@ Singleton {
         }
     }
 
+    // Style-aware hover/active fills. One source of truth so every component's hover matches the
+    // active global style instead of re-implementing the angel/inir/aurora/material ternary.
+    readonly property color colLayer1Hover: angelEverywhere ? angel.colGlassCardHover
+        : inirEverywhere ? inir.colLayer1Hover
+        : auroraEverywhere ? aurora.colSubSurfaceHover
+        : colors.colLayer1Hover
+    readonly property color colLayer2Hover: angelEverywhere ? angel.colGlassElevatedHover
+        : inirEverywhere ? inir.colLayer2Hover
+        : auroraEverywhere ? aurora.colElevatedSurfaceHover
+        : colors.colLayer2Hover
+
     onEffectsEnabledChanged: if (Qt.application.arguments.indexOf("--debug") !== -1) console.log("[Appearance] effectsEnabled:", effectsEnabled, "gameModeActive:", _gameModeActive)
     onAnimationsEnabledChanged: if (Qt.application.arguments.indexOf("--debug") !== -1) console.log("[Appearance] animationsEnabled:", animationsEnabled)
 
