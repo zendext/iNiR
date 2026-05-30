@@ -57,6 +57,14 @@ Button {
         animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
     }
 
+    // Subtle press feedback (M3 expressive): scale dips on down, springs back on release.
+    property bool pressScaleEnabled: true
+    scale: (pressScaleEnabled && root.down) ? 0.96 : 1
+    Behavior on scale {
+        enabled: Appearance.animationsEnabled
+        animation: NumberAnimation { duration: Appearance.animation.clickBounce.duration; easing.type: Appearance.animation.clickBounce.type; easing.bezierCurve: Appearance.animation.clickBounce.bezierCurve }
+    }
+
     function startRipple(x, y) {
         const stateY = buttonBackground.y;
         rippleAnim.x = x;
