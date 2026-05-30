@@ -663,15 +663,7 @@ Scope {
                     animation: NumberAnimation { duration: Appearance.animation.elementMoveEnter.duration; easing.type: Appearance.animation.elementMoveEnter.type; easing.bezierCurve: Appearance.animation.elementMoveEnter.bezierCurve }
                 }
 
-                // Shadow - hidden in aurora/angel (angel uses StyledRectangularShadow)
-                layer.enabled: Appearance.effectsEnabled && !Appearance.auroraEverywhere
-                layer.effect: GE.DropShadow {
-                    color: Appearance.colors.colShadow
-                    radius: 24
-                    samples: 25
-                    verticalOffset: 8
-                    horizontalOffset: 0
-                }
+                // Shadow comes from the StyledRectangularShadow above (cheap native RectangularShadow).
 
                 // Glass background for aurora/angel wallpaper blur
                 GlassBackground {
