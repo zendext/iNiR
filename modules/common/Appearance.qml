@@ -536,6 +536,35 @@ Singleton {
             property int duration: root.calcEffectiveDuration(350)
             property int type: Easing.OutExpo
         }
+
+        // Class B: physical, velocity-carrying motion for retargetable props (traveling indicators,
+        // drag-follow, value bars). Gate Behaviors on animationsEnabled. See MORPH_ENGINE_DESIGN.md.
+        property QtObject spatialFollow: QtObject {
+            property real velocity: 1400
+            property Component smoothedAnimation: Component {
+                SmoothedAnimation { velocity: root.animation.spatialFollow.velocity }
+            }
+        }
+        property QtObject spatialFollowFast: QtObject {
+            property real velocity: 2600
+            property Component smoothedAnimation: Component {
+                SmoothedAnimation { velocity: root.animation.spatialFollowFast.velocity }
+            }
+        }
+        property QtObject spatialSpring: QtObject {
+            property real spring: 3.2
+            property real damping: 0.28
+            property real mass: 1.0
+            property real epsilon: 0.25
+            property Component springAnimation: Component {
+                SpringAnimation {
+                    spring: root.animation.spatialSpring.spring
+                    damping: root.animation.spatialSpring.damping
+                    mass: root.animation.spatialSpring.mass
+                    epsilon: root.animation.spatialSpring.epsilon
+                }
+            }
+        }
     }
 
     aurora: QtObject {

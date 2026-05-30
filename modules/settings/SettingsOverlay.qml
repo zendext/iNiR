@@ -1222,7 +1222,7 @@ Scope {
 
                                 Behavior on y {
                                     enabled: Appearance.animationsEnabled
-                                    animation: NumberAnimation { duration: Appearance.animation.elementMove.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Appearance.animationCurves.emphasizedDecel }
+                                    SmoothedAnimation { velocity: Appearance.animation.spatialFollowFast.velocity }
                                 }
                                 Behavior on height {
                                     enabled: Appearance.animationsEnabled
@@ -1441,7 +1441,9 @@ Scope {
                                         required property int index
                                         anchors.fill: parent
                                         active: Config.ready && (overlayPagesStack.visitedPages[index] === true)
-                                        asynchronous: index !== overlayCurrentPage
+                                        // Always async: sync-loading the current page blocked the UI
+                                        // thread on first visit, causing per-click freezes.
+                                        asynchronous: true
                                         source: overlayPages[index].component
 
                                         readonly property bool isCurrentPage: index === overlayCurrentPage && status === Loader.Ready
