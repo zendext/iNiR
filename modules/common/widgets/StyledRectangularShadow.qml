@@ -24,10 +24,14 @@ Item {
     anchors.fill: target
 
     // ─── MATERIAL MODE: standard blur shadow ───
+    // RectangularShadow shrinks its effective corner radius by ~blur*0.75 (see
+    // Qt's clampedRadius()), so with a wide blur the shadow corners turn squarer
+    // than the target and poke out past its rounded corners. Compensate so the
+    // shadow's rendered radius matches the panel outline.
     RectangularShadow {
         visible: !Appearance.angelEverywhere
         anchors.fill: parent
-        radius: root.radius
+        radius: root.radius + root.blur * 0.75
         blur: root.blur
         offset: root.offset
         spread: root.spread
