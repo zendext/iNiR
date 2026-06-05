@@ -290,7 +290,7 @@ Item {
                                 spacing: 8
 
                                 SmartAppIcon {
-                                    icon: AppSearch.guessIcon(modelData.originalId || modelData.id)
+                                    icon: AppSearch.guessIcon(modelData.originalId || (modelData.name || "").toLowerCase())
                                     iconSize: 24
                                     implicitWidth: 24
                                     implicitHeight: 24
