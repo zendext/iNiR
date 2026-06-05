@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.26.0] - 2026-06-05
 
-Release with the new bar layout, Screen Time, World Clock, better settings, and a pile of fixes that should have been boring but weren't.
+Release with the new bar layout, Screen Time, World Clock, the settings polish pass, better diagnostics, and a pile of fixes that should have been boring but weren't.
 
 ### Added
 - **Modular bar layout**: five zones (`left`, `centerLeft`, `center`, `centerRight`, `right`) with a drag editor in Settings. Existing users keep the classic layout unless they change it. Migration 028 is intentionally disabled, because rewriting user bars during update is how desktops become modern art.
@@ -17,13 +17,22 @@ Release with the new bar layout, Screen Time, World Clock, better settings, and 
 - **Wallpaper shuffle controls**: Settings can enable automatic wallpaper shuffle, interval, optional folder, and whether colors regenerate on each shuffle.
 - **`inir logs --debug`** and better `inir logs --full` handling for when normal logs are being shy.
 - **Settings navigation IPC**: `settingsNav` can jump to a page, report current page, or return page count.
+- **Local doc/code verifier**: `scripts/verify-docs.sh` checks public docs against IPC/service/config facts so the wiki stops drifting into folklore.
+- **Filled speaker icons** for volume states.
 
 ### Changed
-- Settings got denser, faster, and less jumpy: compact rows, category nav polish, quicker page travel, better search focus, and less preload cost.
+- Settings got the full polish pass: denser pages, compact rows, tighter headers, subtle groups, compact chips, a responsive card layout, Ctrl+F search focus, faster collapse, less preload cost, and category/nav motion that no longer feels half-asleep.
 - Bar geometry is configurable: height, opacity, modular order, taskbar placement, and safer active-window sizing.
+- Motion/style tokens are more consistent across the shell: physical Class-B motion, centralized hover colors, snappier press feedback, cleaner aurora hover fills, and less random one-off animation sludge.
 - Dock/taskbar window tracking is stricter on Niri. Stale Wayland handles are dropped instead of keeping closed apps around like bad memories.
 - App icon resolution now preserves app branding for Cursor, Windsurf, Vesktop, Electron apps, and absolute icon paths.
 - Right sidebar compact mode now includes Screen Time when the feature is enabled.
+- Right sidebar and BottomWidgetGroup stay loaded across open/close so reopening stops feeling like waking a laptop from 2009.
+- Notepad tabs persist across restarts and tab switches.
+- Widget power logic stops pausing desktop widgets for every random window.
+- Setup/dist paths keep Millennium opt-in instead of dragging it in by default.
+- Niri defaults stop using the legacy shell spawn-at-startup path.
+- Docs and wiki pages were refreshed for modules, config keys, services, IPC, setup, panel families, wallpaper, and release notes.
 
 ### Fixed
 - Disabled bar layout migration 028 so updates do not delete old layout keys or rewrite existing user config.
@@ -31,12 +40,21 @@ Release with the new bar layout, Screen Time, World Clock, better settings, and 
 - Fixed Screen Time showing in sidebar layouts while tracking was disabled.
 - Fixed notification layout/polish loops and clipboard copying in ii notification popups.
 - Fixed bar active-window titles resizing center modules.
+- Fixed bar spacing between network and bluetooth indicators.
+- Fixed bar taskbar height/focused-state alignment.
 - Fixed dock previews and taskbar previews using `file://` icon paths correctly.
+- Fixed dock item open/close transitions for different orientations.
+- Fixed dock preview closing/focus indicators when apps close.
 - Fixed SongRec discarding successful recognition results from newer compact JSON output.
 - Fixed doctor/ABI rebuild paths that could hang or leave vague advice.
 - Fixed BottomWidgetGroup and compact sidebar preload/height issues.
 - Fixed media popup placeholder binding loop.
+- Fixed media popup shadow radius matching the target shape.
 - Fixed waffle clipboard double-loading and notification hover propagation.
+- Fixed Waffle CalendarWidget radius to use the shared Looks token.
+- Fixed boot-time theme, icon, and power-profile application when config is not fully ready yet.
+- Fixed AppSearch desktop entry matching so token overlap does not grab the wrong app as easily.
+- Fixed libopus codec label in the recorder/settings checks.
 
 ### Notes
 - Screen Time is opt-in. It stores local JSON under the iNiR state path and does not send anything anywhere. Revolutionary concept, apparently.
