@@ -194,37 +194,6 @@ Singleton {
         return mins + "m"
     }
 
-    readonly property var _iconOverrides: ({
-        "code": "visual-studio-code",
-        "code - oss": "visual-studio-code",
-        "code-oss": "visual-studio-code",
-        "orgquickshell": "org.quickshell",
-        "quickshell": "org.quickshell",
-        "quicksilver": "org.quickshell",
-        "zen": "zen-browser"
-    })
-
-    function resolveAppIcon(app: var): string {
-        return AppSearch.resolveIcon(resolveAppIconName(app), "application-x-executable")
-    }
-
-    function resolveAppIconName(app: var): string {
-        const originalId = app.originalId || ""
-        const key = app.id || ""
-        const name = app.name || ""
-
-        if (originalId && _iconOverrides[originalId.toLowerCase()])
-            return _iconOverrides[originalId.toLowerCase()]
-        const keyLower = key.toLowerCase()
-        if (_iconOverrides[keyLower]) return _iconOverrides[keyLower]
-        const nameLower = name.toLowerCase().replace(/ /g, "-")
-        if (_iconOverrides[nameLower]) return _iconOverrides[nameLower]
-
-        if (originalId) return originalId
-        if (nameLower && nameLower !== key) return nameLower
-        return key || "application-x-executable"
-    }
-
     function _emptyDay(dateStr: string): var {
         return { date: dateStr, totalSeconds: 0, hourly: new Array(24).fill(0), apps: {} }
     }

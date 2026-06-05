@@ -290,7 +290,7 @@ Item {
                                 spacing: 8
 
                                 SmartAppIcon {
-                                    icon: ScreenTime.resolveAppIconName(modelData)
+                                    icon: AppSearch.guessIcon(modelData.originalId || modelData.id)
                                     iconSize: 24
                                     implicitWidth: 24
                                     implicitHeight: 24
