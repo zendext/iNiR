@@ -1119,8 +1119,14 @@
                 "notepad",
                 "calculator",
                 "sysmon",
-                "timer"
+                "timer",
+                "screentime"
             ]
+        },
+        "screenTime": {
+            "enable": false,
+            "pollIntervalSeconds": 5,
+            "retentionDays": 30
         },
         "translator": {
             "delay": 300,

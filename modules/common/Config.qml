@@ -1924,9 +1924,15 @@ Singleton {
 
                 // Right sidebar widget toggles
                 property JsonObject right: JsonObject {
-                    property list<string> enabledWidgets: ["calendar", "todo", "notepad", "calculator", "sysmon", "timer"]
+                    property list<string> enabledWidgets: ["calendar", "todo", "notepad", "calculator", "sysmon", "timer", "screentime"]
                     // Controls section order for compact layout (drag to reorder)
                     property list<string> controlsSectionOrder: ["sliders", "toggles", "devices", "media", "quickActions"]
+                }
+
+                property JsonObject screenTime: JsonObject {
+                    property bool enable: false
+                    property int pollIntervalSeconds: 5
+                    property int retentionDays: 30
                 }
             }
 

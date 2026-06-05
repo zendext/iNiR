@@ -1156,6 +1156,18 @@ ContentPage {
                         rightSidebarWidgets.setWidget("timer", checked)
                     }
                 }
+
+                SettingsSwitch {
+                    buttonIcon: "av_timer"
+                    text: Translation.tr("Screen Time")
+                    Component.onCompleted: checked = rightSidebarWidgets.isEnabled("screentime")
+                    onClicked: {
+                        rightSidebarWidgets.setWidget("screentime", checked)
+                        if (checked) {
+                            Config.setNestedValue("sidebar.screenTime.enable", true)
+                        }
+                    }
+                }
             }
             ContentSubsection {
                 title: Translation.tr("Reddit")

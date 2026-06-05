@@ -9,6 +9,7 @@ import qs.modules.sidebarRight.pomodoro
 import qs.modules.sidebarRight.notepad
 import qs.modules.sidebarRight.calculator
 import qs.modules.sidebarRight.sysmon
+import qs.modules.sidebarRight.screenTime
 import qs.modules.sidebarRight.events
 import QtQuick
 import QtQuick.Layouts
@@ -47,6 +48,7 @@ Rectangle {
         {"type": "calculator", "name": Translation.tr("Calc"), "icon": "calculate", "widget": calculatorWidget},
         {"type": "sysmon", "name": Translation.tr("System"), "icon": "monitor_heart", "widget": sysMonWidget},
         {"type": "timer", "name": Translation.tr("Timer"), "icon": "schedule", "widget": pomodoroWidget},
+        {"type": "screentime", "name": Translation.tr("Screen Time"), "icon": "av_timer", "widget": screenTimeWidget},
     ]
 
     property int configVersion: 0
@@ -480,6 +482,15 @@ Rectangle {
     Component {
         id: pomodoroWidget
         PomodoroWidget {
+            anchors.fill: parent
+            anchors.margins: 5
+        }
+    }
+
+    // Screen Time component
+    Component {
+        id: screenTimeWidget
+        ScreenTimeWidget {
             anchors.fill: parent
             anchors.margins: 5
         }

@@ -93,6 +93,7 @@ singleton SettingsMaterialPreset 1.0 SettingsMaterialPreset.qml
 singleton SettingsSearchRegistry 1.0 SettingsSearchRegistry.qml
 SettingsSwitch 1.0 SettingsSwitch.qml
 SineCookie 1.0 SineCookie.qml
+SmartAppIcon 1.0 SmartAppIcon.qml
 StyledBlurEffect 1.0 StyledBlurEffect.qml
 StyledComboBox 1.0 StyledComboBox.qml
 StyledDropShadow 1.0 StyledDropShadow.qml

@@ -41,6 +41,7 @@ Singleton {
     property string screenshotsPath: `${Directories.picturesPath}/Screenshots`
     property string persistentStatesPath: `${Directories.statePath}/states.json`
     property string eventsPath: `${Directories.stateUserPath}/events.json`
+    property string screenTimePath: `${Directories.stateUserPath}/screentime`
     property string generatedMaterialScssPath: `${Directories.stateUserPath}/generated/material_colors.scss`
     property string favicons: `${Directories.cachePath}/media/favicons`
     // User avatar paths
@@ -129,6 +130,7 @@ Singleton {
         Quickshell.execDetached(["rm", "-rf", `${cliphistDecode}`])
         Quickshell.execDetached(["mkdir", "-p", `${cliphistDecode}`])
         Quickshell.execDetached(["mkdir", "-p", `${aiChats}`])
+        Quickshell.execDetached(["mkdir", "-p", `${screenTimePath}`])
         Quickshell.execDetached(["mkdir", "-p", `${userActions}`])
         Quickshell.execDetached(["rm", "-rf", `${tempImages}`])
     }
