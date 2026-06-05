@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -2058,6 +2059,589 @@ ContentPage {
                             text: modelData
                             monospace: true
                             onRemoved: cryptoSection.removeCoin(modelData)
+                        }
+                    }
+                }
+            }
+
+            ContentSubsection {
+                id: worldClockSection
+                title: Translation.tr("World Clock Widget")
+                tooltip: Translation.tr("Configure timezones and display options")
+                visible: Config.options?.sidebar?.widgets?.worldClock ?? true
+
+                // Curated IANA timezone list with approximate standard GMT offset (minutes).
+                // Offsets are for sorting/preview hints in the picker — the widget itself
+                // resolves exact DST-aware times via the system tz database.
+                readonly property var timezoneCatalog: [
+                    { tz: "Pacific/Honolulu",                  off: -600 },
+                    { tz: "America/Los_Angeles",               off: -480 },
+                    { tz: "America/Vancouver",                 off: -480 },
+                    { tz: "America/Denver",                    off: -420 },
+                    { tz: "America/Chicago",                   off: -360 },
+                    { tz: "America/Mexico_City",               off: -360 },
+                    { tz: "America/Bogota",                    off: -300 },
+                    { tz: "America/Lima",                      off: -300 },
+                    { tz: "America/New_York",                  off: -300 },
+                    { tz: "America/Toronto",                   off: -300 },
+                    { tz: "America/Santiago",                  off: -240 },
+                    { tz: "America/Argentina/Buenos_Aires",    off: -180 },
+                    { tz: "America/Sao_Paulo",                 off: -180 },
+                    { tz: "UTC",                               off: 0 },
+                    { tz: "Europe/London",                     off: 0 },
+                    { tz: "Europe/Dublin",                     off: 0 },
+                    { tz: "Europe/Lisbon",                     off: 0 },
+                    { tz: "Africa/Casablanca",                 off: 60 },
+                    { tz: "Africa/Lagos",                      off: 60 },
+                    { tz: "Europe/Madrid",                     off: 60 },
+                    { tz: "Europe/Paris",                      off: 60 },
+                    { tz: "Europe/Brussels",                   off: 60 },
+                    { tz: "Europe/Amsterdam",                  off: 60 },
+                    { tz: "Europe/Berlin",                     off: 60 },
+                    { tz: "Europe/Zurich",                     off: 60 },
+                    { tz: "Europe/Rome",                       off: 60 },
+                    { tz: "Europe/Vienna",                     off: 60 },
+                    { tz: "Europe/Prague",                     off: 60 },
+                    { tz: "Europe/Warsaw",                     off: 60 },
+                    { tz: "Europe/Stockholm",                  off: 60 },
+                    { tz: "Africa/Cairo",                      off: 120 },
+                    { tz: "Africa/Johannesburg",               off: 120 },
+                    { tz: "Europe/Helsinki",                   off: 120 },
+                    { tz: "Europe/Athens",                     off: 120 },
+                    { tz: "Europe/Istanbul",                   off: 180 },
+                    { tz: "Europe/Moscow",                     off: 180 },
+                    { tz: "Europe/Kyiv",                       off: 120 },
+                    { tz: "Africa/Nairobi",                    off: 180 },
+                    { tz: "Asia/Jerusalem",                    off: 120 },
+                    { tz: "Asia/Tehran",                       off: 210 },
+                    { tz: "Asia/Dubai",                        off: 240 },
+                    { tz: "Asia/Karachi",                      off: 300 },
+                    { tz: "Asia/Kolkata",                      off: 330 },
+                    { tz: "Asia/Dhaka",                        off: 360 },
+                    { tz: "Asia/Bangkok",                      off: 420 },
+                    { tz: "Asia/Jakarta",                      off: 420 },
+                    { tz: "Asia/Singapore",                    off: 480 },
+                    { tz: "Asia/Hong_Kong",                    off: 480 },
+                    { tz: "Asia/Shanghai",                     off: 480 },
+                    { tz: "Asia/Taipei",                       off: 480 },
+                    { tz: "Asia/Manila",                       off: 480 },
+                    { tz: "Australia/Perth",                   off: 480 },
+                    { tz: "Asia/Seoul",                        off: 540 },
+                    { tz: "Asia/Tokyo",                        off: 540 },
+                    { tz: "Australia/Adelaide",                off: 570 },
+                    { tz: "Australia/Brisbane",                off: 600 },
+                    { tz: "Australia/Sydney",                  off: 600 },
+                    { tz: "Pacific/Auckland",                  off: 720 }
+                ]
+
+                function offsetLabel(minutes) {
+                    const sign = minutes < 0 ? "-" : "+"
+                    const abs = Math.abs(minutes)
+                    const h = Math.floor(abs / 60)
+                    const m = abs % 60
+                    return "GMT" + sign + String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0")
+                }
+
+                function cityLabel(tz) {
+                    return tz.split("/").pop().replace(/_/g, " ")
+                }
+
+                function regionIcon(tz) {
+                    const r = tz.split("/")[0]
+                    switch (r) {
+                    case "America": return "public"
+                    case "Europe": return "castle"
+                    case "Asia": return "temple_buddhist"
+                    case "Africa": return "savings"
+                    case "Australia":
+                    case "Pacific": return "sailing"
+                    default: return "schedule"
+                    }
+                }
+
+                function addTimezone(tz) {
+                    const id = tz.trim()
+                    if (!id) return
+                    const current = Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []
+                    if (current.includes(id)) return
+                    Config.setNestedValue("sidebar.widgets.worldClock_settings.timezones", [...current, id])
+                    tzInput.text = ""
+                    tzPopup.close()
+                }
+
+                function removeTimezone(tz) {
+                    const current = Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []
+                    Config.setNestedValue("sidebar.widgets.worldClock_settings.timezones", current.filter(t => t !== tz))
+                }
+
+                function moveTimezone(index, direction) {
+                    const current = (Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []).slice()
+                    const target = index + direction
+                    if (target < 0 || target >= current.length) return
+                    const tmp = current[index]
+                    current[index] = current[target]
+                    current[target] = tmp
+                    Config.setNestedValue("sidebar.widgets.worldClock_settings.timezones", current)
+                }
+
+                function filteredTimezones() {
+                    const q = tzInput.text.toLowerCase().trim().replace(/ /g, "_")
+                    const current = Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []
+                    return timezoneCatalog
+                        .filter(e => !current.includes(e.tz) && e.tz.toLowerCase().includes(q))
+                        .slice(0, 10)
+                }
+
+                // ── System timezone + suggestion materialization ──────────
+                // Mirrors WorldClockWidget._suggestedTimezones so "Add suggestions"
+                // seeds the same list the widget would show automatically.
+                property string systemTz: ""
+
+                Process {
+                    id: sysTzProc
+                    command: ["/usr/bin/readlink", "/etc/localtime"]
+                    running: true
+                    stdout: StdioCollector {
+                        onStreamFinished: {
+                            const raw = text.trim()
+                            const parts = raw.split("/zoneinfo/")
+                            worldClockSection.systemTz = parts.length === 2 ? parts[1] : raw
+                        }
+                    }
+                }
+
+                function suggestedTimezones() {
+                    const region = systemTz.split("/")[0] || ""
+                    const base = systemTz ? [systemTz] : []
+                    const global = ["America/New_York", "Europe/London", "Asia/Tokyo"]
+                    let regional = []
+                    switch (region) {
+                    case "America": regional = ["America/Los_Angeles", "Europe/London"]; break
+                    case "Europe": regional = ["America/New_York", "Asia/Tokyo"]; break
+                    case "Asia": regional = ["Europe/London", "America/New_York"]; break
+                    case "Australia":
+                    case "Pacific": regional = ["Asia/Tokyo", "Europe/London"]; break
+                    case "Africa": regional = ["Europe/London", "Asia/Dubai"]; break
+                    }
+                    const seen = new Set(base)
+                    const result = base.slice()
+                    for (const tz of [...regional, ...global]) {
+                        if (!seen.has(tz)) { seen.add(tz); result.push(tz) }
+                    }
+                    return result.slice(0, 4)
+                }
+
+                function adoptSuggestions() {
+                    const sugg = suggestedTimezones()
+                    if (sugg.length > 0)
+                        Config.setNestedValue("sidebar.widgets.worldClock_settings.timezones", sugg)
+                }
+
+                // ── Live time fetch for added timezones (chips/rows) ──────
+                property var liveTimes: ({})
+
+                function refreshLiveTimes() {
+                    const tzs = Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []
+                    if (tzs.length === 0) { liveTimes = ({}); return }
+                    const fmt = (Config.options?.sidebar?.widgets?.worldClock_settings?.use24Hour ?? true) ? "%H:%M" : "%I:%M %p"
+                    let script = ""
+                    for (let i = 0; i < tzs.length; i++)
+                        script += `printf '%s|%s\\n' "${tzs[i]}" "$(TZ='${tzs[i]}' date '+${fmt}|%:z')"\n`
+                    liveTimeProc.command = ["/usr/bin/bash", "-c", script]
+                    liveTimeProc.running = true
+                }
+
+                Process {
+                    id: liveTimeProc
+                    stdout: SplitParser {
+                        splitMarker: "\n"
+                        onRead: data => {
+                            const sep = data.indexOf("|")
+                            if (sep < 0) return
+                            const tz = data.slice(0, sep)
+                            const rest = data.slice(sep + 1).split("|")
+                            const copy = Object.assign({}, worldClockSection.liveTimes)
+                            copy[tz] = { time: rest[0] ?? "", offset: rest[1] ?? "" }
+                            worldClockSection.liveTimes = copy
+                        }
+                    }
+                }
+
+                Timer {
+                    interval: 20000
+                    running: worldClockSection.visible
+                    repeat: true
+                    triggeredOnStart: true
+                    onTriggered: worldClockSection.refreshLiveTimes()
+                }
+
+                Connections {
+                    target: Config
+                    function onConfigChanged() { worldClockSection.refreshLiveTimes() }
+                }
+
+                // ═══════════════════════════════════════════════════════
+                // DISPLAY OPTIONS
+                // ═══════════════════════════════════════════════════════
+                ContentSubsectionLabel {
+                    text: Translation.tr("Display")
+                }
+
+                SettingsSwitch {
+                    buttonIcon: "schedule"
+                    text: Translation.tr("24-hour format")
+                    checked: Config.options?.sidebar?.widgets?.worldClock_settings?.use24Hour ?? true
+                    onCheckedChanged: Config.setNestedValue("sidebar.widgets.worldClock_settings.use24Hour", checked)
+                    StyledToolTip {
+                        text: Translation.tr("Toggle between 24-hour and 12-hour AM/PM time")
+                    }
+                }
+
+                SettingsSwitch {
+                    buttonIcon: "timer"
+                    text: Translation.tr("Show seconds")
+                    checked: Config.options?.sidebar?.widgets?.worldClock_settings?.showSeconds ?? false
+                    onCheckedChanged: Config.setNestedValue("sidebar.widgets.worldClock_settings.showSeconds", checked)
+                    StyledToolTip {
+                        text: Translation.tr("Updates every second while the sidebar is open (slightly higher CPU)")
+                    }
+                }
+
+                SettingsSwitch {
+                    buttonIcon: "today"
+                    text: Translation.tr("Show date & GMT offset")
+                    checked: Config.options?.sidebar?.widgets?.worldClock_settings?.showDate ?? true
+                    onCheckedChanged: Config.setNestedValue("sidebar.widgets.worldClock_settings.showDate", checked)
+                    StyledToolTip {
+                        text: Translation.tr("Display the weekday, date and UTC offset under each city")
+                    }
+                }
+
+                SettingsSwitch {
+                    buttonIcon: "my_location"
+                    text: Translation.tr("Highlight local timezone")
+                    checked: Config.options?.sidebar?.widgets?.worldClock_settings?.highlightLocal ?? true
+                    onCheckedChanged: Config.setNestedValue("sidebar.widgets.worldClock_settings.highlightLocal", checked)
+                    StyledToolTip {
+                        text: Translation.tr("Pin your local timezone to the top and accent it")
+                    }
+                }
+
+                // ═══════════════════════════════════════════════════════
+                // TIMEZONES
+                // ═══════════════════════════════════════════════════════
+                ContentSubsectionLabel {
+                    text: Translation.tr("Timezones")
+                }
+
+                // Search input with rich autocomplete (city + GMT offset)
+                ConfigRow {
+                    Layout.fillWidth: true
+                    implicitHeight: tzInput.implicitHeight
+
+                    MaterialTextField {
+                        id: tzInput
+                        width: parent.width
+                        placeholderText: Translation.tr("Search a city or region…")
+                        text: ""
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        color: Appearance.m3colors.m3onSurface
+                        placeholderTextColor: Appearance.colors.colSubtext
+                        background: Rectangle {
+                            color: Appearance.colors.colLayer1
+                            radius: Appearance.rounding.small
+                            border.width: tzInput.activeFocus ? 2 : 1
+                            border.color: tzInput.activeFocus ? Appearance.colors.colPrimary : Appearance.colors.colLayer0Border
+                        }
+                        onTextChanged: {
+                            if (text.length > 0) tzPopup.open()
+                            else tzPopup.close()
+                        }
+                        onAccepted: {
+                            const filtered = worldClockSection.filteredTimezones()
+                            if (filtered.length > 0) worldClockSection.addTimezone(filtered[0].tz)
+                            else if (text.trim()) worldClockSection.addTimezone(text.trim().replace(/ /g, "_"))
+                        }
+                        Keys.onDownPressed: tzList.incrementCurrentIndex()
+                        Keys.onUpPressed: tzList.decrementCurrentIndex()
+                    }
+
+                    Popup {
+                        id: tzPopup
+                        y: tzInput.height + 4
+                        width: tzInput.width
+                        height: Math.min(280, tzList.contentHeight + 16)
+                        padding: 8
+                        visible: tzInput.text.length > 0 && worldClockSection.filteredTimezones().length > 0
+
+                        background: Rectangle {
+                            color: Appearance.inirEverywhere ? Appearance.inir.colLayer2
+                                 : Appearance.colors.colLayer2Base
+                            radius: Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.small
+                            border.width: 1
+                            border.color: Appearance.inirEverywhere ? Appearance.inir.colBorder
+                                        : Appearance.colors.colLayer0Border
+                        }
+
+                        ListView {
+                            id: tzList
+                            anchors.fill: parent
+                            model: worldClockSection.filteredTimezones()
+                            clip: true
+                            currentIndex: 0
+
+                            delegate: RippleButton {
+                                id: tzDelegate
+                                required property var modelData
+                                required property int index
+                                width: tzList.width
+                                implicitHeight: 38
+                                buttonRadius: Appearance.rounding.small
+                                colBackground: tzList.currentIndex === index ? Appearance.colors.colLayer1Hover : "transparent"
+                                colBackgroundHover: Appearance.colors.colLayer1Hover
+                                onClicked: worldClockSection.addTimezone(tzDelegate.modelData.tz)
+
+                                contentItem: RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 10
+                                    spacing: 8
+
+                                    MaterialSymbol {
+                                        text: worldClockSection.regionIcon(tzDelegate.modelData.tz)
+                                        iconSize: 16
+                                        color: Appearance.colors.colSubtext
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 0
+                                        StyledText {
+                                            text: worldClockSection.cityLabel(tzDelegate.modelData.tz)
+                                            font.pixelSize: Appearance.font.pixelSize.small
+                                            color: Appearance.colors.colOnLayer1
+                                        }
+                                        StyledText {
+                                            text: tzDelegate.modelData.tz.split("/").slice(0, -1).join(" / ").replace(/_/g, " ")
+                                            font.pixelSize: Appearance.font.pixelSize.smallest
+                                            color: Appearance.colors.colSubtext
+                                        }
+                                    }
+                                    StyledText {
+                                        text: worldClockSection.offsetLabel(tzDelegate.modelData.off)
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        font.family: Appearance.font.family.monospace
+                                        color: Appearance.colors.colSubtext
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Added timezones — reorderable rows with live time
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    spacing: 4
+                    visible: (Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []).length > 0
+
+                    Repeater {
+                        model: Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []
+
+                        delegate: Rectangle {
+                            id: tzRowItem
+                            required property string modelData
+                            required property int index
+                            readonly property var live: worldClockSection.liveTimes[modelData] ?? null
+                            readonly property int total: (Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []).length
+
+                            Layout.fillWidth: true
+                            implicitHeight: 44
+                            radius: Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.small
+                            color: tzRowHover.containsMouse
+                                ? (Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover : Appearance.colors.colLayer2Hover)
+                                : (Appearance.inirEverywhere ? Appearance.inir.colLayer2 : Appearance.colors.colLayer2)
+
+                            Behavior on color {
+                                enabled: Appearance.animationsEnabled
+                                ColorAnimation { duration: Appearance.animation.elementMoveFast.duration }
+                            }
+
+                            MouseArea {
+                                id: tzRowHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.NoButton
+                            }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 6
+                                spacing: 8
+
+                                // Order index badge
+                                Rectangle {
+                                    Layout.alignment: Qt.AlignVCenter
+                                    implicitWidth: 20; implicitHeight: 20
+                                    radius: height / 2
+                                    color: Appearance.colors.colPrimaryContainer
+                                    StyledText {
+                                        anchors.centerIn: parent
+                                        text: tzRowItem.index + 1
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        font.weight: Font.Bold
+                                        color: Appearance.colors.colOnPrimaryContainer
+                                    }
+                                }
+
+                                // City + region
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    StyledText {
+                                        text: worldClockSection.cityLabel(tzRowItem.modelData)
+                                        font.pixelSize: Appearance.font.pixelSize.small
+                                        font.weight: Font.DemiBold
+                                        color: Appearance.colors.colOnLayer1
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                    StyledText {
+                                        text: (tzRowItem.live?.offset ? "GMT" + tzRowItem.live.offset : tzRowItem.modelData.split("/")[0]).replace(/_/g, " ")
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        font.family: tzRowItem.live?.offset ? Appearance.font.family.monospace : Appearance.font.family.main
+                                        color: Appearance.colors.colSubtext
+                                    }
+                                }
+
+                                // Live time
+                                StyledText {
+                                    Layout.alignment: Qt.AlignVCenter
+                                    text: tzRowItem.live?.time ?? "··:··"
+                                    font.pixelSize: Appearance.font.pixelSize.normal
+                                    font.weight: Font.DemiBold
+                                    font.family: Appearance.font.family.numbers
+                                    color: Appearance.colors.colPrimary
+                                }
+
+                                // Reorder + remove controls
+                                RowLayout {
+                                    Layout.alignment: Qt.AlignVCenter
+                                    spacing: 0
+
+                                    RippleButton {
+                                        implicitWidth: 26; implicitHeight: 26
+                                        buttonRadius: Appearance.rounding.full
+                                        colBackground: "transparent"
+                                        colBackgroundHover: Appearance.colors.colLayer1Hover
+                                        enabled: tzRowItem.index > 0
+                                        opacity: enabled ? 1 : 0.25
+                                        onClicked: worldClockSection.moveTimezone(tzRowItem.index, -1)
+                                        contentItem: MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: "keyboard_arrow_up"; iconSize: 18
+                                            color: Appearance.colors.colSubtext
+                                        }
+                                        StyledToolTip { text: Translation.tr("Move up") }
+                                    }
+
+                                    RippleButton {
+                                        implicitWidth: 26; implicitHeight: 26
+                                        buttonRadius: Appearance.rounding.full
+                                        colBackground: "transparent"
+                                        colBackgroundHover: Appearance.colors.colLayer1Hover
+                                        enabled: tzRowItem.index < tzRowItem.total - 1
+                                        opacity: enabled ? 1 : 0.25
+                                        onClicked: worldClockSection.moveTimezone(tzRowItem.index, 1)
+                                        contentItem: MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: "keyboard_arrow_down"; iconSize: 18
+                                            color: Appearance.colors.colSubtext
+                                        }
+                                        StyledToolTip { text: Translation.tr("Move down") }
+                                    }
+
+                                    RippleButton {
+                                        implicitWidth: 26; implicitHeight: 26
+                                        buttonRadius: Appearance.rounding.full
+                                        colBackground: "transparent"
+                                        colBackgroundHover: Appearance.colors.colErrorContainer
+                                        colRipple: Appearance.colors.colError
+                                        onClicked: worldClockSection.removeTimezone(tzRowItem.modelData)
+                                        contentItem: MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: "close"; iconSize: 15
+                                            color: Appearance.colors.colError
+                                        }
+                                        StyledToolTip { text: Translation.tr("Remove") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Empty state — explain auto mode + offer to materialize suggestions
+                // so they can be individually removed/reordered/edited.
+                Rectangle {
+                    Layout.fillWidth: true
+                    visible: (Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []).length === 0
+                    implicitHeight: emptyCol.implicitHeight + 20
+                    radius: Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.small
+                    color: Appearance.inirEverywhere ? Appearance.inir.colLayer2 : Appearance.colors.colLayer2
+
+                    ColumnLayout {
+                        id: emptyCol
+                        anchors {
+                            left: parent.left; right: parent.right
+                            verticalCenter: parent.verticalCenter
+                            leftMargin: 12; rightMargin: 12
+                        }
+                        spacing: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            MaterialSymbol {
+                                text: "my_location"
+                                iconSize: 18
+                                color: Appearance.colors.colPrimary
+                                Layout.alignment: Qt.AlignTop
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: Translation.tr("No timezones added. The widget automatically shows suggestions based on your region. Add them below to customize, reorder or remove them.")
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colSubtext
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        RippleButton {
+                            Layout.fillWidth: true
+                            implicitHeight: 34
+                            buttonRadius: Appearance.rounding.small
+                            colBackground: Appearance.colors.colPrimaryContainer
+                            colBackgroundHover: Appearance.colors.colPrimaryContainerHover
+                            colRipple: Appearance.colors.colPrimary
+                            onClicked: worldClockSection.adoptSuggestions()
+
+                            contentItem: RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                MaterialSymbol {
+                                    text: "playlist_add"
+                                    iconSize: 16
+                                    color: Appearance.colors.colOnPrimaryContainer
+                                }
+                                StyledText {
+                                    text: Translation.tr("Add suggested timezones")
+                                    font.pixelSize: Appearance.font.pixelSize.small
+                                    font.weight: Font.Medium
+                                    color: Appearance.colors.colOnPrimaryContainer
+                                }
+                            }
                         }
                     }
                 }

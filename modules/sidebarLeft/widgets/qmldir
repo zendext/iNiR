@@ -10,6 +10,7 @@ QuickLaunch 1.0 QuickLaunch.qml
 MediaPlayerWidget 1.0 MediaPlayerWidget.qml
 CryptoWidget 1.0 CryptoWidget.qml
 QuickWallpaper 1.0 QuickWallpaper.qml
+WorldClockWidget 1.0 WorldClockWidget.qml
 DraggableWidgetContainer 1.0 DraggableWidgetContainer.qml
 WidgetSettingsMenu 1.0 WidgetSettingsMenu.qml
 

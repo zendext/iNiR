@@ -42,6 +42,7 @@ import qs.modules.sidebarRight.notepad
 import qs.modules.sidebarRight.calculator
 import qs.modules.sidebarRight.sysmon
 import qs.modules.sidebarRight.events
+import qs.modules.sidebarRight.screenTime
 
 Item {
     id: root
@@ -557,6 +558,41 @@ Item {
             }
         }
     }
+    Component {
+        id: screenTimeComponent
+        Item {
+            anchors.fill: parent
+
+            StyledRectangularShadow {
+                target: screenTimeSurface
+                visible: false
+                blur: 0.35 * Appearance.sizes.elevationMargin
+            }
+
+            Rectangle {
+                id: screenTimeSurface
+                anchors.fill: parent
+                anchors.margins: root.compactContentPadding
+                radius: bg.angelEverywhere ? Appearance.angel.roundingNormal
+                    : bg.inirEverywhere ? Appearance.inir.roundingNormal
+                    : Appearance.rounding.normal
+                color: bg.angelEverywhere ? Appearance.angel.colGlassCard
+                    : bg.inirEverywhere ? Appearance.inir.colLayer1
+                    : bg.colDarkSurface
+                border.width: 0
+                border.color: bg.angelEverywhere ? ColorUtils.transparentize(Appearance.angel.colCardBorder, 0.22)
+                    : bg.inirEverywhere ? Appearance.inir.colBorder
+                    : bg.auroraEverywhere ? ColorUtils.transparentize(Appearance.colors.colOutlineVariant, 0.78)
+                    : ColorUtils.transparentize(Appearance.colors.colOutlineVariant, 0.72)
+                clip: true
+
+                ScreenTimeWidget {
+                    anchors.fill: parent
+                    anchors.margins: root.compactGridSpacing
+                }
+            }
+        }
+    }
 
     component ControlChipButton: Item {
         id: chip
@@ -690,6 +726,7 @@ Item {
             {id: "calculator", icon: "calculate",     label: Translation.tr("Calc"),       component: calculatorComponent},
             {id: "sysmon",     icon: "monitor_heart", label: Translation.tr("System"),     component: sysmonComponent},
             {id: "timer",      icon: "schedule",      label: Translation.tr("Timer"),      component: timerComponent},
+            {id: "screentime", icon: "av_timer",      label: Translation.tr("Screen Time"), component: screenTimeComponent},
         ]
         return all.filter(w => enabled.includes(w.id))
     }

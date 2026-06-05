@@ -23,7 +23,7 @@ Item {
         const missing = defaultOrder.filter(id => !saved.includes(id))
         return [...saved, ...missing]
     }
-    readonly property var defaultOrder: ["media", "week", "context", "note", "launch", "controls", "status", "crypto", "wallpaper"]
+    readonly property var defaultOrder: ["media", "week", "context", "note", "launch", "controls", "status", "crypto", "wallpaper", "worldclock"]
     readonly property int widgetSpacing: Config.options?.sidebar?.widgets?.spacing ?? 8
 
     readonly property bool showMedia: Config.options?.sidebar?.widgets?.media ?? true
@@ -35,6 +35,7 @@ Item {
     readonly property bool showStatus: Config.options?.sidebar?.widgets?.status ?? true
     readonly property bool showCrypto: Config.options?.sidebar?.widgets?.crypto ?? false
     readonly property bool showWallpaper: Config.options?.sidebar?.widgets?.wallpaper ?? false
+    readonly property bool showWorldClock: Config.options?.sidebar?.widgets?.worldClock ?? true
 
     readonly property var visibleWidgets: {
         const order = widgetOrder ?? defaultOrder
@@ -49,6 +50,7 @@ Item {
             case "status": return showStatus
             case "crypto": return showCrypto
             case "wallpaper": return showWallpaper
+            case "worldclock": return showWorldClock
             default: return false
             }
         })
@@ -359,6 +361,7 @@ Item {
                             case "status": return statusWidget
                             case "crypto": return cryptoWidget
                             case "wallpaper": return wallpaperWidget
+                            case "worldclock": return worldClockWidget
                             default: return null
                             }
                         }
@@ -611,5 +614,9 @@ Item {
     Component {
         id: wallpaperWidget
         QuickWallpaper {}
+    }
+    Component {
+        id: worldClockWidget
+        WorldClockWidget {}
     }
 }

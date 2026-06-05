@@ -193,6 +193,13 @@ Loader {
                     checked: Config.options?.sidebar?.widgets?.wallpaper ?? false
                     onClicked: Config.setNestedValue("sidebar.widgets.wallpaper", checked)
                 }
+
+                WidgetSwitch {
+                    text: Translation.tr("World Clock")
+                    buttonIcon: "public"
+                    checked: Config.options?.sidebar?.widgets?.worldClock ?? true
+                    onClicked: Config.setNestedValue("sidebar.widgets.worldClock", checked)
+                }
             }
         }
     }

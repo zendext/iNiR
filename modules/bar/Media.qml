@@ -277,9 +277,6 @@ Item {
             readonly property real gap: 40
             readonly property real loopDistance: titleText.implicitWidth + gap
 
-            // Reset x to 0 whenever the marquee should be parked.
-            onOverflowingChanged: if (!overflowing) marqueeRow.x = 0
-
             Row {
                 id: marqueeRow
                 height: parent.height
@@ -299,7 +296,11 @@ Item {
                     text: titleScroller.fullText
                     onTextChanged: {
                         if (!titleScroller.overflowing) marqueeRow.x = 0
-                        if (marqueeLoop.running) marqueeLoop.restart()
+                        if (!titleScroller._marqueeHovered && titleScroller.overflowing && Appearance.animationsEnabled) {
+                            scrollAnim.stop()
+                            titleScroller._marqueeHolding = true
+                            titleScroller._startHoldTimer()
+                        }
                     }
                 }
 
@@ -315,23 +316,69 @@ Item {
                 }
             }
 
-            // Seamless continuous ticker: hold at start, glide left by one full
-            // text+gap, then loop instantly — the duplicate is already in the gap
-            // position so there is no visible jump.
-            SequentialAnimation {
-                id: marqueeLoop
-                running: titleScroller.overflowing && Appearance.animationsEnabled
-                loops: Animation.Infinite
-                onStopped: marqueeRow.x = 0
-                PauseAnimation { duration: 1800 }
-                NumberAnimation {
-                    target: marqueeRow; property: "x"
-                    from: 0
-                    to: -titleScroller.loopDistance
-                    duration: Math.max(3500, titleScroller.loopDistance * 42)
-                    easing.type: Easing.Linear
+            // Pausable marquee: hold at start, then glide left continuously.
+            // Hover pauses mid-scroll; on exit it resumes from the paused position.
+            property bool _marqueeHolding: true
+            property bool _marqueeHovered: false
+
+            function _startHoldTimer() {
+                if (!titleScroller.overflowing || !Appearance.animationsEnabled || _marqueeHovered) return
+                holdTimer.start()
+            }
+
+            Timer {
+                id: holdTimer
+                interval: 1800
+                onTriggered: {
+                    titleScroller._marqueeHolding = false
+                    marqueeRow.x = 0
+                    scrollAnim.start()
                 }
-                PropertyAction { target: marqueeRow; property: "x"; value: 0 }
+            }
+
+            NumberAnimation {
+                id: scrollAnim
+                target: marqueeRow; property: "x"
+                from: 0
+                to: -titleScroller.loopDistance
+                duration: Math.max(3500, titleScroller.loopDistance * 42)
+                easing.type: Easing.Linear
+                paused: titleScroller._marqueeHovered
+                onFinished: {
+                    marqueeRow.x = 0
+                    titleScroller._marqueeHolding = true
+                    titleScroller._startHoldTimer()
+                }
+            }
+
+            // Kick off on geometry/overflow changes
+            onOverflowingChanged: {
+                if (!overflowing) {
+                    marqueeRow.x = 0
+                    scrollAnim.stop()
+                    titleScroller._marqueeHolding = true
+                } else if (!_marqueeHovered) {
+                    scrollAnim.stop()
+                    titleScroller._marqueeHolding = true
+                    _startHoldTimer()
+                }
+            }
+
+            HoverHandler {
+                id: titleHoverHandler
+                onHoveredChanged: {
+                    titleScroller._marqueeHovered = hovered
+                    if (hovered) {
+                        holdTimer.stop()
+                    } else {
+                        if (titleScroller.overflowing && Appearance.animationsEnabled) {
+                            if (titleScroller._marqueeHolding) {
+                                _startHoldTimer()
+                            }
+                            // NumberAnimation.paused is already false, so it resumes
+                        }
+                    }
+                }
             }
         }
 

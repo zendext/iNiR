@@ -1216,6 +1216,7 @@
             "controls": true,
             "status": true,
             "crypto": false,
+            "worldClock": true,
             "widgetOrder": [
                 "media",
                 "week",
@@ -1224,7 +1225,8 @@
                 "status",
                 "note",
                 "launch",
-                "crypto"
+                "crypto",
+                "worldclock"
             ],
             "spacing": 8,
             "crypto_settings": {
@@ -1233,6 +1235,13 @@
                     "bitcoin",
                     "ethereum"
                 ]
+            },
+            "worldClock_settings": {
+                "timezones": [],
+                "showSeconds": false,
+                "use24Hour": true,
+                "showDate": true,
+                "highlightLocal": true
             },
             "glance": {
                 "showVolume": true,

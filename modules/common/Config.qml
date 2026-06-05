@@ -1799,10 +1799,11 @@ Singleton {
                     property bool status: true
                     property bool crypto: false
                     property bool wallpaper: true
+                    property bool worldClock: true
                     // ContextCard specific
                     property bool contextShowWeather: true
                     // Widget order (drag to reorder)
-                    property list<string> widgetOrder: ["media", "week", "context", "note", "launch", "controls", "status", "crypto", "wallpaper"]
+                    property list<string> widgetOrder: ["media", "week", "context", "note", "launch", "controls", "status", "crypto", "wallpaper", "worldclock"]
                     // Spacing between widgets (px)
                     property int spacing: 8
 
@@ -1838,6 +1839,16 @@ Singleton {
                     property JsonObject crypto_settings: JsonObject {
                         property int refreshInterval: 60
                         property list<string> coins: ["bitcoin", "ethereum"]
+                    }
+
+                    // WorldClockWidget behavior
+                    property JsonObject worldClock_settings: JsonObject {
+                        // IANA timezones to display, e.g. "Europe/London". Empty = auto-suggest by region.
+                        property list<string> timezones: []
+                        property bool showSeconds: false
+                        property bool use24Hour: true
+                        property bool showDate: true
+                        property bool highlightLocal: true
                     }
 
                     // QuickLaunch shortcuts
