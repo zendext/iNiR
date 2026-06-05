@@ -462,7 +462,7 @@ Singleton {
                 const keyTokens = key.replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/);
                 let overlap = 0;
                 for (const t of tokens) {
-                    if (keyTokens.some(kt => kt === t || kt.includes(t) || t.includes(kt))) overlap++;
+                    if (keyTokens.some(kt => kt === t)) overlap++;
                 }
                 const score = overlap / Math.max(tokens.length, keyTokens.length);
                 if (score > bestScore && score >= 0.5) {
@@ -475,7 +475,7 @@ Singleton {
                 const keyTokens = key.replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/);
                 let overlap = 0;
                 for (const t of tokens) {
-                    if (keyTokens.some(kt => kt === t || kt.includes(t) || t.includes(kt))) overlap++;
+                    if (keyTokens.some(kt => kt === t)) overlap++;
                 }
                 const score = overlap / Math.max(tokens.length, keyTokens.length);
                 if (score > bestScore && score >= 0.5) {
