@@ -5,6 +5,42 @@ All notable changes to iNiR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.26.0] - 2026-06-05
+
+Release with the new bar layout, Screen Time, World Clock, better settings, and a pile of fixes that should have been boring but weren't.
+
+### Added
+- **Modular bar layout**: five zones (`left`, `centerLeft`, `center`, `centerRight`, `right`) with a drag editor in Settings. Existing users keep the classic layout unless they change it. Migration 028 is intentionally disabled, because rewriting user bars during update is how desktops become modern art.
+- **Screen Time**: optional app usage tracking in the right sidebar and waffle Action Center. Includes daily totals, 3/14 day ranges, hourly charts, and per-app drill-down for each hour.
+- **World Clock widget**: sidebar-left widget with live IANA timezones, local highlighting, seconds/date toggles, and Settings UI for add/remove/reorder.
+- **Bar media marquee**: long track titles scroll smoothly, pause on hover, and resume when the cursor leaves.
+- **Wallpaper shuffle controls**: Settings can enable automatic wallpaper shuffle, interval, optional folder, and whether colors regenerate on each shuffle.
+- **`inir logs --debug`** and better `inir logs --full` handling for when normal logs are being shy.
+- **Settings navigation IPC**: `settingsNav` can jump to a page, report current page, or return page count.
+
+### Changed
+- Settings got denser, faster, and less jumpy: compact rows, category nav polish, quicker page travel, better search focus, and less preload cost.
+- Bar geometry is configurable: height, opacity, modular order, taskbar placement, and safer active-window sizing.
+- Dock/taskbar window tracking is stricter on Niri. Stale Wayland handles are dropped instead of keeping closed apps around like bad memories.
+- App icon resolution now preserves app branding for Cursor, Windsurf, Vesktop, Electron apps, and absolute icon paths.
+- Right sidebar compact mode now includes Screen Time when the feature is enabled.
+
+### Fixed
+- Disabled bar layout migration 028 so updates do not delete old layout keys or rewrite existing user config.
+- Fixed Screen Time persistence and hourly attribution when a tick crosses an hour boundary.
+- Fixed Screen Time showing in sidebar layouts while tracking was disabled.
+- Fixed notification layout/polish loops and clipboard copying in ii notification popups.
+- Fixed bar active-window titles resizing center modules.
+- Fixed dock previews and taskbar previews using `file://` icon paths correctly.
+- Fixed doctor/ABI rebuild paths that could hang or leave vague advice.
+- Fixed BottomWidgetGroup and compact sidebar preload/height issues.
+- Fixed media popup placeholder binding loop.
+- Fixed waffle clipboard double-loading and notification hover propagation.
+
+### Notes
+- Screen Time is opt-in. It stores local JSON under the iNiR state path and does not send anything anywhere. Revolutionary concept, apparently.
+- `quickshell` from official repos is still the intended package path; the AUR compile treadmill can rest.
+
 ## [2.25.2] - 2026-05-27
 
 Performance and polish release. Boot time dropped ~31% (QML parsing 2.83s → 1.95s) by splitting `qs.services` into core + deferred modules and deferring 17 singletons past the first frame. The shell now auto-dims when power saving kicks in, launched apps stop showing up as "inir" in task managers, and most UI transitions got the organic morphing treatment — nothing pops in or out anymore.
