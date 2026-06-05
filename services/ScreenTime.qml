@@ -17,6 +17,8 @@ Singleton {
     property string _currentAppId: ""
     property string _currentAppName: ""
     property real _lastTickTime: 0
+    property real _lastPersistMs: 0
+    readonly property int _persistIntervalMs: 30000
     property string _currentDate: ""
     property bool _dirty: false
     property bool _startupLock: true
@@ -77,6 +79,7 @@ Singleton {
                 root._currentAppId = ""
                 root._currentAppName = ""
                 root._lastTickTime = Date.now()
+                root._lastPersistMs = Date.now()
                 root._rangeCache = ({})
                 root.dataChanged()
             }
@@ -110,6 +113,7 @@ Singleton {
         const elapsed = root._lastTickTime > 0
             ? Math.round((now - root._lastTickTime) / 1000)
             : 0
+        const intervalStart = root._lastTickTime
         root._lastTickTime = now
 
         if (elapsed <= 0 || elapsed > 60) {
@@ -123,15 +127,27 @@ Singleton {
 
         if (appId.length > 0) {
             root._todayData.totalSeconds += elapsed
-            const hour = new Date().getHours()
-            root._todayData.hourly[hour] = (root._todayData.hourly[hour] || 0) + elapsed
 
             const key = appId.toLowerCase().replace(/[^a-z0-9-]/g, "")
             if (!root._todayData.apps[key])
-                root._todayData.apps[key] = { name: appName, seconds: 0, originalId: appId }
-            if (!root._todayData.apps[key].originalId)
-                root._todayData.apps[key].originalId = appId
-            root._todayData.apps[key].seconds += elapsed
+                root._todayData.apps[key] = { name: appName, seconds: 0, originalId: appId, hourly: new Array(24).fill(0) }
+            const appEntry = root._todayData.apps[key]
+            if (!appEntry.originalId)
+                appEntry.originalId = appId
+            if (!appEntry.hourly || appEntry.hourly.length !== 24)
+                appEntry.hourly = new Array(24).fill(0)
+            appEntry.seconds += elapsed
+
+            // Attribute time to the hour(s) the interval actually spanned, so a
+            // tick that crosses an hour boundary splits correctly instead of
+            // dumping everything into the tick's hour.
+            const perHour = _distributeElapsed(intervalStart, now)
+            for (const h in perHour) {
+                const secs = perHour[h]
+                root._todayData.hourly[h] = (root._todayData.hourly[h] || 0) + secs
+                appEntry.hourly[h] = (appEntry.hourly[h] || 0) + secs
+            }
+
             root._dirty = true
         }
 
@@ -141,10 +157,40 @@ Singleton {
         root._rangeCache = ({})
         root.dataChanged()
 
-        if (root._dirty && root._todayData.totalSeconds % 60 < elapsed) {
+        // Flush by elapsed wall-clock since the last persist, not a fragile
+        // modulo on the running total (which could skip or double-write).
+        if (root._dirty && (now - root._lastPersistMs) >= root._persistIntervalMs) {
             root._persistToday()
             root._dirty = false
+            root._lastPersistMs = now
         }
+    }
+
+    // Split an interval [startMs, endMs] into per-hour-of-day seconds.
+    // Returns an object { hourIndex: seconds }. Handles the interval crossing
+    // one or more hour boundaries (clamped to a single day's worth of buckets).
+    function _distributeElapsed(startMs: real, endMs: real): var {
+        const result = ({})
+        if (!(startMs > 0) || endMs <= startMs)
+            return result
+        let cursor = startMs
+        // Safety cap: never iterate more than 25 boundaries (>1 day shouldn't
+        // happen because elapsed>60 is already rejected upstream).
+        let guard = 0
+        while (cursor < endMs && guard < 26) {
+            const d = new Date(cursor)
+            const hour = d.getHours()
+            // Milliseconds until the next hour boundary
+            const next = new Date(cursor)
+            next.setMinutes(60, 0, 0)
+            const boundary = Math.min(next.getTime(), endMs)
+            const secs = Math.round((boundary - cursor) / 1000)
+            if (secs > 0)
+                result[hour] = (result[hour] || 0) + secs
+            cursor = boundary
+            guard++
+        }
+        return result
     }
 
     function getToday(): var {
@@ -235,7 +281,13 @@ Singleton {
         const todayKeys = Object.keys(todayApps)
         for (let i = 0; i < todayKeys.length; i++) {
             const key = todayKeys[i]
-            result.apps[key] = { name: todayApps[key].name, seconds: todayApps[key].seconds, originalId: todayApps[key].originalId || key }
+            result.apps[key] = {
+                name: todayApps[key].name,
+                seconds: todayApps[key].seconds,
+                originalId: todayApps[key].originalId || key,
+                hourly: (todayApps[key].hourly && todayApps[key].hourly.length === 24)
+                    ? todayApps[key].hourly.slice() : new Array(24).fill(0)
+            }
         }
 
         const sections = rawText.split("---DELIM---").filter(s => s.trim().length > 0 && s.trim() !== "{}")
@@ -252,14 +304,45 @@ Singleton {
                     const keys = Object.keys(dayData.apps)
                     for (let k = 0; k < keys.length; k++) {
                         const key = keys[k]
-                        if (!result.apps[key])
-                            result.apps[key] = { name: dayData.apps[key].name || key, seconds: 0 }
+                        if (!result.apps[key]) {
+                            const histOriginalId = dayData.apps[key].originalId
+                                || (AppSearch.lookupDesktopEntry(dayData.apps[key].name || key)?.id ?? "").replace(/\.desktop$/, "")
+                                || key
+                            result.apps[key] = { name: dayData.apps[key].name || key, seconds: 0, originalId: histOriginalId, hourly: new Array(24).fill(0) }
+                        }
                         result.apps[key].seconds += dayData.apps[key].seconds || 0
+                        // Per-app hourly only exists in newer day files; older
+                        // files contribute to seconds but leave hourly at 0.
+                        const dh = dayData.apps[key].hourly
+                        if (dh && dh.length === 24) {
+                            for (let h = 0; h < 24; h++)
+                                result.apps[key].hourly[h] += (dh[h] || 0)
+                        }
                     }
                 }
             } catch (e) {}
         }
         return result
+    }
+
+    // Per-app breakdown for a given hour-of-day over the selected range.
+    // Returns apps sorted desc by seconds in that hour: [{id,name,seconds,originalId}].
+    // Days whose files predate per-app hourly data simply contribute nothing
+    // here (the UI shows a "no detail" hint when the hour has time but no rows).
+    function getHourBreakdown(hour: int, days: int): var {
+        const data = days <= 1 ? getToday() : (root._rangeCache[days] || getToday())
+        const apps = data.apps || {}
+        const keys = Object.keys(apps)
+        const list = []
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i]
+            const hourly = apps[key].hourly
+            const secs = (hourly && hourly.length === 24) ? (hourly[hour] || 0) : 0
+            if (secs > 0)
+                list.push({ id: key, name: apps[key].name || key, seconds: secs, originalId: apps[key].originalId || key })
+        }
+        list.sort((a, b) => b.seconds - a.seconds)
+        return list
     }
 
     FileView {
@@ -272,19 +355,37 @@ Singleton {
         command: ["/usr/bin/bash", "-c", ""]
         stdout: StdioCollector {
             onStreamFinished: {
+                root._dirty = false
                 if (text.trim() === "__NOFILE__" || text.trim().length === 0) {
                     root._todayData = root._emptyDay(root._currentDate)
                 } else {
                     try {
                         root._todayData = JSON.parse(text.trim())
+                        if (root._todayData.apps) {
+                            const keys = Object.keys(root._todayData.apps)
+                            for (let i = 0; i < keys.length; i++) {
+                                const app = root._todayData.apps[keys[i]]
+                                if (!app.originalId) {
+                                    const entry = AppSearch.lookupDesktopEntry(app.name || keys[i])
+                                    if (entry?.id) {
+                                        app.originalId = entry.id.replace(/\.desktop$/, "")
+                                        root._dirty = true
+                                    }
+                                }
+                            }
+                        }
                     } catch (e) {
                         root._todayData = root._emptyDay(root._currentDate)
                     }
                 }
-                root._dirty = false
                 root._lastTickTime = Date.now()
+                root._lastPersistMs = Date.now()
                 root.ready = true
                 root._startupLock = false
+                if (root._dirty) {
+                    root._persistToday()
+                    root._dirty = false
+                }
                 root.dataChanged()
             }
         }

@@ -26,6 +26,33 @@ Item {
     property real _tooltipX: 0
     property real _tooltipY: 0
 
+    // Hour drill-down: -1 = none selected
+    property int _selectedHour: -1
+    property var _hourApps: []
+
+    function _selectHour(hour) {
+        if (root._selectedHour === hour) {
+            root._selectedHour = -1
+            root._hourApps = []
+        } else {
+            root._selectedHour = hour
+            root._hourApps = ScreenTime.getHourBreakdown(hour, root.currentDays)
+        }
+    }
+
+    function _clearHour() {
+        root._selectedHour = -1
+        root._hourApps = []
+    }
+
+    readonly property real maxHourAppSeconds: {
+        let m = 0
+        for (let i = 0; i < _hourApps.length; i++) {
+            if (_hourApps[i].seconds > m) m = _hourApps[i].seconds
+        }
+        return m > 0 ? m : 1
+    }
+
     readonly property color colText: Appearance.angelEverywhere ? Appearance.angel.colText
         : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1
     readonly property color colTextSecondary: Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
@@ -67,10 +94,13 @@ Item {
             }
         }
         root._appList = ScreenTime.getAppList(root.currentDays)
+        // Keep the open hour breakdown in sync with fresh data
+        if (root._selectedHour >= 0)
+            root._hourApps = ScreenTime.getHourBreakdown(root._selectedHour, root.currentDays)
     }
 
     Component.onCompleted: root._refreshData()
-    onSelectedRangeChanged: root._refreshData()
+    onSelectedRangeChanged: { root._clearHour(); root._refreshData() }
 
     ColumnLayout {
         anchors.fill: parent
@@ -189,6 +219,9 @@ Item {
                                         width: (parent.width - 46) / 24
                                         height: parent.height
 
+                                        readonly property bool selected: root._selectedHour === index
+                                        readonly property bool dimmed: root._selectedHour >= 0 && !selected
+
                                         property real value: {
                                             if (!root._displayData || !root._displayData.hourly) return 0
                                             return root._displayData.hourly[index] || 0
@@ -207,12 +240,23 @@ Item {
                                         Rectangle {
                                             anchors.bottom: parent.bottom
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            width: 4
+                                            width: parent.selected ? 6 : 4
                                             height: barH
                                             radius: Math.min(width, height) / 2
                                             color: value > 0 ? Appearance.colors.colPrimary : root.colBorder
-                                            opacity: value > 0 ? (0.4 + (value / maxVal) * 0.6) : 0.15
+                                            opacity: {
+                                                if (value <= 0) return 0.15
+                                                if (parent.dimmed) return 0.25
+                                                return 0.4 + (value / maxVal) * 0.6
+                                            }
 
+                                            Behavior on width {
+                                                enabled: Appearance.animationsEnabled
+                                                animation: NumberAnimation {
+                                                    duration: Appearance.animation.elementMoveFast.duration
+                                                    easing.type: Appearance.animation.elementMoveFast.type
+                                                }
+                                            }
                                             Behavior on height {
                                                 enabled: Appearance.animationsEnabled
                                                 animation: NumberAnimation {
@@ -233,17 +277,24 @@ Item {
                                         MouseArea {
                                             anchors.fill: parent
                                             hoverEnabled: true
+                                            cursorShape: parent.value > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
                                             onEntered: {
-                                                if (value > 0) {
+                                                if (parent.value > 0) {
                                                     const mapped = parent.mapToItem(root, parent.width / 2, 0)
                                                     root._tooltipX = mapped.x
                                                     root._tooltipY = mapped.y - 4
-                                                    root._tooltipText = index + ":00 – " + (index + 1) + ":00  •  " + ScreenTime.formatDuration(value)
+                                                    root._tooltipText = index + ":00 – " + (index + 1) + ":00  •  " + ScreenTime.formatDuration(parent.value)
                                                     root._tooltipVisible = true
                                                 }
                                             }
                                             onExited: {
                                                 root._tooltipVisible = false
+                                            }
+                                            onClicked: {
+                                                if (parent.value > 0) {
+                                                    root._tooltipVisible = false
+                                                    root._selectHour(index)
+                                                }
                                             }
                                         }
                                     }
@@ -270,11 +321,132 @@ Item {
                         }
                     }
 
+                    // Hour breakdown panel — shown when an hourly bar is selected
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        visible: root._selectedHour >= 0
+
+                        // Header: hour range + total + close
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            MaterialSymbol {
+                                text: "schedule"
+                                iconSize: 16
+                                color: Appearance.colors.colPrimary
+                            }
+
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: root._selectedHour >= 0
+                                    ? (root._selectedHour + ":00 – " + (root._selectedHour + 1) + ":00")
+                                    : ""
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.weight: Font.DemiBold
+                                color: root.colText
+                            }
+
+                            StyledText {
+                                text: {
+                                    if (root._selectedHour < 0 || !root._displayData || !root._displayData.hourly) return ""
+                                    return ScreenTime.formatDuration(root._displayData.hourly[root._selectedHour] || 0)
+                                }
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.family: Appearance.font.family.numbers
+                                color: root.colTextSecondary
+                            }
+
+                            RippleButton {
+                                implicitWidth: 22
+                                implicitHeight: 22
+                                buttonRadius: Appearance.rounding.full
+                                colBackground: "transparent"
+                                colBackgroundHover: Appearance.colors.colLayer1Hover
+                                onClicked: root._clearHour()
+                                contentItem: MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    text: "close"
+                                    iconSize: 14
+                                    color: root.colTextSecondary
+                                }
+                            }
+                        }
+
+                        // App rows for this hour
+                        Repeater {
+                            model: root._hourApps
+                            delegate: RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                SmartAppIcon {
+                                    icon: AppSearch.guessIcon(
+                                        (modelData.name || "").toLowerCase()
+                                        || (modelData.originalId && modelData.originalId !== modelData.id ? modelData.originalId : "")
+                                        || modelData.id
+                                    )
+                                    iconSize: 22
+                                    implicitWidth: 22
+                                    implicitHeight: 22
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: modelData.name || modelData.id
+                                        font.pixelSize: Appearance.font.pixelSize.small
+                                        color: root.colText
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Rectangle {
+                                        implicitHeight: 2
+                                        radius: 1
+                                        color: Appearance.colors.colPrimary
+                                        opacity: 0.15
+                                        width: parent.width * (modelData.seconds / root.maxHourAppSeconds)
+
+                                        Behavior on width {
+                                            enabled: Appearance.animationsEnabled
+                                            animation: NumberAnimation {
+                                                duration: Appearance.animation.elementResize.duration
+                                                easing.type: Appearance.animation.elementResize.type
+                                                easing.bezierCurve: Appearance.animation.elementResize.bezierCurve
+                                            }
+                                        }
+                                    }
+                                }
+
+                                StyledText {
+                                    text: ScreenTime.formatDuration(modelData.seconds)
+                                    font.pixelSize: Appearance.font.pixelSize.small
+                                    font.family: Appearance.font.family.numbers
+                                    color: root.colTextSecondary
+                                }
+                            }
+                        }
+
+                        // No per-app detail available (older data without per-hour breakdown)
+                        StyledText {
+                            visible: root._hourApps.length === 0
+                            Layout.fillWidth: true
+                            text: Translation.tr("Per-app detail isn't available for this period")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: root.colTextSecondary
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
                     // App list
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
-                        visible: root._appList.length > 0
+                        visible: root._appList.length > 0 && root._selectedHour < 0
 
                         StyledText {
                             text: Translation.tr("Most used")
@@ -290,7 +462,11 @@ Item {
                                 spacing: 8
 
                                 SmartAppIcon {
-                                    icon: AppSearch.guessIcon(modelData.originalId || (modelData.name || "").toLowerCase())
+                                    icon: AppSearch.guessIcon(
+                                        (modelData.name || "").toLowerCase()
+                                        || (modelData.originalId && modelData.originalId !== modelData.id ? modelData.originalId : "")
+                                        || modelData.id
+                                    )
                                     iconSize: 24
                                     implicitWidth: 24
                                     implicitHeight: 24
