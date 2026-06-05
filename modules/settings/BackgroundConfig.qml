@@ -1112,6 +1112,62 @@ ContentPage {
     }
 
     SettingsCardSection {
+        expanded: false
+        icon: "shuffle"
+        title: Translation.tr("Shuffle wallpapers")
+
+        SettingsGroup {
+            SettingsSwitch {
+                buttonIcon: "autorenew"
+                text: Translation.tr("Shuffle wallpapers automatically")
+                checked: Config.options?.background?.autoWallpaper?.enable ?? false
+                onCheckedChanged: Config.setNestedValue("background.autoWallpaper.enable", checked)
+                StyledToolTip {
+                    text: Translation.tr("Pick a random wallpaper from the folder every few minutes")
+                }
+            }
+
+            ConfigSpinBox {
+                enabled: Config.options?.background?.autoWallpaper?.enable ?? false
+                icon: "timer"
+                text: Translation.tr("Change every") + ` (${value} ${value === 1 ? Translation.tr("minute") : Translation.tr("minutes")})`
+                value: Config.options?.background?.autoWallpaper?.intervalMinutes ?? 30
+                from: 1
+                to: 1440
+                stepSize: 1
+                onValueChanged: Config.setNestedValue("background.autoWallpaper.intervalMinutes", value)
+                StyledToolTip {
+                    text: Translation.tr("How often to pick a new random wallpaper")
+                }
+            }
+
+            SettingsSwitch {
+                enabled: Config.options?.background?.autoWallpaper?.enable ?? false
+                buttonIcon: "palette"
+                text: Translation.tr("Regenerate theme colors on shuffle")
+                checked: Config.options?.background?.autoWallpaper?.generateColors ?? true
+                onCheckedChanged: Config.setNestedValue("background.autoWallpaper.generateColors", checked)
+                StyledToolTip {
+                    text: Translation.tr("When enabled, theme colors are recomputed from the new wallpaper (slower). Disable to only swap the image.")
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Shuffle folder (optional)")
+                tooltip: Translation.tr("Leave empty to shuffle within the current wallpapers folder")
+
+                MaterialTextField {
+                    Layout.fillWidth: true
+                    enabled: Config.options?.background?.autoWallpaper?.enable ?? false
+                    placeholderText: Translation.tr("Use current wallpapers folder")
+                    text: Config.options?.background?.autoWallpaper?.folder ?? ""
+                    onEditingFinished: Config.setNestedValue("background.autoWallpaper.folder", text)
+                }
+            }
+        }
+    }
+
+    SettingsCardSection {
         visible: root.isIiActive
         expanded: false
         icon: "transition_fade"
