@@ -652,6 +652,19 @@ ContentPage {
         title: Translation.tr("Bar module layout")
 
         SettingsGroup {
+            ConfigSpinBox {
+                icon: "space_bar"
+                text: Translation.tr("Flexible spacer width")
+                value: Config.options?.bar?.layout?.spacerWidth ?? 0
+                from: 0
+                to: 480
+                stepSize: 8
+                onValueChanged: Config.setNestedValue("bar.layout.spacerWidth", value)
+                StyledToolTip {
+                    text: Translation.tr("Minimum width for each Flexible spacer module. 0 keeps it fully elastic.")
+                }
+            }
+
             BarModuleOrderEditor {}
         }
     }

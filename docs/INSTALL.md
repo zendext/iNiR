@@ -1,6 +1,8 @@
 # Installation
 
-> **Arch Linux only.** The installer only supports Arch-based distros. If you're on something else, you're on your own - check the manual section below and figure out the equivalent packages for your distro. No support provided, no complaints accepted.
+> **Arch Linux only.** The installer only supports Arch-based distros. If you're on something else, you're on your own - check the manual section below and figure out the equivalent packages for your distro.
+>
+> **NixOS:** there is an experimental flake path. See [NixOS](NIXOS.md).
 
 ---
 

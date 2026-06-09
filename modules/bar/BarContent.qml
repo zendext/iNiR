@@ -184,6 +184,7 @@ Item { // Bar content region
     // Visibility still comes from Config.options.bar.modules.*; the arrays only
     // define order/zone. Falls back to the classic layout until migrated.
     readonly property bool _layoutMigrated: Config.options?.bar?.layout?.migrated === true
+    readonly property real _spacerMinimumWidth: Math.max(0, Config.options?.bar?.layout?.spacerWidth ?? 0) * Appearance.fontSizeScale
     function _zone(name, fallback) {
         const a = Config.options?.bar?.layout?.[name]
         return (root._layoutMigrated && a && a.length >= 0) ? a : fallback
@@ -804,7 +805,23 @@ Item { // Bar content region
     // edge. `spacer` is a flexible gap.
     Component { id: timerComponent; TimerIndicator { Layout.alignment: Qt.AlignVCenter } }
     Component { id: shellUpdateComponent; ShellUpdateIndicator { Layout.alignment: Qt.AlignVCenter } }
-    Component { id: spacerComponent; Item { Layout.fillWidth: true; Layout.fillHeight: true } }
+    Component {
+        id: spacerComponent
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumWidth: root._spacerMinimumWidth
+            implicitWidth: root._spacerMinimumWidth
+            Behavior on implicitWidth {
+                enabled: Appearance.animationsEnabled
+                NumberAnimation {
+                    duration: Appearance.animation.elementResize.duration
+                    easing.type: Appearance.animation.elementResize.type
+                    easing.bezierCurve: Appearance.animation.elementResize.bezierCurve
+                }
+            }
+        }
+    }
     Component {
         id: trayComponent
         SysTray {

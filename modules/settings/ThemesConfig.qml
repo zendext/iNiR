@@ -1310,48 +1310,60 @@ ContentPage {
                 Config.setNestedValue(`appearance.globalStyleCornerStyles.${styleId}`, cornerStyle)
             }
 
-            function _applyGlobalStyle(styleId) {
-                _log("[GlobalStyle] apply", styleId)
+            function _globalStyleValues(styleId) {
                 const cornerStyle = getCornerStyleForGlobalStyle(styleId)
 
                 if (styleId === "cards") {
-                    Config.setNestedValue("dock.cardStyle", true)
-                    Config.setNestedValue("sidebar.cardStyle", true)
-                    Config.setNestedValue("bar.cornerStyle", cornerStyle)
-                    Config.setNestedValue("appearance.transparency.enable", false)
-                    return;
+                    return {
+                        "dock.cardStyle": true,
+                        "sidebar.cardStyle": true,
+                        "bar.cornerStyle": cornerStyle,
+                        "appearance.transparency.enable": false,
+                    }
                 }
 
                 if (styleId === "aurora") {
-                    Config.setNestedValue("dock.cardStyle", false)
-                    Config.setNestedValue("sidebar.cardStyle", false)
-                    Config.setNestedValue("bar.cornerStyle", cornerStyle)
-                    Config.setNestedValue("appearance.transparency.enable", true)
-                    return;
+                    return {
+                        "dock.cardStyle": false,
+                        "sidebar.cardStyle": false,
+                        "bar.cornerStyle": cornerStyle,
+                        "appearance.transparency.enable": true,
+                    }
                 }
 
                 if (styleId === "inir") {
-                    Config.setNestedValue("dock.cardStyle", false)
-                    Config.setNestedValue("sidebar.cardStyle", false)
-                    Config.setNestedValue("bar.cornerStyle", cornerStyle)
-                    Config.setNestedValue("appearance.transparency.enable", false)
-                    return;
+                    return {
+                        "dock.cardStyle": false,
+                        "sidebar.cardStyle": false,
+                        "bar.cornerStyle": cornerStyle,
+                        "appearance.transparency.enable": false,
+                    }
                 }
 
                 if (styleId === "angel") {
-                    Config.setNestedValue("dock.cardStyle", false)
-                    Config.setNestedValue("sidebar.cardStyle", false)
                     // HUG mode (0) is incompatible with angel — force Float (1) if saved as Hug
-                    Config.setNestedValue("bar.cornerStyle", cornerStyle === 0 ? 1 : cornerStyle)
-                    Config.setNestedValue("appearance.transparency.enable", true)
-                    return;
+                    return {
+                        "dock.cardStyle": false,
+                        "sidebar.cardStyle": false,
+                        "bar.cornerStyle": cornerStyle === 0 ? 1 : cornerStyle,
+                        "appearance.transparency.enable": true,
+                    }
                 }
 
                 // material
-                Config.setNestedValue("dock.cardStyle", false)
-                Config.setNestedValue("sidebar.cardStyle", false)
-                Config.setNestedValue("bar.cornerStyle", cornerStyle)
-                Config.setNestedValue("appearance.transparency.enable", false)
+                return {
+                    "dock.cardStyle": false,
+                    "sidebar.cardStyle": false,
+                    "bar.cornerStyle": cornerStyle,
+                    "appearance.transparency.enable": false,
+                }
+            }
+
+            function _applyGlobalStyle(styleId) {
+                _log("[GlobalStyle] apply", styleId)
+                let values = globalStyleGroup._globalStyleValues(styleId)
+                values["appearance.globalStyle"] = styleId
+                Config.setNestedValues(values)
             }
 
             ContentSubsection {
@@ -1361,7 +1373,6 @@ ContentPage {
                     currentValue: globalStyleGroup.currentStyle
                     onSelected: (newValue) => {
                         _log("[GlobalStyle] selected", newValue)
-                        Config.setNestedValue("appearance.globalStyle", newValue)
                         globalStyleGroup._applyGlobalStyle(newValue)
                     }
                     options: [
@@ -1386,6 +1397,7 @@ ContentPage {
     }
 
     SettingsCardSection {
+        id: auroraStyleEditorSection
         visible: Appearance.auroraEverywhere && !Appearance.angelEverywhere
         expanded: false
         icon: "blur_on"
@@ -1394,13 +1406,14 @@ ContentPage {
         SettingsGroup {
             Loader {
                 Layout.fillWidth: true
-                active: Appearance.auroraEverywhere && !Appearance.angelEverywhere
+                active: auroraStyleEditorSection.expanded && Appearance.auroraEverywhere && !Appearance.angelEverywhere
                 source: "AuroraStyleEditor.qml"
             }
         }
     }
 
     SettingsCardSection {
+        id: angelStyleEditorSection
         visible: Appearance.angelEverywhere
         expanded: false
         icon: "raven"
@@ -1409,7 +1422,7 @@ ContentPage {
         SettingsGroup {
             Loader {
                 Layout.fillWidth: true
-                active: Appearance.angelEverywhere
+                active: angelStyleEditorSection.expanded && Appearance.angelEverywhere
                 source: "AngelStyleEditor.qml"
             }
         }

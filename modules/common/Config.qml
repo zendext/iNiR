@@ -1211,6 +1211,7 @@ Singleton {
                     property list<string> center: ["workspaces"]
                     property list<string> centerRight: ["clock", "utilButtons", "battery"]
                     property list<string> right: ["rightSidebarButton", "tray", "timer", "shellUpdate", "spacer", "weather"]
+                    property int spacerWidth: 0 // Minimum width for each flexible spacer, in px. 0 keeps it pure flex.
                     // Set true once the old fixed layout has been translated into
                     // the arrays above (handled by a migration). Until then the
                     // bar falls back to its classic hardcoded layout so existing
