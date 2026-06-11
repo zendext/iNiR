@@ -240,10 +240,12 @@
           cfg = config.programs.inir;
           wantedUnit = compositorUnit cfg.service.compositor;
         in
-        lib.mkMerge [
-          (commonOptions { inherit config lib pkgs; })
-          {
-            config = lib.mkIf cfg.enable {
+        {
+          # commonOptions is itself a module; merging it via mkMerge would put
+          # its `options` declarations on the config side and fail evaluation.
+          imports = [ commonOptions ];
+
+          config = lib.mkIf cfg.enable {
               environment.systemPackages = [ cfg.package ];
 
               systemd.user.services.inir = lib.mkIf cfg.service.enable {
@@ -273,8 +275,7 @@
                 };
               };
             };
-          }
-        ];
+          };
 
       mkHomeModule = { config, lib, pkgs, ... }:
         let
@@ -282,10 +283,10 @@
           wantedUnit = compositorUnit cfg.service.compositor;
           env = serviceEnvironment cfg;
         in
-        lib.mkMerge [
-          (commonOptions { inherit config lib pkgs; })
-          {
-            options.programs.inir.configSymlink = {
+        {
+          imports = [ commonOptions ];
+
+          options.programs.inir.configSymlink = {
               enable = lib.mkOption {
                 type = lib.types.bool;
                 default = false;
@@ -328,8 +329,7 @@
                 Install.WantedBy = lib.optional (wantedUnit != null) wantedUnit;
               };
             };
-          }
-        ];
+          };
     in
     {
       packages = forAllSystems (pkgs: {
@@ -342,6 +342,10 @@
 
       homeModules.default = mkHomeModule;
       homeModules.inir = mkHomeModule;
+
+      # Conventional alias most Home Manager setups look for.
+      homeManagerModules.default = mkHomeModule;
+      homeManagerModules.inir = mkHomeModule;
 
       formatter = forAllSystems (pkgs: pkgs.nixpkgs-fmt);
     };
