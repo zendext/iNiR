@@ -1072,39 +1072,43 @@ Scope {
                                             required property var modelData
                                             Layout.fillWidth: true
                                             spacing: 0
+                                            readonly property color headerAccentColor: Appearance.angelEverywhere ? Appearance.angel.colPrimary
+                                                : Appearance.inirEverywhere ? Appearance.inir.colAccent
+                                                : Appearance.colors.colPrimary
 
                                             // ── Category header ──
                                             Item {
                                                 width: parent.width
-                                                height: visible ? (navItem.index > 0 ? 24 : 14) : 0
+                                                height: visible ? (navItem.index > 0 ? 32 : 20) : 0
                                                 visible: navItem.modelData.type === "header"
 
-                                                Rectangle {
-                                                    width: parent.width - 16
-                                                    height: 1
-                                                    anchors.horizontalCenter: parent.horizontalCenter
-                                                    anchors.top: parent.top
-                                                    anchors.topMargin: 6
-                                                    color: Appearance.angelEverywhere ? Appearance.angel.colCardBorder
-                                                         : Appearance.inirEverywhere ? Appearance.inir.colBorderSubtle
-                                                         : Appearance.m3colors.m3outlineVariant
-                                                    opacity: 0.4
-                                                    visible: navItem.index > 0
+                                                Behavior on height {
+                                                    enabled: Appearance.animationsEnabled
+                                                    animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
                                                 }
 
                                                 StyledText {
                                                     anchors.left: parent.left
                                                     anchors.leftMargin: 12
                                                     anchors.bottom: parent.bottom
-                                                    anchors.bottomMargin: 2
+                                                    anchors.bottomMargin: 4
                                                     text: navItem.modelData.label || ""
                                                     font {
                                                         family: Appearance.font.family.main
-                                                        pixelSize: Appearance.font.pixelSize.smaller
+                                                        pixelSize: Appearance.font.pixelSize.small
                                                         weight: Font.DemiBold
                                                     }
-                                                    color: Appearance.colors.colSubtext
-                                                    opacity: 0.7
+                                                    color: navItem.headerAccentColor
+                                                    opacity: 0.95
+
+                                                    Behavior on color {
+                                                        enabled: Appearance.animationsEnabled
+                                                        animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                                                    }
+                                                    Behavior on opacity {
+                                                        enabled: Appearance.animationsEnabled
+                                                        animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                                                    }
                                                 }
                                             }
 
