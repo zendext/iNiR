@@ -5,6 +5,35 @@ All notable changes to iNiR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.27.0] - 2026-06-11
+
+Screenshots grew a native annotation editor, the AI chat got a real model picker, the overview learned to be an app grid, and browser media finally shows up in the players list.
+
+### Added
+- **Native annotation editor**: the screenshot Edit action opens an in-shell QML editor instead of shelling out to swappy/satty (which remain available as a fallback toggle).
+- **Unified snip menu** on `Ctrl+Shift+S`: copy, edit, search, OCR, and record from one surface. Migration 030 updates the keybind.
+- **All-apps grid in the overview**: optional replacement for workspace previews — a scrollable grid of every installed app, alphabetical or grouped by category.
+- **Searchable AI model picker**: the model pill in the AI chat morphs open into a searchable, provider-grouped list with key/local indicators, plus provider presets.
+- **Detailed weather forecast panel** in both panel families.
+- **Browser MPRIS via plasma-browser-integration**: browser tabs show up as media players. Migration 029 wires it up.
+- **Opt-in auto light/dark** scheme from wallpaper brightness.
+- **Background vignette and bar effects** rendered over the workspace.
+- **Experimental NixOS support** (flake), plus assorted settings fixes that rode along.
+
+### Changed
+- Settings navigation category headers use the accent color with animated transitions instead of divider lines.
+- `make install` rewrites the systemd cleanup path, and repo-linked installs protect the systemd unit from local rewrites.
+
+### Fixed
+- App launcher desktop entry execution.
+- OSD now shows on all selected outputs, not just one.
+- Dock kept showing a pinned app as running (indicator + preview) after its last window closed, until an unrelated focus change. Window state is now published reactively per app.
+- AI model picker popup rendered without a background (it was stacked under the empty-state placeholder) and could overflow the sidebar edge.
+- Clipboard selected-item text stays readable on any palette.
+- Theme apply no longer leaves a resident Chrome process behind.
+- CustomIcon no longer tries to load empty sources.
+- Annotation editor export.
+
 ## [2.26.0] - 2026-06-05
 
 Release with the new bar layout, Screen Time, World Clock, the settings polish pass, better diagnostics, and a pile of fixes that should have been boring but weren't.
