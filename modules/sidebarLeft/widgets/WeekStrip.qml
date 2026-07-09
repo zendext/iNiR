@@ -36,14 +36,23 @@ Item {
         for (let i = 0; i < 7; i++) {
             const d = new Date(weekStart)
             d.setDate(weekStart.getDate() + i)
+            const holidayInfo = CalendarCn.getHolidayInfo(d)
+            const lunarInfo = CalendarCn.getLunarInfo(d)
             const isToday = d.getDate() === today.getDate() &&
                            d.getMonth() === today.getMonth() &&
                            d.getFullYear() === today.getFullYear()
             arr.push({
+                date: d,
                 dayNum: d.getDate(),
                 dayName: locale.toString(d, "ddd").substring(0, 2),
                 isToday: isToday && weekOffset === 0,
-                isWeekend: d.getDay() === 0 || d.getDay() === 6
+                isWeekend: d.getDay() === 0 || d.getDay() === 6,
+                holidayInfo: holidayInfo,
+                lunarInfo: lunarInfo,
+                lunarLabel: CalendarCn.getLunarLabel(lunarInfo),
+                statusLabel: (Config.options?.calendar?.china?.showWorkStatus ?? true)
+                    ? CalendarCn.getWorkStatusType(holidayInfo)
+                    : ""
             })
         }
         return arr
@@ -161,7 +170,7 @@ Item {
                 required property var modelData
                 required property int index
                 Layout.fillWidth: true
-                implicitHeight: 36
+                implicitHeight: 46
 
                 ColumnLayout {
                     anchors.centerIn: parent
@@ -174,15 +183,41 @@ Item {
                         color: root.colSubtext
                     }
 
+                    RowLayout {
+                        Layout.alignment: Qt.AlignHCenter
+                        spacing: 2
+
+                        StyledText {
+                            Layout.alignment: Qt.AlignVCenter
+                            text: modelData.dayNum
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            font.weight: modelData.isToday ? Font.Bold : Font.Normal
+                            font.family: Appearance.font.family.numbers
+                            color: modelData.isToday ? root.colPrimary
+                                 : modelData.isWeekend ? root.colSubtext
+                                 : root.colText
+                        }
+
+                        StyledText {
+                            Layout.alignment: Qt.AlignVCenter
+                            visible: modelData.statusLabel.length > 0
+                            text: modelData.statusLabel
+                            font.pixelSize: Math.max(7, Appearance.font.pixelSize.smallest * 0.75)
+                            font.weight: Font.Bold
+                            color: root.colPrimary
+                        }
+                    }
+
                     StyledText {
                         Layout.alignment: Qt.AlignHCenter
-                        text: modelData.dayNum
-                        font.pixelSize: Appearance.font.pixelSize.small
-                        font.weight: modelData.isToday ? Font.Bold : Font.Normal
-                        font.family: Appearance.font.family.numbers
-                        color: modelData.isToday ? root.colPrimary
-                             : modelData.isWeekend ? root.colSubtext
-                             : root.colText
+                        visible: modelData.lunarLabel.length > 0
+                        text: modelData.lunarLabel
+                        width: 34
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                        font.pixelSize: Math.max(7, Appearance.font.pixelSize.smallest * 0.72)
+                        color: modelData.isToday ? root.colPrimary : root.colSubtext
                     }
                 }
             }
