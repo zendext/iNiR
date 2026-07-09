@@ -677,11 +677,11 @@ ContentPage {
                 spacing: Appearance.sizes.spacingSmall
 
                 property string selectedMonitor: {
+                    const focused = WallpaperListener.getFocusedMonitor()
+                    if (focused) return focused
                     const primary = GlobalStates.primaryScreen
                     const primaryName = primary ? (WallpaperListener.getMonitorName(primary) ?? "") : ""
                     if (primaryName) return primaryName
-                    const focused = WallpaperListener.getFocusedMonitor()
-                    if (focused) return focused
                     const screens = Quickshell.screens
                     if (!screens || screens.length === 0) return ""
                     return WallpaperListener.getMonitorName(screens[0]) ?? ""

@@ -18,7 +18,7 @@ Scope {
         ? (Quickshell.screens.find(s => s.name === NiriService.currentOutput) ?? GlobalStates.primaryScreen)
         : (Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? GlobalStates.primaryScreen)
     readonly property string focusedMonitorName: focusedScreen?.name ?? ""
-    readonly property var defaultScreen: GlobalStates.primaryScreen ?? focusedScreen
+    readonly property var defaultScreen: focusedScreen ?? GlobalStates.primaryScreen
     readonly property string defaultMonitorName: defaultScreen?.name ?? focusedMonitorName
 
     property bool _pendingCoverflow: false
@@ -54,10 +54,8 @@ Scope {
     }
 
     function _openWithMonitor(monName) {
-        if (monName) {
-            GlobalStates.wallpaperSelectorTargetMonitor = monName
-            Config.setNestedValue("wallpaperSelector.targetMonitor", monName)
-        }
+        GlobalStates.wallpaperSelectorTargetMonitor = monName ? monName : ""
+        Config.setNestedValue("wallpaperSelector.targetMonitor", monName ? monName : "")
         GlobalStates.wallpaperSelectorOpen = true
     }
 
@@ -186,7 +184,7 @@ Scope {
             const multiMon = Config.options?.background?.multiMonitor?.enable ?? false
             const explicitMonitor = Config.options?.wallpaperSelector?.targetMonitor ?? ""
 
-            if (!explicitMonitor && multiMon && !root.defaultMonitorName && CompositorService.isNiri && !niriOutputDetector.running) {
+            if (!explicitMonitor && multiMon && CompositorService.isNiri && !niriOutputDetector.running) {
                 root._pendingCoverflow = true
                 niriOutputDetector.exec(["niri", "msg", "-j", "focused-output"])
                 return
@@ -224,7 +222,7 @@ Scope {
             if (multiMon) {
                 // For Niri: query focused output asynchronously (NiriService.currentOutput
                 // can be stale after a previous PanelWindow changed compositor focus)
-                if (CompositorService.isNiri && !root.defaultMonitorName && !niriOutputDetector.running) {
+                if (CompositorService.isNiri && !niriOutputDetector.running) {
                     niriOutputDetector.exec(["niri", "msg", "-j", "focused-output"])
                     return
                 }
