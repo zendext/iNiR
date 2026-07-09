@@ -109,19 +109,26 @@ Item {
         return colors
     }
 
+    function getHolidayInfoForDay(day: int, weekRow: int, dayIndex: int): var {
+        const targetDate = _getDateForCell(day, weekRow, dayIndex)
+        return CalendarCn.getHolidayInfo(targetDate)
+    }
+
+    function getLunarInfoForDay(day: int, weekRow: int, dayIndex: int): var {
+        const targetDate = _getDateForCell(day, weekRow, dayIndex)
+        return CalendarCn.getLunarInfo(targetDate)
+    }
+
     // Resolve a calendar cell to a real Date object
     function _getDateForCell(day: int, weekRow: int, dayIndex: int): var {
         const cellData = root.calendarLayout[weekRow]?.[dayIndex]
         if (!cellData) return null
         const year = root.viewingDate.getFullYear()
         const month = root.viewingDate.getMonth()
-        let targetMonth = month
-        let targetYear = year
-        if (cellData.today === -1) {
-            if (month === 0) { targetMonth = 11; targetYear = year - 1 }
-            else targetMonth = month - 1
-        }
-        return new Date(targetYear, targetMonth, day)
+        const firstOfMonth = new Date(year, month, 1)
+        const firstDayOfWeek = root.locale?.firstDayOfWeek ?? 1
+        const offset = (firstOfMonth.getDay() - firstDayOfWeek + 7) % 7
+        return new Date(year, month, 1 - offset + (weekRow * 7) + dayIndex)
     }
 
     function openDayDetail(date: var): void {
@@ -311,10 +318,22 @@ Item {
                             delegate: CalendarDayButton {
                                 required property int index
                                 required property int modelData
+                                readonly property var cell: root.calendarLayout[modelData][index]
+                                readonly property var holidayInfo: root.getHolidayInfoForDay(cell.day, modelData, index)
+                                readonly property var lunarInfo: root.getLunarInfoForDay(cell.day, modelData, index)
+                                readonly property string workStatus: (Config.options?.calendar?.china?.showWorkStatus ?? true)
+                                    ? CalendarCn.getWorkStatusType(holidayInfo)
+                                    : ""
                                 day: root.calendarLayout[modelData][index].day
                                 isToday: root.calendarLayout[modelData][index].today
                                 eventCount: root.getEventCountForDay(root.calendarLayout[modelData][index].day, modelData, index)
                                 sourceColors: root.getSourceColorsForDay(root.calendarLayout[modelData][index].day, modelData, index)
+                                subLabel: CalendarCn.getLunarLabel(lunarInfo)
+                                statusLabel: workStatus
+                                statusColor: workStatus === "休"
+                                    ? root.colPrimary
+                                    : (Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
+                                        : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext)
                                 onClicked: {
                                     const targetDate = root._getDateForCell(root.calendarLayout[modelData][index].day, modelData, index)
                                     if (targetDate) {

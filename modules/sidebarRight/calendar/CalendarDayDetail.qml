@@ -64,6 +64,13 @@ Item {
         }
         return false
     }
+    readonly property var holidayInfo: CalendarCn.getHolidayInfo(root.selectedDate)
+    readonly property var lunarInfo: CalendarCn.getLunarInfo(root.selectedDate)
+    readonly property string lunarLabel: CalendarCn.getLunarLabel(root.lunarInfo)
+    readonly property string workStatus: (Config.options?.calendar?.china?.showWorkStatus ?? true)
+        ? CalendarCn.getWorkStatusType(root.holidayInfo)
+        : ""
+    readonly property bool hasCnCalendarInfo: root.lunarLabel.length > 0 || root.workStatus.length > 0 || String(root.holidayInfo?.name ?? "").length > 0
 
     function _buildTimeGroups(): var {
         if (!root.selectedDate) return []
@@ -189,6 +196,50 @@ Item {
 
                 StyledToolTip {
                     text: Translation.tr("Add event")
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: root.hasCnCalendarInfo
+            spacing: 6
+
+            MaterialSymbol {
+                text: "calendar_month"
+                iconSize: 14
+                color: root.colSubtext
+                opacity: 0.8
+            }
+
+            StyledText {
+                Layout.fillWidth: true
+                text: {
+                    const parts = []
+                    if (root.lunarLabel.length > 0) parts.push(root.lunarLabel)
+                    const holidayName = String(root.holidayInfo?.name ?? "")
+                    if (holidayName.length > 0) parts.push(holidayName)
+                    return parts.join(" · ")
+                }
+                font.pixelSize: Appearance.font.pixelSize.smallest
+                color: root.colSubtext
+                elide: Text.ElideRight
+            }
+
+            Rectangle {
+                visible: root.workStatus.length > 0
+                Layout.preferredWidth: statusText.implicitWidth + 10
+                Layout.preferredHeight: 20
+                radius: root.cardRadius
+                color: ColorUtils.transparentize(root.workStatus === "休" ? root.colPrimary : root.colSubtext, 0.86)
+
+                StyledText {
+                    id: statusText
+                    anchors.centerIn: parent
+                    text: root.workStatus
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.weight: Font.DemiBold
+                    color: root.workStatus === "休" ? root.colPrimary : root.colSubtext
                 }
             }
         }

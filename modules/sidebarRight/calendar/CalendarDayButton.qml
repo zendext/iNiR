@@ -15,6 +15,12 @@ RippleButton {
     property int eventCount: 0
     // Source colors for multi-colored dots (from CalendarSync + local events)
     property var sourceColors: []
+    property string subLabel: ""
+    property string statusLabel: ""
+    property color statusColor: Appearance.angelEverywhere ? Appearance.angel.colPrimary
+        : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary
+    readonly property bool hasSubLabel: subLabel.length > 0 && !isHeader
+    readonly property bool hasStatusLabel: statusLabel.length > 0 && !isHeader
 
     Layout.fillWidth: false
     Layout.fillHeight: false
@@ -28,30 +34,66 @@ RippleButton {
     contentItem: Item {
         anchors.fill: parent
 
-        StyledText {
+        ColumnLayout {
             anchors.centerIn: parent
-            anchors.verticalCenterOffset: (button.eventCount > 0 && !button.isHeader) ? -2 : 0
-            text: button.day
-            horizontalAlignment: Text.AlignHCenter
-            font.weight: button.bold ? Font.DemiBold : Font.Normal
-            color: button.isHeader && (button.isToday == 1)
-                ? (Appearance.angelEverywhere ? Appearance.angel.colPrimary
-                    : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary)
-                : (button.isToday == 1)
+            anchors.verticalCenterOffset: button.hasSubLabel ? -1 : ((button.eventCount > 0 && !button.isHeader) ? -2 : 0)
+            spacing: button.hasSubLabel ? -2 : 0
+
+            StyledText {
+                Layout.alignment: Qt.AlignHCenter
+                text: button.day
+                horizontalAlignment: Text.AlignHCenter
+                font.weight: button.bold ? Font.DemiBold : Font.Normal
+                color: button.isHeader && (button.isToday == 1)
+                    ? (Appearance.angelEverywhere ? Appearance.angel.colPrimary
+                        : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary)
+                    : (button.isToday == 1)
+                        ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
+                            : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary : Appearance.colors.colOnPrimary)
+                        : (button.isToday == 0)
+                            ? (Appearance.angelEverywhere ? Appearance.angel.colText
+                                : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1)
+                            : (Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
+                                : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary
+                                : Appearance.auroraEverywhere ? Appearance.colors.colSubtext
+                                : Appearance.colors.colOutlineVariant)
+
+                Behavior on color {
+                    enabled: Appearance.animationsEnabled
+                    animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
+            }
+
+            StyledText {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.maximumWidth: button.width - 8
+                visible: button.hasSubLabel
+                text: button.subLabel
+                horizontalAlignment: Text.AlignHCenter
+                font.pixelSize: Appearance.font.pixelSize.smallest
+                color: button.isToday == 1
                     ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
                         : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary : Appearance.colors.colOnPrimary)
-                    : (button.isToday == 0)
-                        ? (Appearance.angelEverywhere ? Appearance.angel.colText
-                            : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1)
-                        : (Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
-                            : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary
-                            : Appearance.auroraEverywhere ? Appearance.colors.colSubtext
-                            : Appearance.colors.colOutlineVariant)
-
-            Behavior on color {
-                enabled: Appearance.animationsEnabled
-                animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    : (Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
+                        : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext)
+                opacity: button.isToday == 1 ? 0.78 : 0.9
+                elide: Text.ElideRight
             }
+        }
+
+        StyledText {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 1
+            anchors.rightMargin: 2
+            visible: button.hasStatusLabel
+            text: button.statusLabel
+            font.pixelSize: Appearance.font.pixelSize.smallest
+            font.weight: Font.DemiBold
+            color: button.isToday == 1
+                ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
+                    : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary : Appearance.colors.colOnPrimary)
+                : button.statusColor
         }
 
         // Multi-colored event indicator dots
@@ -64,7 +106,7 @@ RippleButton {
             }
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 3
+            anchors.bottomMargin: button.hasSubLabel ? 1 : 3
             spacing: 2
 
             Repeater {
