@@ -773,6 +773,7 @@
         "suspend": 3,
         "chargeLimit": {
             "enable": false,
+            "startThreshold": 60,
             "threshold": 80
         }
     },

@@ -1302,6 +1302,7 @@ Singleton {
                 property bool notifyFull: true
                 property JsonObject chargeLimit: JsonObject {
                     property bool enable: false
+                    property int startThreshold: 60
                     property int threshold: 80
                 }
             }

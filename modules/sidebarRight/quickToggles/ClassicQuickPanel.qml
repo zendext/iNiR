@@ -52,6 +52,8 @@ AbstractQuickPanel {
         
         GameMode {}
         
+        BatteryProtectionToggle {}
+
         CloudflareWarp {}
     }
 }
