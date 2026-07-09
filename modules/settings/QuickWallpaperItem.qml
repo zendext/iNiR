@@ -96,6 +96,31 @@ MouseArea {
                 }
             }
 
+            Rectangle {
+                visible: root.isDirectory
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: Math.max(22, folderName.implicitHeight + 8)
+                radius: Appearance.rounding.small
+                color: ColorUtils.transparentize(root.isHovered ? Appearance.colors.colPrimary : Appearance.colors.colLayer0, 0.18)
+
+                StyledText {
+                    id: folderName
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 6
+                    anchors.rightMargin: 6
+                    text: root.fileModelData.fileName
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.weight: Font.Medium
+                    color: root.colText
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
+                }
+            }
+
             // Selection indicator
             MaterialSymbol {
                 anchors.top: parent.top
