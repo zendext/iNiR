@@ -37,6 +37,9 @@ Singleton {
     property int cpuTemp: 0
     property int gpuTemp: 0
     property int maxTemp: Math.max(cpuTemp, gpuTemp)
+    readonly property string temperatureSource: Config.options?.bar?.resources?.temperatureSource ?? Config.options?.resources?.temperatureSource ?? "max"
+    property int displayTemp: temperatureSource === "cpu" ? cpuTemp : temperatureSource === "gpu" ? gpuTemp : maxTemp
+    property real displayTempPercentage: Math.min(displayTemp / 100, 1.0)
     property real tempPercentage: Math.min(maxTemp / 100, 1.0)  // Normalized to 100°C max
     property int tempWarningThreshold: 80  // Warning at 80°C
 

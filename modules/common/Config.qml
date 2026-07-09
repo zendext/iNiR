@@ -1239,6 +1239,7 @@ Singleton {
                     property int swapWarningThreshold: 85
                     property int cpuWarningThreshold: 90
                     property int gpuWarningThreshold: 90
+                    property string temperatureSource: "max" // max|cpu|gpu; controls the bar temperature indicator
                 }
                 property list<string> screenList: [] // List of names, like "eDP-1", find out with 'hyprctl monitors' command
                 property JsonObject utilButtons: JsonObject {

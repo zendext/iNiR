@@ -31,7 +31,7 @@ MouseArea {
 
         Resource {
             iconName: "thermostat"
-            percentage: ResourceUsage.tempPercentage
+            percentage: ResourceUsage.displayTempPercentage
             shown: (Config.options?.bar?.resources?.showTempIndicator ?? true) &&
                 ((Config.options?.bar?.resources?.alwaysShowTemp ?? true) || 
                     (MprisController.activePlayer?.trackTitle == null) ||

@@ -700,7 +700,8 @@
             "cpuWarningThreshold": 90,
             "gpuWarningThreshold": 90,
             "memoryWarningThreshold": 95,
-            "swapWarningThreshold": 85
+            "swapWarningThreshold": 85,
+            "temperatureSource": "max"
         },
         "screenList": [],
         "showBackground": true,
