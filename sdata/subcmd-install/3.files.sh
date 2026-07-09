@@ -480,7 +480,7 @@ elif [[ -f "dots/.config/kdeglobals" ]]; then
   install_file "dots/.config/kdeglobals" "${XDG_CONFIG_HOME}/kdeglobals"
 fi
 
-# Dolphin config — only if dolphin is installed (nautilus is now the default file manager)
+# Dolphin config — only if dolphin is installed
 if command -v dolphin &>/dev/null; then
   if [[ -f "defaults/kde/dolphinrc" ]]; then
     install_file "defaults/kde/dolphinrc" "${XDG_CONFIG_HOME}/dolphinrc"
@@ -799,9 +799,9 @@ if [[ -n "$TEXT_EDITOR" ]]; then
     done
 fi
 
-# Detect and set file manager (prefer Nautilus for GTK consistency with Niri)
+# Detect and set file manager
 FILE_MANAGER=""
-for fm in org.gnome.Nautilus.desktop thunar.desktop pcmanfm.desktop org.kde.dolphin.desktop; do
+for fm in org.kde.dolphin.desktop org.gnome.Nautilus.desktop thunar.desktop pcmanfm.desktop; do
     if [[ -f "/usr/share/applications/${fm}" ]] || [[ -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/${fm}" ]]; then
         FILE_MANAGER="$fm"
         break

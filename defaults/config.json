@@ -813,7 +813,7 @@
         "ignoredAppRegexes": [],
         "monochromeIcons": true,
         "pinnedApps": [
-            "org.gnome.Nautilus",
+            "org.kde.dolphin",
             "firefox",
             "kitty"
         ],
@@ -1286,7 +1286,7 @@
                 {
                     "icon": "folder",
                     "name": "Files",
-                    "cmd": "/usr/bin/nautilus"
+                    "cmd": "/usr/bin/dolphin"
                 },
                 {
                     "icon": "terminal",

@@ -48,7 +48,7 @@ WBarAttachedPanelContent {
     function runQuickAction(actionId: string): void {
         switch (actionId) {
         case "files":
-            ShellExec.execDetachedArgs(["/usr/bin/nautilus"], "Launch Files")
+            ShellExec.execDetachedArgs(["/usr/bin/dolphin"], "Launch Files")
             break
         case "terminal":
             AppLauncher.launch("terminal")

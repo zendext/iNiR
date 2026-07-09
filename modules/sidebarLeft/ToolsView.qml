@@ -186,7 +186,7 @@ Item {
                     ActionTile {
                         tileIcon: "folder"
                         label: Translation.tr("Files")
-                        onClicked: ShellExec.execDetachedArgs(["/usr/bin/nautilus"], "Launch Files")
+                        onClicked: ShellExec.execDetachedArgs(["/usr/bin/dolphin"], "Launch Files")
                     }
                     ActionTile {
                         tileIcon: "settings"

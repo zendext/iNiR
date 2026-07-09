@@ -277,8 +277,8 @@ ShellRoot {
         const currentPinnedApps = Config.options?.dock?.pinnedApps ?? [];
         if (currentPinnedApps.length === legacyPinnedApps.length
                 && currentPinnedApps.every((panel, idx) => panel === legacyPinnedApps[idx])) {
-            root._log("[Shell] Migrating dock.pinnedApps default terminal from foot to kitty");
-            Config.setNestedValue("dock.pinnedApps", ["org.gnome.Nautilus", "firefox", "kitty"])
+            root._log("[Shell] Migrating dock.pinnedApps default files app to Dolphin and terminal to kitty");
+            Config.setNestedValue("dock.pinnedApps", ["org.kde.dolphin", "firefox", "kitty"])
         }
 
         if (changed)
@@ -459,4 +459,3 @@ ShellRoot {
         function set(family: string): void { root.setPanelFamily(family) }
     }
 }
-
