@@ -10,6 +10,7 @@ import QtQuick.Layouts
 
 MouseArea {
     id: root
+    property bool sidebarEnabled: true
     property bool hovered: false
     implicitWidth: rowLayout.implicitWidth + 10 * 2
     implicitHeight: Appearance.sizes.barHeight
@@ -29,6 +30,7 @@ MouseArea {
             ])
             return
         }
+        if (!root.sidebarEnabled) return
         GlobalStates.sidebarRightRequestedWidget = "weather"
         GlobalStates.sidebarRightOpen = true
     }

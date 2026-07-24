@@ -12,6 +12,7 @@ import qs.services
 MouseArea {
     id: root
 
+    property bool sidebarPanelEnabled: true
     readonly property bool pinnedToBar: Persistent.states?.timer?.pinnedToBar ?? false
 
     readonly property bool pomodoroRunning: TimerService?.pomodoroRunning ?? false
@@ -84,13 +85,15 @@ MouseArea {
     }
 
     visible: implicitWidth > 0
-    implicitWidth: (anyActive || showPinnedIdle) ? pill.width + 4 : 0
+    implicitWidth: (anyActive || (showPinnedIdle && sidebarPanelEnabled)) ? pill.width + 4 : 0
     implicitHeight: Appearance.sizes.barHeight
 
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
 
     function openTimerPanel(): void {
+        if (!root.sidebarPanelEnabled) return
+
         GlobalStates.sidebarRightOpen = true
 
         if (Persistent?.states?.sidebar?.bottomGroup) {

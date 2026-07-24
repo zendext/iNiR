@@ -22,6 +22,8 @@ Item { // Bar content region
     property var screen: root.QsWindow.window?.screen
     property var brightnessMonitor: Brightness.getMonitorForScreen(screen)
     property alias backgroundItem: barBackground
+    readonly property bool isPrimaryScreen: (root.screen?.name ?? "").length > 0
+        && root.screen?.name === GlobalStates.primaryScreen?.name
 
     // Right-click context menu anchor (invisible, positioned at click)
     Item {
@@ -217,6 +219,11 @@ Item { // Bar content region
         "weather": weatherComponent,
         "spacer": spacerComponent,
     })
+    function _componentFor(id) {
+        if (!root.isPrimaryScreen && ["leftSidebarButton", "rightSidebarButton", "tray"].includes(id))
+            return null
+        return root._allComponents[id] ?? null
+    }
     // Edge zones (left/right) are RowLayouts with real slack; the centre zones
     // are content-sized pills with none. `activeWindow` only fills where there
     // is slack — in a centre pill it instead reports a clamped intrinsic width
@@ -287,6 +294,7 @@ Item { // Bar content region
         id: utilButtonsModuleComponent
         UtilButtons {
             visible: root._moduleVisible("utilButtons") && ((Config.options?.bar?.verbose ?? true) && root.useShortenedForm === 0)
+            sidebarActionsEnabled: root.isPrimaryScreen
             Layout.alignment: Qt.AlignVCenter
         }
     }
@@ -539,7 +547,7 @@ Item { // Bar content region
         onScrollUp: root.performScrollAction(root.leftAction, true)
         onMovedAway: root.closeOSD(root.leftAction)
         onPressed: event => {
-            if (event.button === Qt.LeftButton)
+            if (event.button === Qt.LeftButton && root.isPrimaryScreen)
                 GlobalStates.sidebarLeftOpen = !GlobalStates.sidebarLeftOpen;
             else if (event.button === Qt.RightButton)
                 root.openBarContextMenu(event.x, event.y, barLeftSideMouseArea)
@@ -571,7 +579,7 @@ Item { // Bar content region
                     Layout.alignment: Qt.AlignVCenter
                     Layout.fillWidth: root._fillWidth(modelData, "left")
                     Layout.fillHeight: root._fillHeight(modelData)
-                    sourceComponent: root._allComponents[modelData] ?? null
+                    sourceComponent: root._componentFor(modelData)
                     onLoaded: if (modelData === "activeWindow" && item) item.fillSlot = true
                 }
             }
@@ -613,7 +621,7 @@ Item { // Bar content region
                     Layout.alignment: Qt.AlignVCenter
                     Layout.fillWidth: root._fillWidth(modelData, "center")
                     Layout.fillHeight: root._fillHeight(modelData)
-                    sourceComponent: root._allComponents[modelData] ?? null
+                    sourceComponent: root._componentFor(modelData)
                     onLoaded: if (modelData === "activeWindow" && item) item.fillSlot = false
                 }
             }
@@ -646,7 +654,7 @@ Item { // Bar content region
                     Layout.alignment: Qt.AlignVCenter
                     Layout.fillWidth: root._fillWidth(modelData, "centerLeft")
                     Layout.fillHeight: root._fillHeight(modelData)
-                    sourceComponent: root._allComponents[modelData] ?? null
+                    sourceComponent: root._componentFor(modelData)
                     onLoaded: if (modelData === "activeWindow" && item) item.fillSlot = false
                 }
             }
@@ -693,7 +701,7 @@ Item { // Bar content region
                         Layout.alignment: Qt.AlignVCenter
                         Layout.fillWidth: root._fillWidth(modelData, "centerRight")
                         Layout.fillHeight: root._fillHeight(modelData)
-                        sourceComponent: root._allComponents[modelData] ?? null
+                        sourceComponent: root._componentFor(modelData)
                         onLoaded: if (modelData === "activeWindow" && item) item.fillSlot = false
                     }
                 }
@@ -707,7 +715,7 @@ Item { // Bar content region
                 onPressed: event => {
                     if (event.button === Qt.RightButton) {
                         GlobalStates.controlPanelOpen = !GlobalStates.controlPanelOpen;
-                    } else {
+                    } else if (root.isPrimaryScreen) {
                         GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen;
                         rightCenterGroup._tapSeq++; _tapSeqTimer.restart()
                         if (rightCenterGroup._tapSeq >= 3) { rightCenterGroup._confirmFx = true; rightCenterGroup._tapSeq = 0; _fxResetTimer.restart() }
@@ -765,7 +773,7 @@ Item { // Bar content region
         onScrollUp: root.performScrollAction(root.rightAction, true)
         onMovedAway: root.closeOSD(root.rightAction)
         onPressed: event => {
-            if (event.button === Qt.LeftButton) {
+            if (event.button === Qt.LeftButton && root.isPrimaryScreen) {
                 GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen;
             } else if (event.button === Qt.RightButton) {
                 root.openBarContextMenu(event.x, event.y, barRightSideMouseArea)
@@ -800,7 +808,7 @@ Item { // Bar content region
                     Layout.fillWidth: root._fillWidth(modelData, "right")
                     Layout.fillHeight: root._fillHeight(modelData)
                     Layout.leftMargin: modelData === "weather" ? 4 : 0
-                    sourceComponent: root._allComponents[modelData] ?? null
+                    sourceComponent: root._componentFor(modelData)
                     onLoaded: if (modelData === "activeWindow" && item) item.fillSlot = true
                 }
             }
@@ -811,7 +819,13 @@ Item { // Bar content region
     // renders nearest the screen edge. `spacer` is a flexible gap.
     // The right edge zone renders RTL: the first id sits nearest the screen
     // edge. `spacer` is a flexible gap.
-    Component { id: timerComponent; TimerIndicator { Layout.alignment: Qt.AlignVCenter } }
+    Component {
+        id: timerComponent
+        TimerIndicator {
+            sidebarPanelEnabled: root.isPrimaryScreen
+            Layout.alignment: Qt.AlignVCenter
+        }
+    }
     Component { id: shellUpdateComponent; ShellUpdateIndicator { Layout.alignment: Qt.AlignVCenter } }
     Component {
         id: spacerComponent
@@ -846,7 +860,11 @@ Item { // Bar content region
         Loader {
             active: root._moduleVisible("weather") && (Config.options?.bar?.weather?.enable ?? false)
             visible: active
-            sourceComponent: BarGroup { WeatherBar {} }
+            sourceComponent: BarGroup {
+                WeatherBar {
+                    sidebarEnabled: root.isPrimaryScreen
+                }
+            }
         }
     }
     Component {

@@ -12,6 +12,7 @@ import Quickshell.Services.UPower
 Item {
     id: root
     property bool borderless: Config.options?.bar?.borderless ?? false
+    property bool sidebarActionsEnabled: true
     implicitWidth: rowLayout.implicitWidth + rowLayout.spacing * 2
     implicitHeight: rowLayout.implicitHeight
 
@@ -122,7 +123,7 @@ Item {
         }
 
         Loader {
-            active: Config.options?.bar?.utilButtons?.showNotepad ?? true
+            active: root.sidebarActionsEnabled && (Config.options?.bar?.utilButtons?.showNotepad ?? true)
             visible: active
             sourceComponent: CircleUtilButton {
                 Layout.alignment: Qt.AlignVCenter
