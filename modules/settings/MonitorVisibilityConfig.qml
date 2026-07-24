@@ -33,19 +33,7 @@ ContentPage {
     }
 
     function primaryScreenName(): string {
-        const preferred = Config.options?.display?.primaryMonitor ?? ""
-        const names = connectedScreenNames()
-        if (preferred && names.includes(preferred))
-            return preferred
-        return names.length > 0 ? names[0] : ""
-    }
-
-    function monitorOptions(): var {
-        let opts = [{ displayName: Translation.tr("Auto (first available)"), icon: "auto_mode", value: "" }]
-        const names = connectedScreenNames()
-        for (let i = 0; i < names.length; i++)
-            opts.push({ displayName: names[i], icon: "monitor", value: names[i] })
-        return opts
+        return GlobalStates.primaryScreen?.name ?? ""
     }
 
     function monitorResolution(screen: var): string {
@@ -225,12 +213,6 @@ ContentPage {
                 Layout.alignment: Qt.AlignVCenter
             }
 
-            RippleButtonWithIcon {
-                visible: !primary
-                materialIcon: "low_priority"
-                mainText: Translation.tr("Make primary")
-                onClicked: if (screenName.length > 0) Config.setNestedValue("display.primaryMonitor", screenName)
-            }
         }
     }
 
@@ -369,17 +351,6 @@ ContentPage {
                 Layout.fillWidth: true
                 materialIcon: "info"
                 text: Translation.tr("This page controls where iNiR shell surfaces appear. It does not change monitor resolution, scale, rotation, or physical output layout.")
-            }
-
-            ContentSubsection {
-                title: Translation.tr("Primary monitor")
-                tooltip: Translation.tr("Used as the default output when a popup cannot infer the focused monitor.")
-
-                ConfigSelectionArray {
-                    currentValue: Config.options?.display?.primaryMonitor ?? ""
-                    options: root.monitorOptions()
-                    onSelected: newValue => Config.setNestedValue("display.primaryMonitor", newValue)
-                }
             }
 
             ContentSubsection {

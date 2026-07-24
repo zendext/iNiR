@@ -21,7 +21,6 @@ PopupWindow {
     property string barPosition: "top"
     property var appEntry
     property Item anchorItem
-    property var anchorWindow
 
     readonly property bool isVertical: barPosition === "left" || barPosition === "right"
 
@@ -89,7 +88,6 @@ PopupWindow {
 
     // Anchor popup to appear on the OPPOSITE side of where the bar is
     anchor {
-        window: root.anchorWindow
         adjustment: PopupAdjustment.Slide
         item: root.anchorItem
         gravity: root.barPosition === "top" ? Edges.Bottom

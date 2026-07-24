@@ -36,19 +36,7 @@ WSettingsPage {
     }
 
     function primaryScreenName(): string {
-        const preferred = Config.options?.display?.primaryMonitor ?? ""
-        const names = connectedScreenNames()
-        if (preferred && names.includes(preferred))
-            return preferred
-        return names.length > 0 ? names[0] : ""
-    }
-
-    function monitorOptions(): var {
-        let opts = [{ value: "", displayName: Translation.tr("Auto (first available)") }]
-        const names = connectedScreenNames()
-        for (let i = 0; i < names.length; i++)
-            opts.push({ value: names[i], displayName: names[i] })
-        return opts
+        return GlobalStates.primaryScreen?.name ?? ""
     }
 
     function monitorResolution(screen: var): string {
@@ -294,12 +282,6 @@ WSettingsPage {
                 Layout.alignment: Qt.AlignVCenter
             }
 
-            WButton {
-                visible: !primary
-                text: Translation.tr("Use")
-                icon.name: "checkmark"
-                onClicked: if (screenName.length > 0) Config.setNestedValue("display.primaryMonitor", screenName)
-            }
         }
     }
 
@@ -441,15 +423,6 @@ WSettingsPage {
         InfoBanner {
             iconName: "info"
             message: Translation.tr("This page controls where iNiR shell surfaces appear. It does not change monitor resolution, scale, rotation, or physical output layout.")
-        }
-
-        WSettingsDropdown {
-            label: Translation.tr("Primary monitor")
-            icon: "desktop"
-            description: Translation.tr("Fallback output for popups when the focused monitor is unknown")
-            currentValue: Config.options?.display?.primaryMonitor ?? ""
-            options: root.monitorOptions()
-            onSelected: newValue => Config.setNestedValue("display.primaryMonitor", newValue)
         }
 
         SectionLabel {

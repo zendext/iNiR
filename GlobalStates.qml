@@ -106,15 +106,47 @@ Singleton {
 
     signal requestRipple(real x, real y, string screenName)
 
-    // Primary screen: user-configured preferred monitor for single-window panels (OSD, notifications, wallpaper selector, etc.)
-    // Empty string = use compositor-focused screen, falling back to Quickshell.screens[0]
-    readonly property var primaryScreen: {
-        const name = Config.options?.display?.primaryMonitor ?? ""
-        if (name.length > 0) {
-            const s = Quickshell.screens.find(scr => scr.name === name)
-            if (s) return s
+    // Read the configured primary output once per QuickShell process. Config
+    // changes take effect after restart so visible windows never migrate live.
+    property string primaryScreenName: ""
+    property bool _primaryScreenInitialized: false
+
+    function ensurePrimaryScreen(): void {
+        const screens = Quickshell.screens
+        if (!Config.ready || !screens || screens.length === 0)
+            return
+
+        if (!root._primaryScreenInitialized) {
+            const configuredName = Config.options?.display?.primaryMonitor ?? ""
+            const configuredScreen = screens.find(screen => screen?.name === configuredName)
+            root.primaryScreenName = configuredScreen?.name ?? screens[0]?.name ?? ""
+            root._primaryScreenInitialized = root.primaryScreenName.length > 0
+            return
         }
-        return Quickshell.screens[0]
+
+        if (!screens.find(screen => screen?.name === root.primaryScreenName))
+            root.primaryScreenName = screens[0]?.name ?? ""
+    }
+
+    readonly property var primaryScreen: {
+        const screen = Quickshell.screens.find(candidate => candidate?.name === root.primaryScreenName)
+        return screen ?? Quickshell.screens[0] ?? null
+    }
+
+    Component.onCompleted: root.ensurePrimaryScreen()
+
+    Connections {
+        target: Quickshell
+        function onScreensChanged() {
+            root.ensurePrimaryScreen()
+        }
+    }
+
+    Connections {
+        target: Config
+        function onReadyChanged() {
+            root.ensurePrimaryScreen()
+        }
     }
 
     // Close other waffle popups when one opens (unless allowMultiplePanels is enabled)

@@ -19,6 +19,8 @@ Item { // Bar content region
     property var screen: root.QsWindow.window?.screen
     property var brightnessMonitor: Brightness.getMonitorForScreen(screen)
     property alias backgroundItem: barBackground
+    readonly property bool isPrimaryScreen: (root.screen?.name ?? "").length > 0
+        && root.screen?.name === GlobalStates.primaryScreen?.name
 
     // Right-click context menu anchor (invisible, positioned at click)
     Item {
@@ -234,7 +236,7 @@ Item { // Bar content region
         onScrollUp: root.brightnessMonitor.setBrightness(root.brightnessMonitor.brightness + 0.05)
         onMovedAway: GlobalStates.osdBrightnessOpen = false
         onPressed: event => {
-            if (event.button === Qt.LeftButton)
+            if (event.button === Qt.LeftButton && root.isPrimaryScreen)
                 GlobalStates.sidebarLeftOpen = !GlobalStates.sidebarLeftOpen;
             else if (event.button === Qt.RightButton)
                 root.openBarContextMenu(event.x, event.y, barTopSectionMouseArea)
@@ -246,6 +248,7 @@ Item { // Bar content region
             spacing: 10
 
             Bar.LeftSidebarButton { // Left sidebar button
+                visible: root.isPrimaryScreen
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: (Appearance.sizes.baseVerticalBarWidth - implicitWidth) / 2 + Appearance.sizes.hyprlandGapsOut
                 colBackground: buttonHovered ? Appearance.colors.colLayer1Hover : ColorUtils.transparentize(Appearance.colors.colLayer1Hover, 1)
@@ -416,7 +419,7 @@ Item { // Bar content region
         onScrollUp: Audio.incrementVolume();
         onMovedAway: GlobalStates.osdVolumeOpen = false;
         onPressed: event => {
-            if (event.button === Qt.LeftButton) {
+            if (event.button === Qt.LeftButton && root.isPrimaryScreen) {
                 GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen;
             } else if (event.button === Qt.RightButton) {
                 root.openBarContextMenu(event.x, event.y, barBottomSectionMouseArea)
@@ -434,6 +437,7 @@ Item { // Bar content region
             }
 
             Bar.SysTray {
+                visible: root.isPrimaryScreen
                 vertical: true
                 Layout.fillWidth: true
                 Layout.fillHeight: false
@@ -442,6 +446,7 @@ Item { // Bar content region
 
             RippleButton { // Right sidebar button
                 id: rightSidebarButton
+                visible: root.isPrimaryScreen
 
                 Layout.alignment: Qt.AlignBottom | Qt.AlignHCenter
                 Layout.bottomMargin: Appearance.rounding.screenRounding
