@@ -142,6 +142,7 @@ Item {
     Loader {
         active: root.barMediaPopupVisible && root.popupMode === "bar" && CompositorService.isNiri
         sourceComponent: PanelWindow {
+            screen: root.QsWindow.window?.screen
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore

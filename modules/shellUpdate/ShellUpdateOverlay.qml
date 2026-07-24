@@ -125,6 +125,7 @@ Scope {
 
     PanelWindow {
         id: window
+        screen: GlobalStates.primaryScreen
         visible: root.isOpen
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"

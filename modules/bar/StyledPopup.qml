@@ -15,6 +15,7 @@ LazyLoader {
     property bool popupHovered: false
     default property Item contentItem
     property real popupBackgroundMargin: 0
+    readonly property var targetScreen: root.QsWindow.window?.screen
 
     signal requestClose()
 
@@ -30,6 +31,7 @@ LazyLoader {
     // but visually invisible — do not use "transparent" (alpha=0 breaks input)
     PanelWindow {
         id: clickOutsideBackdrop
+        screen: root.targetScreen
         visible: root.active && root.closeOnOutsideClick
         color: Qt.rgba(0, 0, 0, 1/255)
         exclusiveZone: 0
@@ -46,6 +48,7 @@ LazyLoader {
 
     component: PanelWindow {
         id: popupWindow
+        screen: root.targetScreen
         color: "transparent"
 
         HoverHandler {

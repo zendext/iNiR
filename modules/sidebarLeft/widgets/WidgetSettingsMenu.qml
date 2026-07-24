@@ -12,6 +12,8 @@ Loader {
     id: root
     
     property Item anchorItem: parent
+    readonly property var targetWindow: root.QsWindow.window
+    readonly property var targetScreen: root.targetWindow?.screen
     
     function toggle() {
         active = !active
@@ -28,6 +30,7 @@ Loader {
         id: popupWindow
         visible: true
         
+        anchor.window: root.targetWindow
         anchor.item: root.anchorItem
         anchor.gravity: Edges.Bottom
         anchor.edges: Edges.Top
@@ -48,6 +51,7 @@ Loader {
 
         // Close on click outside (Backdrop)
         PanelWindow {
+            screen: root.targetScreen
             visible: true
             color: "transparent"
             exclusiveZone: 0

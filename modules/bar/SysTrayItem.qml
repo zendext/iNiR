@@ -79,6 +79,7 @@ MouseArea {
             trayItemMenuHandle: root.item.menu
             anchorHovered: root.containsMouse
             anchor {
+                window: root.QsWindow.window
                 item: root
                 edges: (Config.options?.bar?.vertical ?? false)
                     ? ((Config.options?.bar?.bottom ?? false) ? Edges.Left : Edges.Right)

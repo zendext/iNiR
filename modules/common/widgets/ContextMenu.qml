@@ -28,6 +28,8 @@ Loader {
     property int popupSide: 0  // For horizontal popup: Edges.Left or Edges.Right, 0 = vertical
     property real ambientShadowWidth: 1
     readonly property bool hasIcons: model.some(item => item.iconName !== undefined && item.iconName !== "")
+    readonly property var targetWindow: root.QsWindow.window
+    readonly property var targetScreen: root.targetWindow?.screen
 
     onFocusCleared: {
         if (!root.closeOnFocusLost) return;
@@ -72,6 +74,7 @@ Loader {
         }
 
         anchor {
+            window: root.targetWindow
             adjustment: (root.popupSide !== 0) 
                 ? (PopupAdjustment.ResizeX | PopupAdjustment.SlideY)
                 : (PopupAdjustment.ResizeY | PopupAdjustment.SlideX)
@@ -286,6 +289,7 @@ Loader {
 
         PanelWindow {
             id: clickOutsideBackdrop
+            screen: root.targetScreen
             visible: popupWindow.visible && CompositorService.isNiri && root.closeOnFocusLost
             color: "transparent"
             exclusiveZone: 0

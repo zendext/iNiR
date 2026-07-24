@@ -539,6 +539,7 @@ Scope {
 
         sourceComponent: PanelWindow {
             id: settingsPanel
+            screen: GlobalStates.primaryScreen
 
             visible: GlobalStates.settingsOverlayOpen ?? false
 

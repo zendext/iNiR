@@ -42,6 +42,7 @@ Scope {
 
     PanelWindow {
         id: panelRoot
+        screen: GlobalStates.primaryScreen
 
         Component.onCompleted: visible = GlobalStates.controlPanelOpen
 

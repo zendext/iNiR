@@ -423,6 +423,7 @@ Item {
         id: previewPopup
         dockHovered: root.buttonHovered
         barPosition: root.barPosition
+        anchorWindow: root.QsWindow.window
         anchor.window: root.parentWindow
     }
 }
