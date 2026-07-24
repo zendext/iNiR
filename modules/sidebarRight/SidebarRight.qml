@@ -19,6 +19,7 @@ Scope {
 
     PanelWindow {
         id: sidebarRoot
+        screen: GlobalStates.primaryScreen
 
         Component.onCompleted: {
             visible = GlobalStates.sidebarRightOpen
