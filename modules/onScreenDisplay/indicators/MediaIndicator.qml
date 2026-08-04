@@ -117,7 +117,9 @@ Item {
                     RippleButton {
                         implicitWidth: 32
                         implicitHeight: 32
-                        buttonRadius: Appearance.rounding.full
+                        cookieMorphing: true
+                        toggled: root.isPlaying
+                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius : Appearance.rounding.full
                         enabled: MprisController.canGoPrevious
                         colBackground: "transparent"
                         colBackgroundHover: Appearance.colors.colLayer1Hover
@@ -136,11 +138,11 @@ Item {
                     RippleButton {
                         implicitWidth: 32
                         implicitHeight: 32
-                        buttonRadius: Appearance.rounding.full
+                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius : Appearance.rounding.full
                         enabled: MprisController.canTogglePlaying
-                        colBackground: Appearance.colors.colPrimaryContainer
-                        colBackgroundHover: Appearance.colors.colPrimaryContainerHover
-                        colRipple: Appearance.colors.colPrimaryContainerActive
+                        colBackground: Appearance.zzzEverywhere ? Appearance.zzz.sticker : Appearance.colors.colPrimaryContainer
+                        colBackgroundHover: Appearance.zzzEverywhere ? Appearance.colors.colPrimaryHover : Appearance.colors.colPrimaryContainerHover
+                        colRipple: Appearance.zzzEverywhere ? Appearance.colors.colPrimaryActive : Appearance.colors.colPrimaryContainerActive
                         onClicked: MprisController.togglePlaying()
 
                         contentItem: MaterialSymbol {
@@ -148,14 +150,16 @@ Item {
                             text: root.isPlaying ? "pause" : "play_arrow"
                             iconSize: 18
                             fill: 1
-                            color: parent.enabled ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colSubtext
+                            color: parent.enabled
+                                ? (Appearance.zzzEverywhere ? Appearance.zzz.onSticker : Appearance.colors.colOnPrimaryContainer)
+                                : Appearance.colors.colSubtext
                         }
                     }
 
                     RippleButton {
                         implicitWidth: 32
                         implicitHeight: 32
-                        buttonRadius: Appearance.rounding.full
+                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius : Appearance.rounding.full
                         enabled: MprisController.canGoNext
                         colBackground: "transparent"
                         colBackgroundHover: Appearance.colors.colLayer1Hover

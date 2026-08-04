@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 
 EXCLUDED_APP_NAMES = (
+    "quickshell",
     "discord",
     "vesktop",
     "webRTC",
@@ -30,6 +31,7 @@ EXCLUDED_APP_NAMES = (
 )
 
 EXCLUDED_BINARIES = (
+    "quickshell",
     "discord",
     "vesktop",
     "teams",
@@ -45,6 +47,22 @@ EXCLUDED_MEDIA_ROLES = (
     "alert",
     "game",
     "production",
+)
+
+PREFERRED_PLAYBACK_TOKENS = (
+    "spotify",
+    "chromium",
+    "chrome",
+    "brave",
+    "firefox",
+    "zen",
+    "mpv",
+    "vlc",
+    "strawberry",
+    "audacious",
+    "rhythmbox",
+    "clementine",
+    "haruna",
 )
 
 DESKTOP_ENTRY_BINARIES: dict[str, tuple[str, ...]] = {
@@ -146,8 +164,10 @@ def _parse_sink_inputs(text: str, clients: dict[str, PulseClient]) -> list[SinkI
                 client_id=client_id,
                 node_name=node_name,
                 media_role=block.get("media.role", "").lower(),
-                app_name=(client.app_name if client else "").lower(),
-                binary=(client.binary if client else "").lower(),
+                app_name=(block.get("application.name")
+                    or (client.app_name if client else "")).lower(),
+                binary=(block.get("application.process.binary")
+                    or (client.binary if client else "")).lower(),
             )
         )
         block = {}
@@ -213,8 +233,9 @@ def _score_stream(stream: SinkInput, hint_binaries: set[str]) -> int:
         if any(h in stream.app_name for h in hint_binaries):
             score += 40
 
-    if stream.binary in ("spotify", "mpv", "vlc", "strawberry", "clementine", "rhythmbox"):
-        score += 15
+    if any(token in stream.app_name or token in stream.binary
+            for token in PREFERRED_PLAYBACK_TOKENS):
+        score += 20
 
     return score
 
@@ -236,7 +257,7 @@ def resolve_source(desktop_entry: str = "") -> str:
 
     ranked = sorted(
         ((_score_stream(stream, hint_binaries), stream) for stream in streams),
-        key=lambda item: item[0],
+        key=lambda item: (item[0], item[1].index),
         reverse=True,
     )
 

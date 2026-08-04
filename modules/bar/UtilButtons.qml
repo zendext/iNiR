@@ -12,8 +12,14 @@ import Quickshell.Services.UPower
 Item {
     id: root
     property bool borderless: Config.options?.bar?.borderless ?? false
-    property bool sidebarActionsEnabled: true
-    implicitWidth: rowLayout.implicitWidth + rowLayout.spacing * 2
+    readonly property color neutralIconColor: Appearance.zzzEverywhere ? Appearance.zzz.ink
+        : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2
+    readonly property color dangerIconColor: Appearance.zzzEverywhere ? Appearance.zzz.signal
+        : Appearance.inirEverywhere ? Appearance.inir.colError : Appearance.colors.colError
+    // Exact content width — self-inflating (+spacing*2) made every group that
+    // ends with these buttons read asymmetric: the group's own padding is the
+    // spacing authority, modules must not add their own.
+    implicitWidth: rowLayout.implicitWidth
     implicitHeight: rowLayout.implicitHeight
 
     RowLayout {
@@ -33,7 +39,7 @@ Item {
                     fill: 1
                     text: "screenshot_region"
                     iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2
+                    color: root.neutralIconColor
                 }
             }
         }
@@ -54,8 +60,13 @@ Item {
                     anchors.fill: parent
 
                     onClicked: {
-                        // Let the script handle everything (notifications, state, etc)
-                        Quickshell.execDetached([Directories.recordScriptPath, "--fullscreen", "--sound"])
+                        const args = [Directories.recordScriptPath]
+                        if (recordButtonWrapper.isRecording)
+                            args.push("--stop")
+                        else
+                            args.push("--fullscreen", "--sound")
+                        Quickshell.execDetached(args)
+                        RecorderStatus.scheduleQuickCheck()
                     }
 
                     Item {
@@ -68,8 +79,8 @@ Item {
                             text: "videocam"
                             iconSize: Appearance.font.pixelSize.large
                             color: recordButtonWrapper.isRecording
-                                ? (Appearance.inirEverywhere ? Appearance.inir.colError : Appearance.colors.colError)
-                                : (Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2)
+                                ? root.dangerIconColor
+                                : root.neutralIconColor
                         }
 
                         // Pulsating indicator dot when recording
@@ -79,7 +90,7 @@ Item {
                             width: 6
                             height: 6
                             radius: 3
-                            color: Appearance.inirEverywhere ? Appearance.inir.colError : Appearance.colors.colError
+                            color: root.dangerIconColor
                             anchors {
                                 top: parent.top
                                 right: parent.right
@@ -117,13 +128,13 @@ Item {
                     fill: 1
                     text: "colorize"
                     iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2
+                    color: root.neutralIconColor
                 }
             }
         }
 
         Loader {
-            active: root.sidebarActionsEnabled && (Config.options?.bar?.utilButtons?.showNotepad ?? true)
+            active: Config.options?.bar?.utilButtons?.showNotepad ?? true
             visible: active
             sourceComponent: CircleUtilButton {
                 Layout.alignment: Qt.AlignVCenter
@@ -136,7 +147,7 @@ Item {
                     fill: 0
                     text: "edit_note"
                     iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2
+                    color: root.neutralIconColor
                 }
             }
         }
@@ -152,7 +163,7 @@ Item {
                     fill: 0
                     text: "keyboard"
                     iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2
+                    color: root.neutralIconColor
                 }
             }
         }
@@ -174,7 +185,7 @@ Item {
                         fill: 0
                         text: "language"
                         iconSize: Appearance.font.pixelSize.large
-                        color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2
+                        color: root.neutralIconColor
                     }
                 }
             }
@@ -204,10 +215,11 @@ Item {
                         text: micButton.isMuted ? "mic_off" : "mic"
                         iconSize: Appearance.font.pixelSize.large
                         color: micButton.isInUse && !micButton.isMuted
-                            ? (Appearance.inirEverywhere ? Appearance.inir.colError : Appearance.colors.colError)
+                            ? root.dangerIconColor
                             : (Appearance.angelEverywhere ? Appearance.angel.colText
                              : Appearance.inirEverywhere ? Appearance.inir.colOnLayer2
-                             : Appearance.auroraEverywhere ? Appearance.m3colors.m3onSurface
+                             : Appearance.zzzEverywhere ? Appearance.zzz.accent
+                             : Appearance.auroraEverywhere ? Appearance.colors.colOnSurface
                              : Appearance.colors.colOnLayer2)
                     }
 
@@ -217,7 +229,7 @@ Item {
                         width: 6
                         height: 6
                         radius: 3
-                        color: Appearance.inirEverywhere ? Appearance.inir.colError : Appearance.colors.colError
+                        color: root.dangerIconColor
                         anchors { top: parent.top; right: parent.right }
 
                         Behavior on scale {
@@ -275,8 +287,8 @@ Item {
                         text: "visibility"
                         iconSize: Appearance.font.pixelSize.large
                         color: screenCastButton.isCasting
-                            ? (Appearance.inirEverywhere ? Appearance.inir.colError : Appearance.colors.colError)
-                            : (Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2)
+                            ? root.dangerIconColor
+                            : root.neutralIconColor
                     }
 
                     Rectangle {
@@ -285,7 +297,7 @@ Item {
                         width: 6
                         height: 6
                         radius: 3
-                        color: Appearance.inirEverywhere ? Appearance.inir.colError : Appearance.colors.colError
+                        color: root.dangerIconColor
                         anchors {
                             top: parent.top
                             right: parent.right
@@ -324,7 +336,7 @@ Item {
                     fill: 0
                     text: Appearance.m3colors.darkmode ? "light_mode" : "dark_mode"
                     iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2
+                    color: root.neutralIconColor
                 }
             }
         }
@@ -357,7 +369,7 @@ Item {
                         case PowerProfile.Performance: return "local_fire_department"
                     }
                     iconSize: Appearance.font.pixelSize.large
-                    color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer2
+                    color: root.neutralIconColor
                 }
             }
         }

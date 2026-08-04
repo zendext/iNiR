@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -14,6 +13,7 @@ ContentPage {
     readonly property var iiSurfaces: [
         { title: Translation.tr("Bar"), description: Translation.tr("Top workspace bar, or the vertical bar when that mode is enabled"), icon: "web_asset", path: "bar.screenList" },
         { title: Translation.tr("Dock"), description: Translation.tr("Application dock and its hover reveal area"), icon: "call_to_action", path: "dock.screenList" },
+        { title: Translation.tr("Sidebars"), description: Translation.tr("Feature and system sidebars on each screen edge"), icon: "side_navigation", path: "sidebar.screenList" },
         { title: Translation.tr("Media controls"), description: Translation.tr("Floating player popup opened from the bar or IPC"), icon: "music_note", path: "media.screenList" }
     ]
     readonly property var sharedSurfaces: [
@@ -34,7 +34,19 @@ ContentPage {
     }
 
     function primaryScreenName(): string {
-        return GlobalStates.primaryScreen?.name ?? ""
+        const preferred = Config.options?.display?.primaryMonitor ?? ""
+        const names = connectedScreenNames()
+        if (preferred && names.includes(preferred))
+            return preferred
+        return names.length > 0 ? names[0] : ""
+    }
+
+    function monitorOptions(): var {
+        let opts = [{ displayName: Translation.tr("Auto (first available)"), icon: "auto_mode", value: "" }]
+        const names = connectedScreenNames()
+        for (let i = 0; i < names.length; i++)
+            opts.push({ displayName: names[i], icon: "monitor", value: names[i] })
+        return opts
     }
 
     function monitorResolution(screen: var): string {
@@ -214,6 +226,12 @@ ContentPage {
                 Layout.alignment: Qt.AlignVCenter
             }
 
+            RippleButtonWithIcon {
+                visible: !primary
+                materialIcon: "low_priority"
+                mainText: Translation.tr("Make primary")
+                onClicked: if (screenName.length > 0) Config.setNestedValue("display.primaryMonitor", screenName)
+            }
         }
     }
 
@@ -355,6 +373,17 @@ ContentPage {
             }
 
             ContentSubsection {
+                title: Translation.tr("Primary monitor")
+                tooltip: Translation.tr("Used as the default output when a popup cannot infer the focused monitor.")
+
+                ConfigSelectionArray {
+                    currentValue: Config.options?.display?.primaryMonitor ?? ""
+                    options: root.monitorOptions()
+                    onSelected: newValue => Config.setNestedValue("display.primaryMonitor", newValue)
+                }
+            }
+
+            ContentSubsection {
                 title: Translation.tr("Connected outputs")
 
                 ColumnLayout {
@@ -375,7 +404,7 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: true
+        expanded: false
         icon: "web_asset"
         title: Translation.tr("Material shell surfaces")
 
@@ -401,7 +430,7 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: true
+        expanded: false
         icon: "notifications"
         title: Translation.tr("Shared popups and widgets")
 

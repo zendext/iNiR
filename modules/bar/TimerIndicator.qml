@@ -12,7 +12,6 @@ import qs.services
 MouseArea {
     id: root
 
-    property bool sidebarPanelEnabled: true
     readonly property bool pinnedToBar: Persistent.states?.timer?.pinnedToBar ?? false
 
     readonly property bool pomodoroRunning: TimerService?.pomodoroRunning ?? false
@@ -74,26 +73,31 @@ MouseArea {
     }
 
     readonly property color accentColor: {
+        if (Appearance.zzzEverywhere) {
+            if (pomodoroActive)
+                return (TimerService?.pomodoroBreak ?? false) ? Appearance.zzz.secondary : Appearance.zzz.accent
+            if (countdownActive)
+                return Appearance.zzz.secondary
+            return Appearance.zzz.ink
+        }
         if (pomodoroActive) {
             return (TimerService?.pomodoroBreak ?? false)
-                ? (Appearance.colors.colTertiary ?? Appearance.m3colors.m3tertiary)
+                ? Appearance.colors.colTertiary
                 : Appearance.colors.colPrimary
         }
         if (countdownActive)
-            return Appearance.m3colors.m3secondary
+            return Appearance.colors.colSecondary
         return Appearance.colors.colOnLayer1
     }
 
     visible: implicitWidth > 0
-    implicitWidth: (anyActive || (showPinnedIdle && sidebarPanelEnabled)) ? pill.width + 4 : 0
+    implicitWidth: (anyActive || showPinnedIdle) ? pill.width + 4 : 0
     implicitHeight: Appearance.sizes.barHeight
 
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
 
     function openTimerPanel(): void {
-        if (!root.sidebarPanelEnabled) return
-
         GlobalStates.sidebarRightOpen = true
 
         if (Persistent?.states?.sidebar?.bottomGroup) {

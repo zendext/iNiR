@@ -18,7 +18,30 @@ Scope {
 
     Component.onCompleted: Notifications.ensureInitialized()
 
-    PanelWindow {
+    Loader {
+        id: popupLoader
+        property bool resident: Notifications.popupList.length > 0
+        active: resident
+
+        Connections {
+            target: Notifications
+            function onPopupListChanged() {
+                if (Notifications.popupList.length > 0) {
+                    popupCloseGrace.stop()
+                    popupLoader.resident = true
+                } else {
+                    popupCloseGrace.restart()
+                }
+            }
+        }
+
+        Timer {
+            id: popupCloseGrace
+            interval: 450
+            onTriggered: popupLoader.resident = Notifications.popupList.length > 0
+        }
+
+        sourceComponent: PanelWindow {
         id: root
         // Hide during GameMode to avoid input interference
         visible: (Notifications.popupList.length > 0) && !GlobalStates.screenLocked && !(GameMode.active && GameMode.suppressNotifications)
@@ -78,6 +101,7 @@ Scope {
             // Clip content to prevent overflow while PanelWindow resizes asynchronously
             clip: true
             popup: true
+        }
         }
     }
 }

@@ -5,6 +5,7 @@ import org.kde.kirigami as Kirigami
 import qs.services
 import qs.modules.common
 import qs.modules.common.functions
+import qs.modules.common.widgets
 import qs.modules.waffle.looks
 
 Item {
@@ -42,6 +43,18 @@ Item {
             anchors.fill: parent
             onClicked: root.cancel()
         }
+    }
+
+    // Mascot peering over the dialog edge; drawn first so the card overlaps her
+    MascotImage {
+        anchors.bottom: dialog.top
+        anchors.bottomMargin: -12
+        anchors.right: dialog.right
+        anchors.rightMargin: 24
+        width: 92
+        height: 92
+        pose: "warning-concerned"
+        surface: "dialogs"
     }
 
     // Dialog - Windows 11 ContentDialog style

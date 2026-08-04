@@ -14,7 +14,11 @@ RippleButton {
             visible: text !== ""
             text: buttonWithIconRoot.mainText
             font.pixelSize: Appearance.font.pixelSize.small
-            color: Appearance.colors.colOnSecondaryContainer
+            color: Appearance.zzzEverywhere ? Appearance.zzz.onColor : Appearance.colors.colOnSecondaryContainer
+            Behavior on color {
+                enabled: Appearance.animationsEnabled
+                ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
         }
     }
     implicitHeight: 35
@@ -26,7 +30,11 @@ RippleButton {
         MaterialSymbol {
             text: buttonWithIconRoot.nerdIcon || buttonWithIconRoot.materialIcon
             iconSize: Appearance.font.pixelSize.larger
-            color: Appearance.colors.colOnSecondaryContainer
+            color: Appearance.zzzEverywhere ? Appearance.zzz.onColor : Appearance.colors.colOnSecondaryContainer
+            Behavior on color {
+                enabled: Appearance.animationsEnabled
+                ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+            }
             fill: buttonWithIconRoot.materialIconFill ? 1 : 0
             animateFill: true
             forceNerd: buttonWithIconRoot.nerdIcon !== ""

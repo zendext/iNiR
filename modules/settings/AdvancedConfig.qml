@@ -363,7 +363,7 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: true
+        expanded: false
         icon: "memory_alt"
         title: Translation.tr("Resource Monitor")
 

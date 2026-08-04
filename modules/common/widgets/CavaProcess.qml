@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import qs.services
 import qs.services.deferred
+import qs.modules.common
 
 // Thin wrapper for backwards compatibility. All consumers historically
 // instantiated their own CavaProcess { active: ...; points }, which spawned
@@ -17,12 +18,21 @@ Item {
     property bool active: false
     readonly property var points: CavaService.points
 
-    onActiveChanged: {
-        if (active) CavaService.subscribe()
+    readonly property bool _wanted: active && !Appearance.gameModeMinimal
+    property bool _held: false
+
+    function _reconcile(): void {
+        if (_wanted === _held)
+            return
+        if (_wanted) CavaService.subscribe()
         else CavaService.unsubscribe()
+        _held = _wanted
     }
 
+    on_WantedChanged: root._reconcile()
+    Component.onCompleted: root._reconcile()
+
     Component.onDestruction: {
-        if (active) CavaService.unsubscribe()
+        if (_held) CavaService.unsubscribe()
     }
 }

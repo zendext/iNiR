@@ -21,22 +21,74 @@ Singleton {
     property bool crosshairOpen: false
     property bool sidebarLeftOpen: false
     property bool sidebarLeftExpanded: false
+    // A left-sidebar feature requests the panel stay open through implicit closes
+    // (backdrop click / focus loss) and yield keyboard focus — e.g. the InnerTune
+    // device-flow login, where the user must type a code into an external browser.
+    property bool sidebarLeftHoldOpen: false
     property bool aiChatDetached: false
     property bool sidebarRightOpen: false
     property bool mediaControlsOpen: false
     property bool osdBrightnessOpen: false
     property bool osdVolumeOpen: false
+    property bool osdMicOpen: false
     property bool osdMediaOpen: false
     property string osdMediaAction: "play" // "play", "pause", "next", "previous"
     property bool osdKeyboardLayoutOpen: false
     property bool oskOpen: false
     property bool overlayOpen: false
     property bool overviewOpen: false
+    property string overviewSearchPrefix: ""
     property bool altSwitcherOpen: false
+    signal altSwitcherCommand(string command)
     property bool clipboardOpen: false
     property bool settingsOverlayOpen: false
     property int settingsOverlayRequestedPage: -1 // Set before opening to navigate to a specific page
+    property int settingsOverlayCurrentPage: -1 // Published by whichever overlay chrome is loaded
+    property var _settingsNativeDialogs: ({})
+    readonly property bool settingsNativeDialogOpen:
+        Object.keys(root._settingsNativeDialogs).length > 0
+
+    function setSettingsNativeDialogVisible(dialogKey: string, visible: bool): void {
+        const key = String(dialogKey ?? "").trim()
+        if (!key) return
+        const next = Object.assign({}, root._settingsNativeDialogs)
+        if (visible)
+            next[key] = true
+        else
+            delete next[key]
+        root._settingsNativeDialogs = next
+    }
+
     property bool regionSelectorOpen: false
+    property var regionSelectorAction: 0
+    property var regionSelectorMode: 0
+    // Explicit screenshot callers must remain deterministic. The dedicated
+    // Niri binds for screenshot, OCR and visual search are separate contracts;
+    // opening one must never inherit state left by another tool.
+    function openRegionScreenshot(): void {
+        regionSelectorAction = 0
+        regionSelectorMode = 0
+        regionSelectorOpen = true
+    }
+
+    // The unified snip menu may restore the last toolbar choice. Raw ordinals
+    // mirror RegionSelection's enums: action 0 Shot, 1 Edit, 2 Search, 3 OCR
+    // (record is never restored); mode 0 rectangle, 1 circle.
+    function openRememberedRegionTool(): void {
+        let action = 0
+        let mode = 0
+        if (Config.options?.regionSelector?.rememberSnipChoice ?? true) {
+            const savedAction = Config.options?.regionSelector?.lastAction ?? 0
+            const savedMode = Config.options?.regionSelector?.lastMode ?? 0
+            if (savedAction >= 0 && savedAction <= 3) action = savedAction
+            if (savedMode === 1) mode = savedMode
+        }
+        regionSelectorAction = action
+        regionSelectorMode = mode
+        regionSelectorOpen = true
+    }
+    property bool tilingOverlayPickerOpen: false
+    property bool tilingOverlayOsdOpen: false
     // Native screenshot annotation editor (Edit action)
     property bool annotationEditorOpen: false
     property string annotationEditorPath: ""
@@ -47,7 +99,50 @@ Singleton {
     property bool superDown: false
     property bool superReleaseMightTrigger: true
     property bool wallpaperSelectorOpen: false
+    property bool wallpaperLauncherOpen: false
+    property string wallpaperLauncherMode: "static"
     property bool widgetEditMode: false
+    property string selectedDesktopWidget: ""
+    property string desktopWidgetQuickControls: ""
+    property bool shellLayoutEditMode: false
+
+    function setWidgetEditMode(enabled: bool): void {
+        if (enabled)
+            shellLayoutEditMode = false
+        else {
+            selectedDesktopWidget = ""
+            desktopWidgetQuickControls = ""
+        }
+        widgetEditMode = enabled
+    }
+
+    function selectDesktopWidget(instanceKey: string): void {
+        if (!widgetEditMode)
+            return
+        selectedDesktopWidget = String(instanceKey ?? "")
+    }
+
+    function clearDesktopWidgetSelection(): void {
+        selectedDesktopWidget = ""
+        desktopWidgetQuickControls = ""
+    }
+
+    function requestDesktopWidgetQuickControls(instanceKey: string): void {
+        if (!widgetEditMode)
+            return
+        const key = String(instanceKey ?? "")
+        selectedDesktopWidget = key
+        desktopWidgetQuickControls = key
+    }
+
+    function setShellLayoutEditMode(enabled: bool): void {
+        if (enabled) {
+            widgetEditMode = false
+            selectedDesktopWidget = ""
+            desktopWidgetQuickControls = ""
+        }
+        shellLayoutEditMode = enabled
+    }
     // Navigate sidebar right to a specific widget by type (e.g. "notepad", "calendar")
     property string sidebarRightRequestedWidget: ""
     // Dialog requests from other panels (e.g. left sidebar → right sidebar)
@@ -72,6 +167,19 @@ Singleton {
             }
         }
     }
+    onWallpaperLauncherOpenChanged: {
+        if (!wallpaperLauncherOpen) {
+            // Restore the configured wallpaper if the user browsed away without applying.
+            Wallpapers.cancelWallpaperPreview()
+            wallpaperSelectionTarget = "main"
+            wallpaperSelectorTargetMonitor = ""
+            if (Config.options?.wallpaperSelector?.selectionTarget
+                    && Config.options.wallpaperSelector.selectionTarget !== "main")
+                Config.setNestedValue("wallpaperSelector.selectionTarget", "main")
+            if (Config.options?.wallpaperSelector?.targetMonitor)
+                Config.setNestedValue("wallpaperSelector.targetMonitor", "")
+        }
+    }
     property bool cheatsheetOpen: false
     property bool coverflowSelectorOpen: false
     onCoverflowSelectorOpenChanged: {
@@ -88,6 +196,7 @@ Singleton {
         }
     }
     property bool controlPanelOpen: false
+    property bool dashboardOpen: false
     property bool workspaceShowNumbers: false
     property var activeBooruImageMenu: null  // Track which BooruImage has its menu open
     property var activeTaskViewMenu: null  // Track which WindowThumbnail has its menu open
@@ -99,54 +208,21 @@ Singleton {
     property bool waffleAltSwitcherOpen: false
     property bool waffleClipboardOpen: false
     property bool waffleTaskViewOpen: false
-
     // Panel family transition animation state
     property bool familyTransitionActive: false
     property string familyTransitionDirection: "left" // "left" = current exits left, new enters from right
 
     signal requestRipple(real x, real y, string screenName)
 
-    // Read the configured primary output once per QuickShell process. Config
-    // changes take effect after restart so visible windows never migrate live.
-    property string primaryScreenName: ""
-    property bool _primaryScreenInitialized: false
-
-    function ensurePrimaryScreen(): void {
-        const screens = Quickshell.screens
-        if (!Config.ready || !screens || screens.length === 0)
-            return
-
-        if (!root._primaryScreenInitialized) {
-            const configuredName = Config.options?.display?.primaryMonitor ?? ""
-            const configuredScreen = screens.find(screen => screen?.name === configuredName)
-            root.primaryScreenName = configuredScreen?.name ?? screens[0]?.name ?? ""
-            root._primaryScreenInitialized = root.primaryScreenName.length > 0
-            return
-        }
-
-        if (!screens.find(screen => screen?.name === root.primaryScreenName))
-            root.primaryScreenName = screens[0]?.name ?? ""
-    }
-
+    // Primary screen: user-configured preferred monitor for single-window panels (OSD, notifications, wallpaper selector, etc.)
+    // Empty string = use compositor-focused screen, falling back to Quickshell.screens[0]
     readonly property var primaryScreen: {
-        const screen = Quickshell.screens.find(candidate => candidate?.name === root.primaryScreenName)
-        return screen ?? Quickshell.screens[0] ?? null
-    }
-
-    Component.onCompleted: root.ensurePrimaryScreen()
-
-    Connections {
-        target: Quickshell
-        function onScreensChanged() {
-            root.ensurePrimaryScreen()
+        const name = Config.options?.display?.primaryMonitor ?? ""
+        if (name.length > 0) {
+            const s = Quickshell.screens.find(scr => scr.name === name)
+            if (s) return s
         }
-    }
-
-    Connections {
-        target: Config
-        function onReadyChanged() {
-            root.ensurePrimaryScreen()
-        }
+        return Quickshell.screens[0]
     }
 
     // Close other waffle popups when one opens (unless allowMultiplePanels is enabled)
@@ -208,9 +284,9 @@ Singleton {
     }
 
     onSidebarRightOpenChanged: {
-        if (GlobalStates.sidebarRightOpen) {
-            Notifications.timeoutAll();
-            Notifications.markAllRead();
+        if (sidebarRightOpen) {
+            Notifications.timeoutAll()
+            Notifications.markAllRead()
         }
     }
 

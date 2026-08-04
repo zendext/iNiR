@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell
 import qs.services
 import qs.modules.common
+import qs.modules.common.widgets
 import qs.modules.waffle.looks
 import qs.modules.waffle.settings
 
@@ -118,7 +119,7 @@ WSettingsPage {
 
         WSettingsTextField {
             label: Translation.tr("Long date format")
-            icon: "calendar"
+            icon: "schedule"
             description: Translation.tr("Used by clocks and full date labels. Example: dddd, MMMM dd")
             placeholderText: Translation.tr("e.g. dddd, MMMM dd")
             text: Config.options?.time?.dateFormat ?? "ddd, dd/MM"
@@ -127,7 +128,7 @@ WSettingsPage {
 
         WSettingsTextField {
             label: Translation.tr("Short date format")
-            icon: "calendar-month"
+            icon: "schedule"
             description: Translation.tr("Used by compact date surfaces. Example: dd/MM")
             placeholderText: Translation.tr("e.g. dd/MM")
             text: Config.options?.time?.shortDateFormat ?? "dd/MM"
@@ -168,7 +169,7 @@ WSettingsPage {
 
         WSettingsSwitch {
             label: Translation.tr("Layout popup")
-            icon: "globe"
+            icon: "keyboard"
             description: Translation.tr("Show a popup when the keyboard layout changes")
             checked: Config.options?.keyboardIndicators?.popup?.layout ?? true
             onCheckedChanged: Config.setNestedValue("keyboardIndicators.popup.layout", checked)
@@ -200,7 +201,7 @@ WSettingsPage {
 
         WSettingsSwitch {
             label: Translation.tr("Layout indicator")
-            icon: "globe"
+            icon: "keyboard"
             description: Translation.tr("Show the current keyboard layout in the taskbar")
             checked: Config.options?.keyboardIndicators?.panel?.layout ?? true
             onCheckedChanged: Config.setNestedValue("keyboardIndicators.panel.layout", checked)
@@ -228,11 +229,21 @@ WSettingsPage {
         icon: "app-generic"
         
         WSettingsSwitch {
+            visible: CompositorService.isNiri
             label: Translation.tr("Confirm before closing")
             icon: "shield"
             description: Translation.tr("Show dialog when closing windows with Super+Q")
             checked: Config.options?.closeConfirm?.enabled ?? false
             onCheckedChanged: Config.setNestedValue("closeConfirm.enabled", checked)
+        }
+
+        WSettingsSwitch {
+            visible: CompositorService.isNiri
+            label: Translation.tr("Auto-expand a single tiling window")
+            icon: "auto"
+            description: Translation.tr("Automatically maximizes a single tiling window to fill the screen. When a second window appears, the first is restored to its normal width.")
+            checked: Config.options?.compositor?.autoExpandSingleTilingWindow ?? false
+            onCheckedChanged: Config.setNestedValue("compositor.autoExpandSingleTilingWindow", checked)
         }
         
         WSettingsSwitch {
@@ -247,6 +258,44 @@ WSettingsPage {
             icon: "music-note-2"
             checked: Config.options?.sounds?.notifications ?? true
             onCheckedChanged: Config.setNestedValue("sounds.notifications", checked)
+        }
+
+        WSettingsSpinBox {
+            label: Translation.tr("Sound volume")
+            icon: "speaker-1"
+            suffix: "%"
+            from: 0; to: 100; stepSize: 5
+            value: Math.round((Config.options?.sounds?.volume ?? 0.5) * 100)
+            onValueChanged: Config.setNestedValue("sounds.volume", value / 100)
+        }
+    }
+
+    WSettingsCard {
+        id: eventSoundsCard
+        title: Translation.tr("Event sounds")
+        icon: "music-note-2"
+
+        // One row per shell sound event (keys match Audio.soundEvents)
+        readonly property var soundEventRows: [
+            { key: "notification", label: Translation.tr("Notification") },
+            { key: "notificationCritical", label: Translation.tr("Critical notification") },
+            { key: "batteryLow", label: Translation.tr("Battery low") },
+            { key: "batteryCritical", label: Translation.tr("Battery critical") },
+            { key: "batteryFull", label: Translation.tr("Battery full") },
+            { key: "powerPlug", label: Translation.tr("Power plugged in") },
+            { key: "powerUnplug", label: Translation.tr("Power unplugged") },
+            { key: "pomodoroDone", label: Translation.tr("Pomodoro ends") },
+            { key: "timerDone", label: Translation.tr("Timer ends") }
+        ]
+
+        Repeater {
+            model: eventSoundsCard.soundEventRows
+            delegate: SoundPicker {
+                required property var modelData
+                Layout.fillWidth: true
+                label: modelData.label
+                eventId: modelData.key
+            }
         }
     }
     
@@ -290,6 +339,49 @@ WSettingsPage {
             description: Translation.tr("Lock screen before suspending")
             checked: Config.options?.idle?.lockBeforeSleep ?? true
             onCheckedChanged: Config.setNestedValue("idle.lockBeforeSleep", checked)
+        }
+
+        // Battery profile is meaningless without a battery.
+        WSettingsSwitch {
+            visible: Battery.available
+            label: Translation.tr("Separate timeouts on battery")
+            icon: "battery-5"
+            description: Translation.tr("Use shorter idle timeouts while unplugged")
+            checked: Config.options?.idle?.onBattery?.enable ?? false
+            onCheckedChanged: Config.setNestedValue("idle.onBattery.enable", checked)
+        }
+
+        WSettingsSpinBox {
+            visible: Battery.available
+            enabled: Config.options?.idle?.onBattery?.enable ?? false
+            label: Translation.tr("Battery: screen off")
+            icon: "battery-5"
+            suffix: "s"
+            from: 0; to: 3600; stepSize: 30
+            value: Config.options?.idle?.onBattery?.screenOffTimeout ?? 120
+            onValueChanged: Config.setNestedValue("idle.onBattery.screenOffTimeout", value)
+        }
+
+        WSettingsSpinBox {
+            visible: Battery.available
+            enabled: Config.options?.idle?.onBattery?.enable ?? false
+            label: Translation.tr("Battery: lock")
+            icon: "lock-closed"
+            suffix: "s"
+            from: 0; to: 7200; stepSize: 30
+            value: Config.options?.idle?.onBattery?.lockTimeout ?? 300
+            onValueChanged: Config.setNestedValue("idle.onBattery.lockTimeout", value)
+        }
+
+        WSettingsSpinBox {
+            visible: Battery.available
+            enabled: Config.options?.idle?.onBattery?.enable ?? false
+            label: Translation.tr("Battery: suspend")
+            icon: "weather-moon"
+            suffix: "s"
+            from: 0; to: 7200; stepSize: 60
+            value: Config.options?.idle?.onBattery?.suspendTimeout ?? 600
+            onValueChanged: Config.setNestedValue("idle.onBattery.suspendTimeout", value)
         }
     }
     

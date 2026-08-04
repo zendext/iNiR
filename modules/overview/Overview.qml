@@ -23,6 +23,7 @@ Scope {
         PanelWindow {
             id: root
             required property var modelData
+            property bool _presentedOpen: false
             property string searchingText: ""
             readonly property HyprlandMonitor monitor: CompositorService.isHyprland ? Hyprland.monitorFor(root.screen) : null
             property bool monitorIsFocused: CompositorService.isHyprland 
@@ -32,7 +33,31 @@ Scope {
             readonly property bool shouldShow: GlobalStates.overviewOpen && (!activeScreenOnly || monitorIsFocused)
             screen: modelData
 
-            Component.onCompleted: visible = root.shouldShow
+            Component.onCompleted: {
+                visible = root.shouldShow
+                if (root.shouldShow) {
+                    Qt.callLater(() => { root._presentedOpen = root.shouldShow })
+                    Qt.callLater(() => {
+                        const prefix = GlobalStates.overviewSearchPrefix
+                        if (prefix.length > 0) {
+                            overviewScope.dontAutoCancelSearch = true
+                            root.setSearchingText(prefix)
+                        } else {
+                            searchWidget.cancelSearch()
+                        }
+                        searchWidget.focusSearchInput()
+                        root.maybeSwitchWorkspaceOnOpen()
+                        delayedGrabTimer.start()
+                    })
+                }
+            }
+
+            onShouldShowChanged: {
+                if (shouldShow)
+                    Qt.callLater(() => { root._presentedOpen = root.shouldShow })
+                else
+                    root._presentedOpen = false
+            }
 
             Connections {
                 target: root
@@ -48,7 +73,10 @@ Scope {
 
             Timer {
                 id: _overviewCloseTimer
-                interval: 250
+                // Cover the full exit animation (elementMoveExit scales with the
+                // enterExit speed setting) plus a small margin so the window is
+                // never torn down mid-close.
+                interval: (Appearance.animation.elementMoveExit.duration + 40)
                 onTriggered: root.visible = false
             }
 
@@ -78,12 +106,23 @@ Scope {
                     const a = clamped / 100
                     return ColorUtils.transparentize(Appearance.colors.colLayer0Base, 1 - a)
                 }
-                opacity: GlobalStates.overviewOpen ? 1 : 0
+                opacity: root._presentedOpen ? 1 : 0
                 visible: opacity > 0.001
 
+                // The scrim fades a little slower than the content on the way out, so
+                // the dimmed backdrop lingers under the dissolving panel instead of
+                // snapping the desktop back before the surface has left.
                 Behavior on opacity {
                     enabled: Appearance.animationsEnabled
-                    animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    animation: NumberAnimation {
+                        duration: root._presentedOpen
+                            ? Appearance.animation.elementMoveEnter.duration
+                            : Appearance.animation.elementMoveExit.duration
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: root._presentedOpen
+                            ? Appearance.animationCurves.standardDecel
+                            : Appearance.animationCurves.standardAccel
+                    }
                 }
             }
 
@@ -154,6 +193,7 @@ Scope {
                         searchWidget.cancelSearch();
                         searchWidget.disableExpandAnimation();
                         overviewScope.dontAutoCancelSearch = false;
+                        GlobalStates.overviewSearchPrefix = "";
                     } else {
                         if (!overviewScope.dontAutoCancelSearch) {
                             searchWidget.cancelSearch();
@@ -213,12 +253,53 @@ Scope {
                 layer.enabled: Appearance.shouldDesaturate("overlays") && columnLayout.visible
                 layer.effect: ShellDesaturationEffect {}
 
-                property real animTranslateY: GlobalStates.overviewOpen ? 0 : -16
-                opacity: GlobalStates.overviewOpen ? 1 : 0
-                visible: opacity > 0.001
-                transformOrigin: Item.Top
-                scale: GlobalStates.overviewOpen ? 1.0 : 0.95
-                transform: Translate { y: columnLayout.animTranslateY }
+                // One 0..1 driver so the surface unfolds as a single coherent morph.
+                // Enter rides the per-style spatial spring (elementMoveEnter branches:
+                // cookieSpring bounce, zzzOvershoot punch, emphasizedDecel glide), so
+                // each worldview opens in its own character and the overshoot past 1
+                // becomes a subtle settle on the anisotropic scale. Exit is a clean
+                // decel: it moves decisively at the start and eases into closed, and
+                // because opacity leads OUT (below) the slow tail is already invisible
+                // — the surface dissolves upward toward the search bar instead of
+                // visibly squishing to nothing, which is what made the old close ugly.
+                readonly property int motionDuration: root._presentedOpen
+                    ? Appearance.animation.elementMoveEnter.duration
+                    : Appearance.animation.elementMoveExit.duration
+                readonly property var motionCurve: root._presentedOpen
+                    ? Appearance.animation.elementMoveEnter.bezierCurve
+                    : Appearance.animationCurves.emphasizedDecel
+                property real openProgress: root._presentedOpen ? 1 : 0
+
+                // Direction-aware opacity. Open: leads in, fully legible by 70% of the
+                // unfold. Close: leads out, fully faded by the time the surface has
+                // receded ~45%, so the slow decel tail collapses invisibly.
+                opacity: root._presentedOpen
+                    ? Math.min(1, openProgress / 0.7)
+                    : Math.max(0, (openProgress - 0.45) / 0.55)
+                visible: openProgress > 0.001
+
+                transform: [
+                    Scale {
+                        origin.x: columnLayout.width / 2
+                        origin.y: 0
+                        // Gentle anisotropy — the vertical axis travels a touch further
+                        // than the horizontal so the panel reads as unfolding from the
+                        // search bar downward, without the heavy squish of a big yScale.
+                        xScale: 0.975 + 0.025 * columnLayout.openProgress
+                        yScale: 0.93 + 0.07 * columnLayout.openProgress
+                    },
+                    // Recede toward the search-bar anchor at the top.
+                    Translate { y: (1 - columnLayout.openProgress) * -12 }
+                ]
+
+                Behavior on openProgress {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation {
+                        duration: columnLayout.motionDuration
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: columnLayout.motionCurve
+                    }
+                }
                 
                 // Always center the overview vertically - this is the default behavior.
                 // Never use verticalCenter anchor with dynamic Column - causes blur and erratic positioning.
@@ -260,18 +341,6 @@ Scope {
                 }
                 spacing: -8
 
-                Behavior on opacity {
-                    enabled: Appearance.animationsEnabled
-                    animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
-                }
-                Behavior on scale {
-                    enabled: Appearance.animationsEnabled
-                    animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
-                }
-                Behavior on animTranslateY {
-                    enabled: Appearance.animationsEnabled
-                    animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
-                }
 
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
@@ -362,7 +431,7 @@ Scope {
                     anchors.horizontalCenter: parent.horizontalCenter
                     panelVisible: root.visible
                     visible: (root.searchingText == "") && (Config.options?.overview?.dashboard?.enable ?? false)
-                    opacity: GlobalStates.overviewOpen ? 1 : 0
+                    opacity: root._presentedOpen ? 1 : 0
 
                     Behavior on opacity {
                         enabled: Appearance.animationsEnabled
@@ -377,80 +446,4 @@ Scope {
         }
     }
 
-    function getFocusedMonitorName() {
-        if (CompositorService.isNiri) return NiriService.currentOutput
-        if (CompositorService.isHyprland && Hyprland.focusedMonitor) return Hyprland.focusedMonitor.name
-        return ""
-    }
-
-    function openWithPrefix(prefix) {
-        const focusedName = getFocusedMonitorName()
-        for (let i = 0; i < overviewVariants.instances.length; i++) {
-            let panelWindow = overviewVariants.instances[i];
-            if (panelWindow.modelData.name == focusedName) {
-                overviewScope.dontAutoCancelSearch = true;
-                panelWindow.setSearchingText(prefix);
-                GlobalStates.overviewOpen = true;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    function toggleClipboard() {
-        if (GlobalStates.overviewOpen && overviewScope.dontAutoCancelSearch) {
-            GlobalStates.overviewOpen = false;
-            return;
-        }
-        overviewScope.openWithPrefix(Config.options?.search?.prefix?.clipboard ?? ";");
-    }
-
-    function toggleEmojis() {
-        if (GlobalStates.overviewOpen && overviewScope.dontAutoCancelSearch) {
-            GlobalStates.overviewOpen = false;
-            return;
-        }
-        overviewScope.openWithPrefix(Config.options?.search?.prefix?.emojis ?? ":");
-    }
-
-    IpcHandler {
-        target: "overview"
-
-        function toggle(): void {
-            // In Waffle mode, open Start Menu instead
-            if (Config.options?.panelFamily === "waffle") {
-                GlobalStates.searchOpen = !GlobalStates.searchOpen;
-            } else {
-                GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
-            }
-        }
-        function close(): void {
-            if (Config.options?.panelFamily === "waffle") {
-                GlobalStates.searchOpen = false;
-            } else {
-                GlobalStates.overviewOpen = false;
-            }
-        }
-        function open(): void {
-            if (Config.options?.panelFamily === "waffle") {
-                GlobalStates.searchOpen = true;
-            } else {
-                GlobalStates.overviewOpen = true;
-            }
-        }
-        function toggleReleaseInterrupt(): void {
-            GlobalStates.superReleaseMightTrigger = false;
-        }
-        function clipboardToggle(): void {
-            overviewScope.toggleClipboard();
-        }
-        function actionOpen(): void {
-            if (Config.options?.panelFamily === "waffle") {
-                LauncherSearch.ensurePrefix(Config.options?.search?.prefix?.action ?? "/")
-                GlobalStates.searchOpen = true;
-            } else {
-                overviewScope.openWithPrefix(Config.options?.search?.prefix?.action ?? "/");
-            }
-        }
-    }
 }

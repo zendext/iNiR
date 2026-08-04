@@ -1,13 +1,27 @@
 import qs.modules.common
+import qs.modules.common.widgets
 import qs.modules.common.functions
+import qs.modules.pill
 import QtQuick
 import QtQuick.Layouts
 
 Item {
     id: root
+    readonly property alias islandSurface: islandSurface
+    property bool nativeBlurActive: false
+    property var screen: null
     property bool vertical: false
-    property real padding: 8
+    // Islands: the capsule needs real breathing room around content (matches
+    // the edge islands' inner padding); classic groups keep the tight fit and
+    // bare chips (no surface of their own) don't pad like a capsule.
+    property real padding: islandStyle && !bare ? 12 : 8
     readonly property bool cardStyleEverywhere: (Config.options?.dock?.cardStyle ?? false) && (Config.options?.sidebar?.cardStyle ?? false) && (Config.options?.bar?.cornerStyle === 3)
+    // Islands bar appearance: each group is its own floating surface
+    readonly property bool islandStyle: !vertical && (Config.options?.bar?.appearanceStyle ?? "classic") === "islands"
+    // Bare: no surface of its own — for groups that live INSIDE another island
+    // (e.g. the weather chip in an edge island) so cards never nest.
+    property bool bare: false
+    readonly property bool zzzPlate: false
     implicitWidth: vertical ? Appearance.sizes.baseVerticalBarWidth : (gridLayout.implicitWidth + padding * 2)
     implicitHeight: vertical ? (gridLayout.implicitHeight + padding * 2) : Appearance.sizes.baseBarHeight
     // Natural content width regardless of any implicitWidth override, so the bar
@@ -19,7 +33,10 @@ Item {
     readonly property bool empty: gridLayout.implicitWidth < 1
     default property alias items: gridLayout.children
 
-    Rectangle {
+    // El fondo de cada grupo de la barra ahora sale del molde compartido
+    // (PanelSurface) en vez de dibujarse a mano. Misma pinta que antes, pero
+    // controlada desde un solo lugar → cambiar PanelSurface cambia toda la barra.
+    PanelSurface {
         id: background
         anchors {
             fill: parent
@@ -28,18 +45,42 @@ Item {
             leftMargin: root.vertical ? 4 : 0
             rightMargin: root.vertical ? 4 : 0
         }
-        color: (Config.options?.bar?.borderless ?? false) ? "transparent"
-            : (Appearance.angelEverywhere ? Appearance.angel.colGlassCard
-              : Appearance.inirEverywhere ? Appearance.inir.colLayer1
-              : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface 
-              : Appearance.colors.colLayer1)
-        border.width: Appearance.angelEverywhere ? Appearance.angel.cardBorderWidth
-                    : Appearance.inirEverywhere ? 1 : (root.cardStyleEverywhere ? 1 : 0)
-        border.color: Appearance.angelEverywhere ? Appearance.angel.colCardBorder
-                    : Appearance.inirEverywhere ? Appearance.inir.colBorder : Appearance.colors.colLayer0Border
-        radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall
-              : Appearance.inirEverywhere ? Appearance.inir.roundingNormal 
-              : (root.cardStyleEverywhere ? Appearance.rounding.normal : Appearance.rounding.small)
+        visible: !root.islandStyle && !root.bare
+        cardStyle: root.cardStyleEverywhere
+        borderless: !root.islandStyle && (Config.options?.bar?.borderless ?? false)
+        elevation: 1
+        // En zzz la barra mantiene su contorno unificado; los grupos quedan transparentes.
+        zzzChamfer: false
+    }
+
+    // Islands wear the Ricelin pill card in EVERY global style — picking the
+    // islands bar is an explicit opt-in to that dialect, so the zzz "groups
+    // stay transparent" doctrine (which left the centre groups naked over the
+    // wallpaper) does not apply here.
+    IslandPanel {
+        id: islandSurface
+        readonly property int inset: Config.options?.bar?.islands?.inset ?? 4
+        anchors {
+            fill: parent
+            topMargin: root.vertical ? 0 : inset
+            bottomMargin: root.vertical ? 0 : inset
+            leftMargin: root.vertical ? inset : 0
+            rightMargin: root.vertical ? inset : 0
+        }
+        visible: root.islandStyle && !root.bare
+        glassEnabled: true
+        nativeBlurActive: root.nativeBlurActive
+        screen: root.screen
+        glassScreenX: {
+            const geometryDependency = root.x + root.width + islandSurface.x
+            return islandSurface.mapToItem(null, 0, 0).x
+        }
+        glassScreenY: {
+            const geometryDependency = root.y + root.height + islandSurface.y
+            return islandSurface.mapToItem(null, 0, 0).y
+        }
+        glassScreenWidth: root.screen?.width ?? 1920
+        glassScreenHeight: root.screen?.height ?? 1080
     }
 
     GridLayout {

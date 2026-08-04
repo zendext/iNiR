@@ -10,15 +10,12 @@ Item {
     property bool live: true
     property color colorLow: Appearance.angelEverywhere ? Appearance.angel.colGlassCard
                            : Appearance.inirEverywhere ? Appearance.inir.colSecondaryContainer
-                           : Appearance.auroraEverywhere ? Appearance.m3colors.m3secondaryContainer
                            : Appearance.colors.colSecondaryContainer
     property color colorMed: Appearance.angelEverywhere ? Appearance.angel.colPrimary
                            : Appearance.inirEverywhere ? Appearance.inir.colPrimary
-                           : Appearance.auroraEverywhere ? Appearance.m3colors.m3primary
                            : Appearance.colors.colPrimary
     property color colorHigh: Appearance.angelEverywhere ? Appearance.angel.colPrimary
                             : Appearance.inirEverywhere ? Appearance.inir.colPrimary
-                            : Appearance.auroraEverywhere ? Appearance.m3colors.m3primary
                             : Appearance.colors.colPrimary
     property int barCount: 50
     property real barSpacing: 2
@@ -32,7 +29,7 @@ Item {
 
         Repeater {
             id: barsRepeater
-            model: root.barCount
+            model: root.visible ? root.barCount : 0
 
             Item {
                 id: barWrapper
@@ -41,7 +38,7 @@ Item {
                 height: root.height
 
                 property real barValue: {
-                    if (!root.live || root.points.length === 0) return 0;
+                    if (!root.visible || !root.live || root.points.length === 0) return 0;
                     const step = Math.max(1, Math.floor(root.points.length / root.barCount));
                     const start = index * step;
                     const end = Math.min(start + step, root.points.length);

@@ -44,13 +44,29 @@ Item {
     WindowDialog {
         anchors.centerIn: parent
         backgroundWidth: 450
+        zzzLabel: "AUTH"
+        zzzIndex: "PK"
+        zzzGhostText: "AUTH"
+        zzzAccentColor: Appearance.zzz.secondary
+        zzzShowTicks: true
         show: false
         Component.onCompleted: {
             show = true
         }
 
+        ZzzGlyphBadge {
+            Layout.alignment: Qt.AlignHCenter
+            visible: Appearance.zzzEverywhere
+            badgeSize: 32
+            symbol: "security"
+            accentColor: Appearance.zzz.secondary
+            inkColor: Appearance.zzz.onSecondary
+            filled: true
+        }
+
         MaterialSymbol {
             Layout.alignment: Qt.AlignHCenter
+            visible: !Appearance.zzzEverywhere
             iconSize: 26
             text: "security"
             color: Appearance.colors.colSecondary
@@ -60,7 +76,7 @@ Item {
             id: titleText
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
-            text: Translation.tr("Authentication")
+            text: Appearance.zzzEverywhere ? Translation.tr("Authentication").toUpperCase() : Translation.tr("Authentication")
         }
 
         WindowDialogParagraph {

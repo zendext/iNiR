@@ -45,10 +45,27 @@ Item {
         }
     }
 
+    // Mascot peering over the dialog edge; drawn first so the card overlaps her
+    MascotImage {
+        anchors.bottom: dialog.top
+        anchors.bottomMargin: -12
+        anchors.right: dialog.right
+        anchors.rightMargin: 24
+        width: 92
+        height: 92
+        pose: "warning-concerned"
+        surface: "dialogs"
+    }
+
     // Dialog using Material WindowDialog
     WindowDialog {
+        id: dialog
         anchors.centerIn: parent
         backgroundWidth: 340
+        zzzLabel: "CLOSE"
+        zzzIndex: "APP"
+        zzzGhostText: "CLOSE"
+        zzzAccentColor: Appearance.zzz.tertiary
         show: false
         Component.onCompleted: show = true
 
@@ -79,7 +96,11 @@ Item {
                     Layout.fillWidth: true
                     text: root.appTitle || root.appId || Translation.tr("Unknown")
                     font.pixelSize: Appearance.font.pixelSize.small
-                    color: Appearance.m3colors.m3onSurface
+                    color: Appearance.zzzEverywhere ? Appearance.zzz.ink : Appearance.colors.colOnSurface
+                    Behavior on color {
+                        enabled: Appearance.animationsEnabled
+                        ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
                     elide: Text.ElideMiddle
                     maximumLineCount: 1
                 }
@@ -89,7 +110,11 @@ Item {
                     Layout.fillWidth: true
                     text: root.appId
                     font.pixelSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.colors.colSubtext
+                    color: Appearance.zzzEverywhere ? Appearance.zzz.ghostInk : Appearance.colors.colSubtext
+                    Behavior on color {
+                        enabled: Appearance.animationsEnabled
+                        ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    }
                     visible: root.appId !== "" && root.appId !== root.appTitle
                     elide: Text.ElideMiddle
                 }

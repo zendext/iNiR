@@ -29,7 +29,7 @@ Scope {
 
     property string currentIndicator: "volume"
     property bool _syncingOpenStates: false
-    readonly property bool osdActive: GlobalStates.osdVolumeOpen || GlobalStates.osdBrightnessOpen || GlobalStates.osdMediaOpen || GlobalStates.osdKeyboardLayoutOpen
+    readonly property bool osdActive: GlobalStates.osdVolumeOpen || GlobalStates.osdBrightnessOpen || GlobalStates.osdMicOpen || GlobalStates.osdMediaOpen || GlobalStates.osdKeyboardLayoutOpen
     property var indicators: [
         {
             id: "volume",
@@ -38,6 +38,10 @@ Scope {
         {
             id: "brightness",
             sourceUrl: "indicators/BrightnessIndicator.qml"
+        },
+        {
+            id: "mic",
+            sourceUrl: "indicators/MicIndicator.qml"
         },
         {
             id: "media",
@@ -53,10 +57,11 @@ Scope {
         },
     ]
 
-    function setOpenStates(volume, brightness, media, keyboardLayout) {
+    function setOpenStates(volume, brightness, mic, media, keyboardLayout) {
         root._syncingOpenStates = true;
         GlobalStates.osdVolumeOpen = volume;
         GlobalStates.osdBrightnessOpen = brightness;
+        GlobalStates.osdMicOpen = mic;
         GlobalStates.osdMediaOpen = media;
         GlobalStates.osdKeyboardLayoutOpen = keyboardLayout;
         root._syncingOpenStates = false;
@@ -64,7 +69,7 @@ Scope {
 
     function hideOsd() {
         osdTimeout.stop();
-        root.setOpenStates(false, false, false, false);
+        root.setOpenStates(false, false, false, false, false);
         root.protectionMessage = "";
     }
 
@@ -74,6 +79,7 @@ Scope {
         root.setOpenStates(
             indicator === "volume" || indicator === "voiceSearch",
             indicator === "brightness",
+            indicator === "mic",
             indicator === "media",
             indicator === "keyboardLayout"
         );
@@ -148,6 +154,21 @@ Scope {
     }
 
     Connections {
+        // Listen to mic volume/mute changes
+        target: Audio
+        function onMicVolumeChanged() {
+            if (!root.initialized) return;
+            root.currentIndicator = "mic";
+            root.triggerOsd();
+        }
+        function onMicMutedChanged() {
+            if (!root.initialized) return;
+            root.currentIndicator = "mic";
+            root.triggerOsd();
+        }
+    }
+
+    Connections {
         target: GlobalStates
         function onOsdVolumeOpenChanged() {
             if (root._syncingOpenStates || !GlobalStates.osdVolumeOpen)
@@ -159,6 +180,12 @@ Scope {
             if (root._syncingOpenStates || !GlobalStates.osdBrightnessOpen)
                 return;
             root.currentIndicator = "brightness";
+            osdTimeout.restart();
+        }
+        function onOsdMicOpenChanged() {
+            if (root._syncingOpenStates || !GlobalStates.osdMicOpen)
+                return;
+            root.currentIndicator = "mic";
             osdTimeout.restart();
         }
         function onOsdMediaOpenChanged() {
@@ -240,10 +267,12 @@ Scope {
                 scale: root.osdActive ? 1.0 : 0.96
                 opacity: root.osdActive ? 1.0 : 0.0
                 Behavior on scale {
+                    enabled: Appearance.animationsEnabled
                     animation: NumberAnimation { duration: Appearance.animation.elementMoveEnter.duration; easing.type: Appearance.animation.elementMoveEnter.type; easing.bezierCurve: Appearance.animation.elementMoveEnter.bezierCurve }
                 }
                 Behavior on opacity {
-                    animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    enabled: Appearance.animationsEnabled
+                    animation: NumberAnimation { duration: Appearance.animation.elementMoveEnter.duration; easing.type: Appearance.animation.elementMoveEnter.type; easing.bezierCurve: Appearance.animation.elementMoveEnter.bezierCurve }
                 }
 
                 Item {
@@ -286,7 +315,7 @@ Scope {
                             Rectangle {
                                 id: protectionMessageBackground
                                 anchors.centerIn: parent
-                                color: Appearance.m3colors.m3error
+                                color: Appearance.colors.colError
                                 property real padding: 10
                                 implicitHeight: protectionMessageRowLayout.implicitHeight + padding * 2
                                 implicitWidth: protectionMessageRowLayout.implicitWidth + padding * 2
@@ -299,12 +328,12 @@ Scope {
                                         id: protectionMessageIcon
                                         text: "dangerous"
                                         iconSize: Appearance.font.pixelSize.hugeass
-                                        color: Appearance.m3colors.m3onError
+                                        color: Appearance.colors.colOnError
                                     }
                                     StyledText {
                                         id: protectionMessageTextWidget
                                         horizontalAlignment: Text.AlignHCenter
-                                        color: Appearance.m3colors.m3onError
+                                        color: Appearance.colors.colOnError
                                         wrapMode: Text.Wrap
                                         text: root.protectionMessage
                                     }
