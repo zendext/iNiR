@@ -10,6 +10,7 @@ import qs.modules.common.models
 import qs.modules.common.widgets
 import qs.modules.common.functions
 import qs.modules.pill
+import "BarBreakpoints.js" as BarBreakpoints
 import QtQuick.Effects
 import Qt5Compat.GraphicalEffects as GE
 
@@ -338,6 +339,7 @@ Item { // Bar content region
         if (id === "spacer") return root._fillWidth(id, zone) || root._spacerMinimumWidth > 0;
         if (id === "tray") return root._moduleVisible("sysTray") && root.useShortenedForm === 0;
         if (!root._moduleVisible(id)) return false;
+        if (!BarBreakpoints.moduleAllowedAtWidth(id, root.screen?.width ?? 0)) return false;
         if (id === "media") return root.useShortenedForm < 2;
         if (id === "utilButtons") return (Config.options?.bar?.verbose ?? true) && root.useShortenedForm === 0;
         if (id === "battery") return root.useShortenedForm < 2 && Battery.available;
