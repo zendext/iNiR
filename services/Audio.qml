@@ -188,12 +188,12 @@ Singleton {
     // so it works even when Quickshell has not yet tracked the USB sink node.
     Process {
         id: wpctlIncrementSinkVolume
-        command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "2%+"]
+        command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "1%+"]
     }
 
     Process {
         id: wpctlDecrementSinkVolume
-        command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "2%-"]
+        command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "1%-"]
     }
 
     Process {
@@ -287,22 +287,26 @@ Singleton {
     }
 
     function incrementVolume() {
-        // Fire wpctl relative increment first — works even when sink?.audio is not yet tracked.
-        if (!wpctlIncrementSinkVolume.running)
-            wpctlIncrementSinkVolume.running = true
-        if (!root.sink?.audio) return;
+        // Fall back to wpctl when Quickshell has not tracked the sink yet.
+        if (!root.sink?.audio) {
+            if (!wpctlIncrementSinkVolume.running)
+                wpctlIncrementSinkVolume.running = true
+            return
+        }
         const currentVolume = root.sink.audio.volume;
-        const step = currentVolume < 0.1 ? 0.01 : 0.02;
+        const step = 0.01;
         root.sink.audio.volume = Math.min(root.hardMaxValue, currentVolume + step);
     }
 
     function decrementVolume() {
-        // Fire wpctl relative decrement first — works even when sink?.audio is not yet tracked.
-        if (!wpctlDecrementSinkVolume.running)
-            wpctlDecrementSinkVolume.running = true
-        if (!root.sink?.audio) return;
+        // Fall back to wpctl when Quickshell has not tracked the sink yet.
+        if (!root.sink?.audio) {
+            if (!wpctlDecrementSinkVolume.running)
+                wpctlDecrementSinkVolume.running = true
+            return
+        }
         const currentVolume = root.sink.audio.volume;
-        const step = currentVolume <= 0.1 ? 0.01 : 0.02;
+        const step = 0.01;
         root.sink.audio.volume = Math.max(0, currentVolume - step);
     }
 
