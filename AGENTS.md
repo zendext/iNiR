@@ -12,6 +12,13 @@
 [optional footer(s)]
 ```
 
+## Repository Workflow
+
+- This repository does not use a mandatory GitHub Issue-to-pull-request workflow.
+- Do not create GitHub Issues, dedicated task branches, Git worktrees, or pull requests merely to satisfy a generic Issue-to-pull-request workflow.
+- Use a Git worktree only when the user explicitly requests one or a repository-specific safety rule below requires one.
+- When asked to publish changes, commit and push the current branch directly unless the user explicitly requests a different workflow.
+
 ## Upstream Merge and Multi-Monitor Safety
 
 ### Current baseline
