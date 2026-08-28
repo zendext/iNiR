@@ -1,6 +1,7 @@
 module qs.modules.sidebarRight.quickToggles.androidStyle
 AndroidAntiFlashbangToggle 1.0 AndroidAntiFlashbangToggle.qml
 AndroidAudioToggle 1.0 AndroidAudioToggle.qml
+AndroidBatteryProtectionToggle 1.0 AndroidBatteryProtectionToggle.qml
 AndroidBluetoothToggle 1.0 AndroidBluetoothToggle.qml
 AndroidCloudflareWarpToggle 1.0 AndroidCloudflareWarpToggle.qml
 AndroidColorPickerToggle 1.0 AndroidColorPickerToggle.qml

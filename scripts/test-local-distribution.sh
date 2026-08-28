@@ -123,6 +123,14 @@ while IFS= read -r runtime_dir; do
     [[ -d "$runtime_root/$runtime_dir" ]]
 done < "$runtime_root/sdata/runtime-payload-dirs.txt"
 
+if ! grep -qx 'BatteryProtectionToggle 1.0 BatteryProtectionToggle.qml' \
+        "$runtime_root/modules/sidebarRight/quickToggles/classicStyle/qmldir" \
+        || ! grep -qx 'AndroidBatteryProtectionToggle 1.0 AndroidBatteryProtectionToggle.qml' \
+        "$runtime_root/modules/sidebarRight/quickToggles/androidStyle/qmldir"; then
+    printf 'FAIL: battery protection toggles are absent from their QML modules\n' >&2
+    exit 1
+fi
+
 snapshot_lib="$runtime_root/sdata/lib/snapshots.sh"
 if ! grep -Fq 'quickshell/user/desktop-items.json' "$snapshot_lib" \
         || ! grep -Fq 'desktop-items.json' "$snapshot_lib"; then

@@ -1,4 +1,5 @@
 module qs.modules.sidebarRight.quickToggles.classicStyle
+BatteryProtectionToggle 1.0 BatteryProtectionToggle.qml
 BluetoothToggle 1.0 BluetoothToggle.qml
 ClassicToggleDelegateChooser 1.0 ClassicToggleDelegateChooser.qml
 CloudflareWarp 1.0 CloudflareWarp.qml
