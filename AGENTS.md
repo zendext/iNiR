@@ -42,7 +42,7 @@
 
 - Do not treat the new multi-monitor path as proven crash-free.
 - Historical crashes on 2026-07-24 used Qt 6.11.1 and Quickshell revision `4df562dfb2475a9057f0f33a8db75808efad8670`. The stack reached `QWaylandWindow::handleScreensChanged`, `QWindowPrivate::updateDevicePixelRatio`, `QQuickWindow::physicalDpiChanged`, and then `__cxa_pure_virtual`.
-- The previous synchronization was smoke-tested with two Niri outputs and reached first frame, IPC registration, and normal service initialization without a new coredump. The current synchronization merge has not yet been loaded by the running shell, so its runtime and hotplug paths remain unverified.
+- The current synchronization was smoke-tested with two Niri outputs: it reached first frame, loaded both outputs, initialized the sidebar modules, and produced no new coredump. This covers stable output topology only; primary-monitor changes and output hotplug remain unverified.
 - `GlobalStates.primaryScreen` is reactive in upstream. The retained bindings in `ControlPanel.qml`, `OnScreenKeyboard.qml`, `SettingsOverlay.qml`, and `ShellUpdateOverlay.qml` can therefore reassign a live `PanelWindow.screen` after a primary-monitor setting change or output hotplug. Treat that path as unverified.
 
 ### Rules for future multi-monitor work
