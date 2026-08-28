@@ -27,10 +27,10 @@ WBarAttachedPanelContent {
         onTriggered: root.close()
     }
 
-    // Restart timer when action changes (user pressed play/pause/next/prev again)
+    // Restart for every explicit media action, including repeated identical actions.
     Connections {
         target: GlobalStates
-        function onOsdMediaActionChanged() {
+        function onOsdMediaActionTriggered(action: string) {
             if (GlobalStates.osdMediaOpen)
                 autoCloseTimer.restart()
         }
@@ -147,9 +147,7 @@ WBarAttachedPanelContent {
                                 color: Looks.colors.fg
                             }
                             onClicked: {
-                                GlobalStates.osdMediaAction = "previous"
                                 MprisController.previous()
-                                autoCloseTimer.restart()
                             }
                         }
 
@@ -163,9 +161,9 @@ WBarAttachedPanelContent {
                                 color: Looks.colors.fg
                             }
                             onClicked: {
-                                GlobalStates.osdMediaAction = root.player?.isPlaying ? "pause" : "play"
+                                const wasPlaying = root.player?.isPlaying ?? false
                                 MprisController.togglePlaying()
-                                autoCloseTimer.restart()
+                                GlobalStates.showMediaAction(wasPlaying ? "pause" : "play")
                             }
                         }
 
@@ -180,9 +178,7 @@ WBarAttachedPanelContent {
                                 color: Looks.colors.fg
                             }
                             onClicked: {
-                                GlobalStates.osdMediaAction = "next"
                                 MprisController.next()
-                                autoCloseTimer.restart()
                             }
                         }
 

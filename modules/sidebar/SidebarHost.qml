@@ -21,10 +21,20 @@ Scope {
     readonly property string roleId: ShellLayoutController.sidebarRoleForSlot(root.edge)
     readonly property bool featureRole: root.roleId === "featureSidebar"
     readonly property bool systemRole: root.roleId === "systemSidebar"
-    readonly property bool roleOpen: root.featureRole
+    readonly property bool semanticRoleOpen: root.featureRole
         ? GlobalStates.sidebarLeftOpen : GlobalStates.sidebarRightOpen
-    readonly property bool otherRoleOpen: root.featureRole
+    readonly property string roleTargetOutput: root.featureRole
+        ? GlobalStates.sidebarLeftPresentationOutput
+        : GlobalStates.sidebarRightPresentationOutput
+    readonly property bool roleOpen: root.semanticRoleOpen
+        && root.roleTargetOutput === root._screenName
+    readonly property bool otherSemanticRoleOpen: root.featureRole
         ? GlobalStates.sidebarRightOpen : GlobalStates.sidebarLeftOpen
+    readonly property string otherRoleTargetOutput: root.featureRole
+        ? GlobalStates.sidebarRightPresentationOutput
+        : GlobalStates.sidebarLeftPresentationOutput
+    readonly property bool otherRoleOpen: root.otherSemanticRoleOpen
+        && root.otherRoleTargetOutput === root._screenName
     // Temporary editor mapping is deliberately independent from
     // `_sidebarShown`. That flag belongs only to semantic open/close animation
     // state; sharing it makes the next real opening skip its configured pose.
@@ -35,6 +45,11 @@ Scope {
     property string _screenName: ""
     readonly property bool fullscreenCovered: root._screenName.length > 0
         && GameMode.hasFullscreenOnOutput(root._screenName)
+    readonly property bool edgeOpenEnabled: (Config.options?.sidebar?.edgeOpen?.enable ?? false)
+        && !root.fullscreenCovered && !GlobalStates.screenLocked
+    readonly property int edgeOpenWidth: Math.max(1,
+        Config.options?.sidebar?.edgeOpen?.regionWidth ?? 2)
+    property bool edgeRevealTransient: false
     readonly property bool roleHoldOpen: root.featureRole
         && GlobalStates.sidebarLeftHoldOpen
     readonly property bool roleExpanded: root.featureRole
@@ -91,6 +106,13 @@ Scope {
         return Number.isFinite(override) && override >= 250
             ? Math.round(override) : 300000
     }
+
+    onRoleOpenChanged: Qt.callLater(() => {
+        if (!root.roleOpen)
+            root.edgeRevealTransient = false
+        root.syncPresentation()
+        root.reportRuntime()
+    })
 
     onPresentationOpenChanged: {
         if (root.presentationOpen) {
@@ -303,10 +325,17 @@ Scope {
     }
 
     function setRoleOpen(open: bool): void {
-        if (root.featureRole)
-            GlobalStates.sidebarLeftOpen = open
-        else if (root.systemRole)
-            GlobalStates.sidebarRightOpen = open
+        if (root.featureRole) {
+            if (open)
+                GlobalStates.openSidebarLeft(root._screenName)
+            else
+                GlobalStates.closeSidebarLeft()
+        } else if (root.systemRole) {
+            if (open)
+                GlobalStates.openSidebarRight(root._screenName)
+            else
+                GlobalStates.closeSidebarRight()
+        }
     }
 
     function clearFeatureExpansion(): void {
@@ -555,8 +584,8 @@ Scope {
         color: "transparent"
         // A closed transparent Overlay surface still prevents direct scanout.
         // Keep it mapped for normal warm opens, but release it while fullscreen
-        // owns this output or manual GameMode explicitly requests a quiet shell.
-        // Explicit fullscreen opens and their exit animation remain usable.
+        // owns this output. Manual GameMode only disables expensive rendering;
+        // explicit opens and their exit animation remain usable.
         visible: root._nativeHostMapped && !GlobalStates.screenLocked
             && (!root.fullscreenCovered || root.presentationOpen
                 || sidebarContentLoader.animating)
@@ -586,6 +615,63 @@ Scope {
         }
 
         Item {
+            id: sidebarEdgeOpenArea
+            x: root.isLeftEdge ? 0 : sidebarRoot.width - width
+            y: 0
+            width: root.edgeOpenWidth
+            height: sidebarRoot.height
+
+            HoverHandler {
+                enabled: root.edgeOpenEnabled && !root.roleOpen
+                onHoveredChanged: {
+                    if (!hovered || !enabled)
+                        return
+                    root.edgeRevealTransient = true
+                    root.setRoleOpen(true)
+                    edgeRevealCloseTimer.restart()
+                }
+            }
+        }
+
+        Region {
+            id: sidebarEdgeOpenRegion
+            item: sidebarEdgeOpenArea
+        }
+
+        Timer {
+            id: edgeRevealCloseTimer
+            interval: 240
+            repeat: false
+            onTriggered: {
+                if (!root.edgeRevealTransient)
+                    return
+                if (GlobalStates.activeContextMenuCount > 0) {
+                    edgeRevealCloseTimer.restart()
+                    return
+                }
+                if (!sidebarPanelHover.hovered)
+                    root.setRoleOpen(false)
+            }
+        }
+
+        Item {
+            id: sidebarPanelHoverArea
+            anchors.fill: parent
+        }
+
+        HoverHandler {
+            id: sidebarPanelHover
+            target: sidebarPanelHoverArea
+            enabled: root.edgeRevealTransient && root.roleOpen
+            onHoveredChanged: {
+                if (hovered)
+                    edgeRevealCloseTimer.stop()
+                else if (enabled)
+                    edgeRevealCloseTimer.restart()
+            }
+        }
+
+        Item {
             id: sidebarEditInputArea
             x: sidebarContentLoader.x - (root.isLeftEdge ? 0 : 10)
             y: sidebarContentLoader.y - 10
@@ -601,7 +687,7 @@ Scope {
         mask: ShellEditSession.active
             ? sidebarEditInputRegion
             : !root.roleOpen
-                ? emptySidebarInputRegion
+                ? (root.edgeOpenEnabled ? sidebarEdgeOpenRegion : emptySidebarInputRegion)
             : root.roleHoldOpen || root.otherRoleOpen
                 ? sidebarInputRegion : null
 

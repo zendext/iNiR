@@ -89,14 +89,16 @@ AbstractBackgroundWidget {
         const list = []
         for (const k of keys) {
             if (k === root.configEntryName) continue
-            if (Boolean(Config.getNestedValue("background.widgets." + k + ".enable", false)))
+            if (DesktopWidgetLayout.enabled(root.outputName, k,
+                    Config.getNestedValue("background.widgets." + k + ".enable", false)))
                 list.push(k)
         }
         const extra = Config.getNestedValue("background.widgets.mascotInstances", {}) ?? {}
         for (const id of Object.keys(extra)) {
             const key = "mascotInstances." + id
             if (key === root.configEntryName) continue
-            if (Boolean(Config.getNestedValue("background.widgets." + key + ".enable", false)))
+            if (DesktopWidgetLayout.enabled(root.outputName, key,
+                    Config.getNestedValue("background.widgets." + key + ".enable", false)))
                 list.push(key)
         }
         return list
@@ -106,10 +108,10 @@ AbstractBackgroundWidget {
         if (options.length === 0) return
         const cur = options.indexOf(root.anchorWidget)
         const next = options[((cur === -1 ? 0 : cur) + dir + options.length) % options.length]
-        Config.setNestedValue(root._configPath + ".anchorWidget", next)
+        root._setOutputValue("anchorWidget", next)
     }
     function _toggleSeat(): void {
-        Config.setNestedValue(root._configPath + ".anchorWidget",
+        root._setOutputValue("anchorWidget",
             root.perched ? "" : (root._anchorCandidates[0] ?? ""))
     }
 
@@ -136,11 +138,7 @@ AbstractBackgroundWidget {
         const ny = Math.round(root._clampY(above >= 0 ? above : anchor.y + anchor.height - sink))
         if (Math.round(root.x) === nx && Math.round(root.y) === ny) return
         root._syncingAnchor = true
-        const updates = {}
-        updates[root._configPath + ".x"] = nx
-        updates[root._configPath + ".y"] = ny
-        updates[root._configPath + ".placementStrategy"] = "free"
-        Config.setNestedValues(updates)
+        root._setOutputValues({ x: nx, y: ny, placementStrategy: "free" })
         // "free" mode's live x/y aren't driven by a reactive Binding (see
         // AbstractBackgroundWidget's _autoPosition gate) — force the resync
         // the same way a drag-release does, or she won't visually move.
@@ -728,6 +726,7 @@ AbstractBackgroundWidget {
         surfaceColor: root.widgetSurfaceInk
         colorMode: root.colorMode
         surfaceAccent: root.widgetAccent3
+        surfaceFill: root.widgetPlateColor
         surfaceUseBlur: root.effectiveBlur
         screenX: root.x
         screenY: root.y

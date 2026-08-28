@@ -27,7 +27,13 @@ RippleButton {
     property bool blurImage: entry?.blurImage ?? false
     property string blurImageText: entry?.blurImageText ?? "Image hidden"
     property bool compactClipboardPreview: entry?.compactClipboardPreview ?? false
+    readonly property string desktopEntryId: String(root.entry?.desktopEntryId ?? "")
+    readonly property bool draggableApplication: root.desktopEntryId.length > 0
+    property bool suppressClick: false
+    signal applicationDragChanged(bool active)
     readonly property bool zzzEverywhere: Appearance.zzzEverywhere
+    dragTarget: root.draggableApplication ? desktopEntryDrag : null
+    pointerDragThreshold: 10
     
     visible: root.entryShown
     property int horizontalMargin: Appearance.sizes.elevationMargin
@@ -37,31 +43,38 @@ RippleButton {
     readonly property bool isCurrentItem: ListView.isCurrentItem
     readonly property bool isHighlighted: root.isCurrentItem
     readonly property color normalTextColor: root.zzzEverywhere ? Appearance.zzz.ink
+        : Appearance.regaliaEverywhere ? Appearance.regalia.onColor
         : Appearance.angelEverywhere ? Appearance.angel.colText
         : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1
     readonly property color selectedTextColor: root.zzzEverywhere ? Appearance.zzz.onSticker
+        : Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlateInk
         : Appearance.angelEverywhere ? Appearance.angel.colText
         : Appearance.inirEverywhere ? Appearance.inir.colText
         : Appearance.colors.colOnLayer1
     readonly property color descriptionTextColor: root.isHighlighted
         ? root.selectedTextColor
         : root.zzzEverywhere ? Appearance.zzz.inkMuted
+        : Appearance.regaliaEverywhere ? Appearance.regalia.onMuted
         : Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
         : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary
         : Appearance.colors.colSubtext
     readonly property color selectedBackgroundColor: root.zzzEverywhere ? Appearance.zzz.sticker
+        : Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlate
         : Appearance.angelEverywhere
         ? Appearance.angel.colGlassCardHover
         : Appearance.colors.colLayer1
     readonly property color hoverBackgroundColor: root.zzzEverywhere ? Appearance.colors.colLayer1Hover
+        : Appearance.regaliaEverywhere ? Appearance.regalia.controlPlateHover
         : Appearance.angelEverywhere
         ? Appearance.angel.colGlassCardHover
         : Appearance.colors.colLayer1
     readonly property color pressedBackgroundColor: root.zzzEverywhere ? Appearance.colors.colPrimaryActive
+        : Appearance.regaliaEverywhere ? Appearance.regalia.controlPlateActive
         : Appearance.angelEverywhere
         ? Appearance.angel.colGlassCardActive
         : Appearance.colors.colLayer1Hover
     readonly property color activeRippleColor: root.zzzEverywhere ? Appearance.colors.colLayer1Active
+        : Appearance.regaliaEverywhere ? Appearance.regalia.controlPlateActive
         : Appearance.angelEverywhere
         ? Appearance.angel.colGlassCardActive
         : Appearance.colors.colLayer1Hover
@@ -72,6 +85,7 @@ RippleButton {
     implicitHeight: rowLayout.implicitHeight + root.buttonVerticalPadding * 2
     implicitWidth: rowLayout.implicitWidth + root.buttonHorizontalPadding * 2
     buttonRadius: root.zzzEverywhere ? Appearance.zzz.controlRadius
+        : Appearance.regaliaEverywhere ? Appearance.regalia.roundSmall
         : Appearance.angelEverywhere ? Appearance.angel.roundingSmall
         : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.normal
     colBackground: (root.down || root.keyboardDown)
@@ -82,10 +96,26 @@ RippleButton {
     colBackgroundHover: root.hoverBackgroundColor
     colRipple: root.activeRippleColor
 
+    releaseAction: () => {
+        if (root.suppressClick)
+            dragSuppressionResetTimer.restart()
+    }
+    cancelAction: () => {
+        root.suppressClick = false
+        dragSuppressionResetTimer.stop()
+    }
+    onPointerDragActiveChanged: {
+        root.applicationDragChanged(root.pointerDragActive)
+        if (root.pointerDragActive)
+            root.suppressClick = true
+        else if (root.suppressClick)
+            dragSuppressionResetTimer.restart()
+    }
+
     // Matched-char colour must contrast with the CURRENT row background: when the
     // row is selected the bg is the accent plate, so the accent-coloured match
     // would vanish into it — switch to onSignal (the readable on-accent ink).
-    property string highlightPrefix: `<u><font color="${root.zzzEverywhere ? (root.isHighlighted ? Appearance.zzz.onSticker : Appearance.zzz.accent) : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary}">`
+    property string highlightPrefix: `<u><font color="${root.zzzEverywhere ? (root.isHighlighted ? Appearance.zzz.onSticker : Appearance.zzz.accent) : Appearance.regaliaEverywhere ? (root.isHighlighted ? Appearance.regalia.primaryPlateInk : Appearance.regalia.hardwarePrimary) : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary}">`
     property string highlightSuffix: `</font></u>`
     function highlightContent(content, query) {
         if (!query || query.length === 0 || content == query || fontType === "monospace")
@@ -135,9 +165,65 @@ RippleButton {
     }
 
     onClicked: {
+        if (root.suppressClick) {
+            root.suppressClick = false
+            return
+        }
         GlobalStates.overviewOpen = false
         if (root.entry && root.entry.execute)
             root.entry.execute()
+    }
+
+    Timer {
+        id: dragSuppressionResetTimer
+        interval: 0
+        onTriggered: root.suppressClick = false
+    }
+
+    Item {
+        id: desktopEntryDrag
+        width: root.width
+        height: root.height
+        z: -100
+
+        Drag.dragType: Drag.Automatic
+        Drag.supportedActions: Qt.CopyAction
+        Drag.keys: ["application/x-inir-desktop-entry"]
+        Drag.mimeData: ({
+            "application/x-inir-desktop-entry": root.desktopEntryId
+        })
+        Drag.imageSource: Quickshell.iconPath(root.itemIcon, "application-x-executable")
+        Drag.imageSourceSize: Qt.size(52, 52)
+        Drag.hotSpot: Qt.point(26, 26)
+        Drag.active: root.pointerDragActive && root.draggableApplication
+        Drag.onDragFinished: dropAction => {
+            desktopEntryDrag.x = 0
+            desktopEntryDrag.y = 0
+            root.applicationDragChanged(false)
+            if (dropAction === Qt.CopyAction)
+                GlobalStates.closeOverview()
+            dragSuppressionResetTimer.restart()
+        }
+    }
+
+    Component.onDestruction: root.applicationDragChanged(false)
+
+    Rectangle {
+        anchors.fill: parent
+        visible: root.pointerDragActive
+        z: 3
+        color: ColorUtils.applyAlpha(root.selectedBackgroundColor, 0.18)
+        border.width: 2
+        border.color: Appearance.colors.colPrimary
+        radius: root.buttonRadius
+        opacity: 0.95
+
+        MaterialSymbol {
+            anchors.centerIn: parent
+            text: "open_with"
+            iconSize: Appearance.font.pixelSize.normal
+            color: Appearance.colors.colPrimary
+        }
     }
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Delete && event.modifiers === Qt.ShiftModifier) {

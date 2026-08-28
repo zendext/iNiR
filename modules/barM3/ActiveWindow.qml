@@ -1,6 +1,7 @@
 import qs.modules.bar as StockBar
 import qs.modules.barM3
 import qs.modules.common
+import qs.modules.common.functions
 import QtQuick
 
 // The source component only draws its app icon in vertical mode; horizontally
@@ -18,6 +19,9 @@ Item {
         id: stock
         anchors.fill: parent
         titleColor: root.isMaterial ? M3Palette.pillInk("activeWindow") : Appearance.colors.colOnLayer0
-        appNameColor: root.isMaterial ? M3Palette.onSurfaceVariant : Appearance.colors.colSubtext
+        appNameColor: root.isMaterial
+            ? ColorUtils.readableSubtext(M3Palette.pillInk("activeWindow"),
+                M3Palette.pillContainer("activeWindow"), 0.72)
+            : Appearance.colors.colSubtext
     }
 }

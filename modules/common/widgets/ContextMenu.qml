@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -22,6 +23,9 @@ Loader {
     property bool closeOnHoverLostAfterEntered: false
     property int closeOnHoverLostDelay: 500  // ms before closing when hover lost (waffle uses 500)
     property bool anchorHovered: false
+    property bool closeOnOutsideClick: false
+    property var anchorRect: null
+    property var popupAdjustment: null
     signal focusCleared()
 
     property real visualMargin: 8
@@ -46,6 +50,12 @@ Loader {
         else root.active = false;
     }
 
+    function requestOpen(): void {
+        if (GlobalStates.activeContextMenu && GlobalStates.activeContextMenu !== root)
+            GlobalStates.activeContextMenu.active = false
+        root.active = true
+    }
+
     function updateAnchor(): void {
         item?.anchor.updateAnchor();
     }
@@ -53,11 +63,48 @@ Loader {
     active: false
     visible: active
 
+    onActiveChanged: {
+        if (active) {
+            GlobalStates.activeContextMenu = root
+            GlobalStates.activeContextMenuCount++
+        } else {
+            if (GlobalStates.activeContextMenu === root)
+                GlobalStates.activeContextMenu = null
+            GlobalStates.activeContextMenuCount--
+        }
+    }
+
     sourceComponent: PopupWindow {
         id: popupWindow
         visible: true
+        grabFocus: CompositorService.isNiri
         property bool closing: false
         property bool popupWasHovered: false
+
+        // Keep the Niri click surface below the popup content, matching the
+        // SysTrayMenu stacking order so outside clicks close without blocking buttons.
+        PanelWindow {
+            id: clickOutsideBackdrop
+            screen: root.targetScreen
+            visible: CompositorService.isNiri && popupWindow.visible
+                && (root.closeOnFocusLost || root.closeOnOutsideClick)
+            color: "transparent"
+            exclusiveZone: 0
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.namespace: "quickshell:contextMenuBackdrop"
+
+            anchors {
+                top: true
+                bottom: true
+                left: true
+                right: true
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.close()
+            }
+        }
 
         Component.onCompleted: {
             realContent.shown = true;
@@ -79,10 +126,14 @@ Loader {
 
         anchor {
             window: root.targetWindow
-            adjustment: (root.popupSide !== 0)
+            adjustment: root.popupAdjustment ?? ((root.popupSide !== 0)
                 ? (PopupAdjustment.ResizeX | PopupAdjustment.SlideY)
-                : (PopupAdjustment.ResizeY | PopupAdjustment.SlideX)
+                : (PopupAdjustment.ResizeY | PopupAdjustment.SlideX))
             item: root.anchorItem
+            rect.x: Number(root.anchorRect?.x ?? 0)
+            rect.y: Number(root.anchorRect?.y ?? 0)
+            rect.width: Number(root.anchorRect?.width ?? (root.anchorItem?.width ?? 0))
+            rect.height: Number(root.anchorRect?.height ?? (root.anchorItem?.height ?? 0))
             gravity: root.popupSide !== 0 
                 ? root.popupSide 
                 : (root.popupAbove ? Edges.Top : Edges.Bottom)
@@ -129,7 +180,12 @@ Loader {
             item: realContent
         }
 
-        property real sourceEdgeMargin: -implicitHeight
+        readonly property real settledMargin: root.ambientShadowWidth + root.visualMargin
+        // Cookie fades in at its final geometry. Sliding an overshooting spring
+        // inside this fixed PopupWindow clipped the face and temporarily split
+        // visual rows from their pointer regions.
+        property real sourceEdgeMargin: Appearance.cookieEverywhere
+            ? settledMargin : -implicitHeight
         readonly property bool isHorizontalPopup: root.popupSide !== 0
         readonly property bool isLeftSide: root.popupSide === Edges.Left
 
@@ -137,10 +193,10 @@ Loader {
             id: openAnim
             target: popupWindow
             property: "sourceEdgeMargin"
-            to: (root.ambientShadowWidth + root.visualMargin)
+            to: popupWindow.settledMargin
             duration: Appearance.animation.elementMoveEnter.duration
             easing.type: Appearance.animation.elementMoveEnter.type
-            easing.bezierCurve: Appearance.animation.elementMoveEnter.bezierCurve
+            easing.bezierCurve: Appearance.motion.popupReveal.enterBezierCurve
         }
         SequentialAnimation {
             id: closeAnim
@@ -180,18 +236,29 @@ Loader {
                 leftMargin: popupWindow.isHorizontalPopup && !popupWindow.isLeftSide ? popupWindow.sourceEdgeMargin : (root.ambientShadowWidth + root.visualMargin)
                 rightMargin: popupWindow.isHorizontalPopup && popupWindow.isLeftSide ? popupWindow.sourceEdgeMargin : (root.ambientShadowWidth + root.visualMargin)
             }
-            fallbackColor: Appearance.colors.colSurfaceContainer
+            fallbackColor: Appearance.regaliaEverywhere ? "transparent" : Appearance.colors.colSurfaceContainer
             inirColor: Appearance.inir.colLayer2
             auroraTransparency: Appearance.aurora.popupTransparentize
             radius: Appearance.angelEverywhere ? Appearance.angel.roundingNormal
                 : Appearance.inirEverywhere ? Appearance.inir.roundingNormal
                 : Appearance.rounding.normal
-            border.width: 1
-            border.color: Appearance.angelEverywhere ? Appearance.angel.colBorder
+            border.width: Appearance.regaliaEverywhere ? 0 : 1
+            border.color: Appearance.regaliaEverywhere ? "transparent"
+                        : Appearance.angelEverywhere ? Appearance.angel.colBorder
                         : Appearance.inirEverywhere ? Appearance.inir.colBorder
                         : Appearance.auroraEverywhere
                             ? Appearance.aurora.colTooltipBorder
                             : Appearance.colors.colSurfaceContainerHighest
+
+            RegaliaPlate {
+                anchors.fill: parent
+                z: -1
+                visible: Appearance.regaliaEverywhere
+                fillColor: Appearance.regalia.bg2
+                radius: realContent.radius
+                inset: Appearance.regalia.surfaceInset
+                elevated: true
+            }
             opacity: Appearance.motion.popupReveal.enableFade ? (shown ? 1 : 0) : 1
             scale: shown ? 1
                 : (Appearance.motion.popupReveal.enableScale
@@ -215,7 +282,7 @@ Loader {
                         : Appearance.animation.elementMoveEnter.type
                     easing.bezierCurve: popupWindow.closing
                         ? Appearance.animation.elementMoveExit.bezierCurve
-                        : Appearance.animation.elementMoveEnter.bezierCurve
+                        : Appearance.motion.popupReveal.enterBezierCurve
                 }
             }
 
@@ -230,7 +297,7 @@ Loader {
                         : Appearance.animation.elementMoveEnter.type
                     easing.bezierCurve: popupWindow.closing
                         ? Appearance.animation.elementMoveExit.bezierCurve
-                        : Appearance.animation.elementMoveEnter.bezierCurve
+                        : Appearance.motion.popupReveal.enterBezierCurve
                 }
             }
 
@@ -264,36 +331,52 @@ Loader {
                                 required property var modelData
                                 enabled: modelData.enabled !== false
                                 opacity: enabled ? 1 : 0.45
+                                buttonHovered: enabled && menuHover.hovered
 
-                                implicitWidth: Math.max(140, menuRow.implicitWidth + 20)
-                                implicitHeight: 32
-                                buttonRadius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall
+                                implicitWidth: Math.max(140, menuRow.implicitWidth
+                                    + (Appearance.regaliaEverywhere ? Appearance.regalia.controlPaddingHorizontal * 2 : 20))
+                                implicitHeight: Appearance.regaliaEverywhere ? Appearance.regalia.compactControlHeight : 32
+                                buttonRadius: Appearance.regaliaEverywhere ? Appearance.regalia.controlRadius
+                                    : Appearance.angelEverywhere ? Appearance.angel.roundingSmall
                                     : Appearance.inirEverywhere ? Appearance.inir.roundingSmall
                                     : Appearance.rounding.small
                                 colBackground: "transparent"
-                                colBackgroundHover: Appearance.angelEverywhere
-                                    ? Appearance.angel.colGlassPopupHover
-                                    : Appearance.inirEverywhere 
-                                        ? Appearance.inir.colLayer2Hover
-                                        : ColorUtils.transparentize(Appearance.colors.colPrimary, 0.85)
-                                colRipple: Appearance.angelEverywhere
-                                    ? Appearance.angel.colGlassPopupActive
-                                    : Appearance.inirEverywhere
-                                        ? Appearance.inir.colLayer2Active
-                                        : ColorUtils.transparentize(Appearance.colors.colPrimary, 0.7)
+                                colBackgroundHover: Appearance.regaliaEverywhere
+                                    ? Appearance.regalia.controlPlateHover
+                                    : Appearance.angelEverywhere
+                                        ? Appearance.angel.colGlassPopupHover
+                                        : Appearance.inirEverywhere
+                                            ? Appearance.inir.colLayer2Hover
+                                            : ColorUtils.transparentize(Appearance.colors.colPrimary, 0.85)
+                                colRipple: Appearance.regaliaEverywhere
+                                    ? Appearance.regalia.controlPlateActive
+                                    : Appearance.angelEverywhere
+                                        ? Appearance.angel.colGlassPopupActive
+                                        : Appearance.inirEverywhere
+                                            ? Appearance.inir.colLayer2Active
+                                            : ColorUtils.transparentize(Appearance.colors.colPrimary, 0.7)
 
                                 onClicked: {
                                     if (!enabled) return;
-                                    if (modelData.action) modelData.action();
+                                    // Some actions remove the delegate that owns this menu.
+                                    // Close first so the follow-up does not dereference a
+                                    // context-menu loader destroyed by its own action.
+                                    const action = modelData.action;
                                     root.close();
+                                    if (action) action();
+                                }
+
+                                HoverHandler {
+                                    id: menuHover
                                 }
 
                                 contentItem: RowLayout {
                                     id: menuRow
                                     anchors.fill: parent
-                                    anchors.leftMargin: 8
-                                    anchors.rightMargin: 8
-                                    spacing: 8
+                                    anchors.leftMargin: Appearance.regaliaEverywhere
+                                        ? Appearance.regalia.controlPaddingHorizontal : 8
+                                    anchors.rightMargin: anchors.leftMargin
+                                    spacing: Appearance.regaliaEverywhere ? Appearance.regalia.controlGap : 8
 
                                     Loader {
                                         active: root.hasIcons
@@ -343,28 +426,5 @@ Loader {
         }
         readonly property bool popupContainsMouse: popupHoverHandler.hovered
 
-        PanelWindow {
-            id: clickOutsideBackdrop
-            screen: root.targetScreen
-            visible: popupWindow.visible && CompositorService.isNiri && root.closeOnFocusLost
-            color: "transparent"
-            exclusiveZone: 0
-            WlrLayershell.layer: WlrLayer.Top
-            WlrLayershell.namespace: "quickshell:contextMenuBackdrop"
-
-            anchors {
-                top: true
-                bottom: true
-                left: true
-                right: true
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                onClicked: {
-                    root.close();
-                }
-            }
-        }
     }
 }

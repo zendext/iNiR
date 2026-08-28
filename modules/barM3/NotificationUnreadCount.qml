@@ -1,8 +1,10 @@
 import QtQuick
+import Quickshell
 import qs
 import qs.services
 import qs.modules.barM3
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 
 Item {
@@ -28,12 +30,16 @@ Item {
         anchors.fill: parent
         visible: !root.embeddedInSystemIcons
         buttonRadius: Appearance.rounding.full
-        colBackground: root.isMaterial ? Appearance.colors.colPrimary : "transparent"
-        colBackgroundHover: root.isMaterial ? Appearance.colors.colPrimaryHover : Appearance.colors.colLayer1Hover
-        colRipple: root.isMaterial ? Appearance.colors.colPrimaryActive : Appearance.colors.colLayer1Active
+        colBackground: root.isMaterial ? M3Palette.primary : "transparent"
+        colBackgroundHover: root.isMaterial
+            ? ColorUtils.mix(M3Palette.primary, M3Palette.primaryForeground, 0.90)
+            : Appearance.colors.colLayer1Hover
+        colRipple: root.isMaterial
+            ? ColorUtils.mix(M3Palette.primary, M3Palette.primaryForeground, 0.78)
+            : Appearance.colors.colLayer1Active
 
         onPressed: {
-            GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen
+            GlobalStates.toggleSidebarRight(root.QsWindow.window?.screen?.name ?? "")
         }
 
         MaterialSymbol {
@@ -49,8 +55,8 @@ Item {
             visible: root.isMaterial
             text: root.iconName
             iconSize: Appearance.font.pixelSize.normal
-            color: Appearance.colors.colOnPrimary
-            colSymbol: Appearance.colors.colPrimary
+            color: M3Palette.primaryForeground
+            colSymbol: M3Palette.primary
             shape: MaterialShape.Shape.Cookie12Sided
             padding: 2
         }
@@ -69,7 +75,7 @@ Item {
         color: root.isMaterial
             ? (root.embeddedInSystemIcons
                 ? M3Palette.pillInk("systemIcons")
-                : Appearance.colors.colOnPrimary)
+                : M3Palette.primaryForeground)
             : Appearance.colors.colOnLayer0
         z: 1
         implicitHeight: root.showUnreadCount ? Math.max(notificationCounterText.implicitWidth, notificationCounterText.implicitHeight) : 8
@@ -83,7 +89,7 @@ Item {
             color: root.isMaterial
                 ? (root.embeddedInSystemIcons
                     ? M3Palette.pillContainer("systemIcons")
-                    : Appearance.colors.colPrimary)
+                : M3Palette.primary)
                 : Appearance.colors.colLayer0
             text: Notifications.unread
         }

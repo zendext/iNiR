@@ -5,7 +5,7 @@ import qs.modules.barM3
 import qs.modules.common
 import qs.modules.common.widgets
 
-// Compact tooltip shape: no outline, very small radius, and the plate grows
+// Compact tooltip shape: subtle outline, very small radius, and the plate grows
 // from nothing instead of scaling. Colours come from iNiR's generated palette.
 PopupToolTip {
     id: root
@@ -29,6 +29,8 @@ PopupToolTip {
             anchors.centerIn: parent
             clip: true
             color: M3Palette.tooltip
+            border.width: 1
+            border.color: M3Palette.outlineVariant
             radius: Appearance.rounding.verysmall
             opacity: content.shown ? 1 : 0
             implicitWidth: content.shown ? content.implicitWidth : 0
@@ -51,7 +53,7 @@ PopupToolTip {
                 id: label
                 anchors.centerIn: parent
                 text: content.text
-                color: M3Palette.onTooltip
+                color: M3Palette.tooltipForeground
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 font.hintingPreference: Font.PreferNoHinting
                 wrapMode: Text.Wrap

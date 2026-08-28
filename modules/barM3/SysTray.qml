@@ -90,8 +90,8 @@ Item {
             background.implicitHeight: 24
             background.anchors.centerIn: this
             colBackgroundToggled: M3Palette.secondaryContainer
-            colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
-            colRippleToggled: Appearance.colors.colSecondaryContainerActive
+            colBackgroundToggledHover: M3Palette.secondaryContainerHover
+            colRippleToggled: M3Palette.secondaryContainerActive
 
             contentItem: MaterialSymbol {
                 anchors.centerIn: parent

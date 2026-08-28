@@ -465,11 +465,21 @@ AbstractBackgroundWidget {
     }
 
     editPopoverContent: Component {
-        ColumnLayout {
-            id: mediaQuickControls
-            spacing: 6
-            implicitWidth: Math.min(420, root.scaledScreenWidth - 48)
-            readonly property var sourceChoices: [
+        Item {
+            id: mediaQuickControlsHost
+            implicitWidth: Math.max(300,
+                Math.min(420, root.scaledScreenWidth - 48))
+            implicitHeight: mediaQuickControls.implicitHeight
+
+            ColumnLayout {
+                id: mediaQuickControls
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                }
+                spacing: 6
+                readonly property var sourceChoices: [
                 { label: Translation.tr("File"), icon: "draft", value: "file",
                     available: Images.isValidMediaByName(root.mediaPath) },
                 { label: Translation.tr("All") + " " + root.folderMediaCount,
@@ -480,7 +490,7 @@ AbstractBackgroundWidget {
                     icon: "motion_photos_on", value: "gifs", available: root.folderGifCount > 0 },
                 { label: Translation.tr("Videos") + " " + root.folderVideoCount,
                     icon: "movie", value: "videos", available: root.folderVideoCount > 0 }
-            ].filter(choice => choice.available)
+                ].filter(choice => choice.available)
 
             RowLayout {
                 Layout.fillWidth: true
@@ -494,6 +504,8 @@ AbstractBackgroundWidget {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.maximumWidth: 238
                     spacing: 0
                     StyledText {
                         Layout.fillWidth: true
@@ -503,6 +515,7 @@ AbstractBackgroundWidget {
                         font.pixelSize: Appearance.font.pixelSize.small
                         font.weight: Font.DemiBold
                         elide: Text.ElideMiddle
+                        maximumLineCount: 1
                     }
                     StyledText {
                         Layout.fillWidth: true
@@ -514,6 +527,8 @@ AbstractBackgroundWidget {
                             : Translation.tr("Single file")
                         color: Appearance.colors.colSubtext
                         font.pixelSize: Appearance.font.pixelSize.smaller
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
                     }
                 }
 
@@ -548,6 +563,7 @@ AbstractBackgroundWidget {
             }
 
             GridLayout {
+                Layout.fillWidth: true
                 columns: Math.max(1, mediaQuickControls.sourceChoices.length)
                 columnSpacing: 4
                 rowSpacing: 4
@@ -608,7 +624,7 @@ AbstractBackgroundWidget {
                 }
 
                 Repeater {
-                    model: [3, 10, 30, 60]
+                    model: [10, 30, 60, 180]
                     SelectionGroupButton {
                         required property int modelData
                         Layout.fillWidth: true
@@ -621,6 +637,7 @@ AbstractBackgroundWidget {
             }
 
             GridLayout {
+                Layout.fillWidth: true
                 columns: 4
                 columnSpacing: 4
                 rowSpacing: 4
@@ -695,6 +712,7 @@ AbstractBackgroundWidget {
                 }
             }
 
+            }
         }
     }
 
@@ -702,7 +720,7 @@ AbstractBackgroundWidget {
         id: shadowShape
         anchors.fill: parent
         shape: root.shapeEnum
-        color: Appearance.colors.colPrimaryContainer
+        color: root.widgetSemanticContainer(root.widgetPrimaryRole)
         visible: false
     }
 
@@ -725,7 +743,7 @@ AbstractBackgroundWidget {
 
         Rectangle {
             anchors.fill: parent
-            color: Appearance.colors.colPrimaryContainer
+            color: root.widgetSemanticContainer(root.widgetPrimaryRole)
         }
 
         MediaSlot {
@@ -764,7 +782,7 @@ AbstractBackgroundWidget {
             text: root.activeFailed ? "broken_image" : (root.dropHover ? "download" : "perm_media")
             fill: root.dropHover ? 1 : 0
             iconSize: Math.max(28, Math.round(root.renderedSize * 0.24))
-            color: Appearance.colors.colOnPrimaryContainer
+            color: root.widgetSemanticOnContainer(root.widgetPrimaryRole)
         }
 
         MaterialShape {

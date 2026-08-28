@@ -55,6 +55,8 @@ AbstractBackgroundWidget {
     property var pdfPaths: []
     property int queueTotal: 0
     property int queueDone: 0
+    property var outputPaths: []
+    signal conversionFinished(var paths)
 
     implicitWidth: Math.round(Number(root._readConfigKey("contentWidth") ?? 292) * root.scaleFactor)
     implicitHeight: Math.round(Number(root._readConfigKey("contentHeight") ?? 260) * root.scaleFactor)
@@ -83,6 +85,7 @@ AbstractBackgroundWidget {
         root.pdfPaths = []
         root.queueTotal = 0
         root.queueDone = 0
+        root.outputPaths = []
     }
 
     function fail(message): void {
@@ -94,12 +97,15 @@ AbstractBackgroundWidget {
 
     function processNext(): void {
         if (root.fileQueue.length === 0) {
+            const outputs = root.outputPaths.slice()
             root.conversionState = "done"
             root.statusMessage = root.queueTotal === 1
                 ? Translation.tr("Image converted")
                 : Translation.tr("%1 images converted").arg(root.queueTotal)
             root.queueTotal = 0
             root.queueDone = 0
+            root.outputPaths = []
+            root.conversionFinished(outputs)
             resetTimer.restart()
             return
         }
@@ -158,6 +164,7 @@ AbstractBackgroundWidget {
                     converter.inputPath.replace(/.*\//, "")))
                 return
             }
+            root.outputPaths = root.outputPaths.concat([converter.outputPath])
             root.queueDone++
             root.statusMessage = root.queueDone < root.queueTotal
                 ? Translation.tr("Converting %1 of %2").arg(root.queueDone).arg(root.queueTotal)
@@ -175,11 +182,13 @@ AbstractBackgroundWidget {
                 return
             }
             const count = root.pdfPaths.length
+            const output = pdfMaker.outputPath
             root.conversionState = "done"
             root.statusMessage = count === 1
                 ? Translation.tr("PDF created")
                 : Translation.tr("PDF created from %1 images").arg(count)
             root.resetQueue()
+            root.conversionFinished([output])
             resetTimer.restart()
         }
     }
@@ -204,6 +213,7 @@ AbstractBackgroundWidget {
         surfaceColor: root.widgetInk
         colorMode: root.colorMode
         surfaceAccent: root.widgetAccent
+        surfaceFill: root.widgetPlateColor
         surfaceUseBlur: root.effectiveBlur
         screenX: root.x
         screenY: root.y
@@ -235,7 +245,7 @@ AbstractBackgroundWidget {
                 case "hover": return ColorUtils.applyAlpha(root.widgetAccent, 0.18)
                 case "converting": return ColorUtils.applyAlpha(root.widgetAccent2, 0.18)
                 case "done": return ColorUtils.applyAlpha(root.widgetAccent3, 0.18)
-                case "error": return ColorUtils.applyAlpha(Appearance.m3colors.m3error, 0.14)
+                case "error": return ColorUtils.applyAlpha(root.widgetSignal, 0.14)
                 default: return ColorUtils.applyAlpha(root.widgetInk, 0.06)
                 }
             }
@@ -245,7 +255,7 @@ AbstractBackgroundWidget {
                 case "hover": return root.widgetAccent
                 case "converting": return root.widgetAccent2
                 case "done": return root.widgetAccent3
-                case "error": return Appearance.m3colors.m3error
+                case "error": return root.widgetSignal
                 default: return ColorUtils.applyAlpha(root.widgetInk, 0.20)
                 }
             }
@@ -282,7 +292,7 @@ AbstractBackgroundWidget {
                 fill: root.conversionState === "done" ? 1 : 0
                 iconSize: Math.round(34 * root.scaleFactor)
                 color: root.conversionState === "error"
-                    ? Appearance.m3colors.m3error : root.widgetAccentVisible
+                    ? root.widgetSemanticForeground(root.widgetSignalRole) : root.widgetAccentVisible
             }
 
             StyledText {
@@ -292,7 +302,7 @@ AbstractBackgroundWidget {
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 color: root.conversionState === "error"
-                    ? Appearance.m3colors.m3error : root.widgetInk
+                    ? root.widgetSemanticForeground(root.widgetSignalRole, root.accentBackdrop, 4.5) : root.widgetInk
                 opacity: root.conversionState === "idle" ? 0.68 : 1
                 font.pixelSize: Math.round(Appearance.font.pixelSize.small * root.scaleFactor)
                 text: {

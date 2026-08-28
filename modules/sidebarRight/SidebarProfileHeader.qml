@@ -43,6 +43,7 @@ Item {
         ? root.surfaceDialect : Appearance.surfaceDialectFor("")
     readonly property bool _zzz: root._dialect === "zzz"
     readonly property bool _angel: root._dialect === "angel"
+    readonly property bool _regalia: root._dialect === "regalia"
     readonly property bool _inir: root._dialect === "inir"
     readonly property bool _aurora: root._dialect === "aurora" || root._angel
     readonly property bool _cookie: root._dialect === "cookie"
@@ -111,7 +112,8 @@ Item {
 
     readonly property real _contentPadding: 12
     readonly property real _bannerInset: root._zzz || root._cookie ? 6
-        : root._island ? 4 : 0
+        : root._island ? 4
+        : root._regalia ? Appearance.regalia.surfaceInset : 0
     readonly property real _bannerHeight: root._bannerAllowed
         ? Math.max(80, Math.min(94, root.width * 0.22)) : 0
     readonly property real _avatarSize: Math.max(50, Math.min(56, root.width * 0.14))
@@ -122,12 +124,20 @@ Item {
     readonly property real _avatarTop: root._bannerAllowed
         ? root._bannerHeight - root._avatarOverlap : root._contentPadding
 
-    readonly property real _cardRadius: (root.atPanelTop && root.panelRadius > root.panelInset)
-        ? (root.panelRadius - root.panelInset) : -1
-    readonly property real _bannerRadius: root._zzz ? Appearance.zzz.controlRadius
+    // The profile header is a hero card, not another dense sidebar tile. Give
+    // each dialect its established large-card silhouette, while keeping a
+    // concentric minimum where the card nests into the panel's top corner.
+    readonly property real _profileRadius: root._zzz ? Appearance.zzz.cardRadius
         : root._cookie ? Appearance.rounding.normal
-        : root._island ? Math.max(8, (Config.options?.appearance?.island?.radius ?? 18) - root._bannerInset)
-        : card._radius
+        : root._island ? (Config.options?.appearance?.island?.radius ?? 18)
+        : root._angel ? Appearance.angel.roundingLarge
+        : root._inir ? Appearance.inir.roundingLarge
+        : Appearance.rounding.large
+    readonly property real _panelConcentricRadius: (root.atPanelTop && root.panelRadius > root.panelInset)
+        ? Appearance.concentricRadius(root.panelRadius, root.panelInset) : 0
+    readonly property real _cardRadius: Math.max(root._profileRadius, root._panelConcentricRadius)
+    readonly property real _bannerRadius: root._zzz ? Appearance.zzz.controlRadius
+        : Appearance.concentricRadius(root._cardRadius, root._bannerInset)
 
     readonly property string _displayName: SystemInfo.displayName || SystemInfo.username || "user"
     readonly property string _accountIdentity: {
@@ -165,7 +175,8 @@ Item {
             anchors.topMargin: root._bannerInset
             anchors.leftMargin: root._bannerInset
             anchors.rightMargin: root._bannerInset
-            height: Math.max(0, root._bannerHeight - root._bannerInset)
+            height: Math.max(0, root._bannerHeight
+                - root._bannerInset * (root._regalia ? 2 : 1))
             active: root._bannerAllowed
             visible: active
             sourceComponent: bannerComponent

@@ -2,7 +2,7 @@
 # Auto-generated from QML IpcHandler declarations + docs/IPC.md metadata.
 # Do not edit manually.
 # Regenerate: python3 scripts/lib/generate-ipc-registry.py
-# IPC.md hash: b70e7e2b8f195a2b
+# IPC.md hash: 9a5215708831bdca
 # Targets: 60
 
 declare -gA IPC_TARGET_DESC=(
@@ -37,7 +37,7 @@ declare -gA IPC_TARGET_DESC=(
   [osd]="Waffle on-screen display indicator (volume, brightness)."
   [osdVolume]="On-screen volume indicator."
   [osk]="On-screen keyboard."
-  [overlay]="The central overlay. Search, quick actions, widgets. The thing that pops up and makes you feel productive."
+  [overlay]="Floating tools (Super+G): notes, images, crosshair, recorder, resources and other pinnable desktop tools."
   [overview]="Toggle the workspace overview panel. The one with all your windows looking tiny and organized."
   [packageSearch]="Package search service. Searches pacman repos and installed packages."
   [panelFamily]="Switch between panel styles. ii supports two visual styles: Material ii (default) and Waffle (Windows 11-like)."
@@ -137,9 +137,9 @@ declare -gA IPC_TARGET_FUNCTIONS=(
   [appCatalog]="refresh search install list"
   [audio]="volumeUp volumeDown mute playEvent micMute"
   [autostart]="status addCommand addApp removeLast reload"
-  [background]="toggleEditMode setEditMode editState focusWidget promoteWidget resetLayerOrder setWidgetEnabled clockDebugState clockDebugSetMode clockDebugSetRegion clockDebugSetLayout clockDebugRestore"
+  [background]="toggleEditMode setEditMode editState desktopItemsState focusWidget promoteWidget resetLayerOrder setWidgetEnabled clockDebugState clockDebugSetMode clockDebugSetRegion clockDebugSetLayout clockDebugRestore"
   [bar]="toggle close open"
-  [brightness]="increment decrement"
+  [brightness]="increment decrement sleepBegin restoreAfterWake"
   [cheatsheet]="toggle close open"
   [clipboard]="open close toggle"
   [cliphistService]="update"
@@ -184,7 +184,7 @@ declare -gA IPC_TARGET_FUNCTIONS=(
   [wactionCenter]="toggle close open"
   [waffleAltSwitcher]="open close toggle next previous"
   [wallpaperLauncher]="next previous applyCurrent status"
-  [wallpaperSelector]="toggle open close openLauncher toggleOnMonitor random"
+  [wallpaperSelector]="toggle open close openLauncher toggleOnMonitor random status"
   [wbar]="toggle close open"
   [widgetpower]="status"
   [wnotificationCenter]="toggle close open"
@@ -224,6 +224,7 @@ declare -gA IPC_FUNCTION_DESC=(
   ["background:toggleEditMode"]="Toggle widget edit mode (drag, resize, configure desktop widgets)"
   ["background:setEditMode"]="Set widget edit mode explicitly"
   ["background:editState"]="Report the active selection, physical panel insets, full desktop work area and panel-aware zone work area for each output"
+  ["background:desktopItemsState"]="Report desktop-item persistence, availability, item count, validation errors and undo state"
   ["background:focusWidget"]="Select a desktop widget and optionally open its quick controls"
   ["background:promoteWidget"]="Move a desktop widget to the top of the persistent layer order"
   ["background:resetLayerOrder"]="Reset desktop widgets to their built-in stacking order"
@@ -238,6 +239,8 @@ declare -gA IPC_FUNCTION_DESC=(
   ["bar:open"]="Show bar"
   ["brightness:increment"]="Increase brightness"
   ["brightness:decrement"]="Decrease brightness"
+  ["brightness:sleepBegin"]=""
+  ["brightness:restoreAfterWake"]=""
   ["cheatsheet:toggle"]="Open/close cheatsheet"
   ["cheatsheet:close"]="Hide cheatsheet overlay"
   ["cheatsheet:open"]="Show cheatsheet overlay"
@@ -319,7 +322,7 @@ declare -gA IPC_FUNCTION_DESC=(
   ["osk:toggle"]="Show/hide on-screen keyboard"
   ["osk:close"]="Hide on-screen keyboard"
   ["osk:open"]="Show on-screen keyboard"
-  ["overlay:toggle"]="Open/close overlay"
+  ["overlay:toggle"]="Open/close Floating tools"
   ["overview:toggle"]="Open/close overview"
   ["overview:close"]="Close overview"
   ["overview:open"]="Open overview"
@@ -425,6 +428,7 @@ declare -gA IPC_FUNCTION_DESC=(
   ["wallpaperSelector:openLauncher"]="Open the compact launcher in \`static\` or \`animated\` mode"
   ["wallpaperSelector:toggleOnMonitor"]="Open wallpaper selector on a specific monitor"
   ["wallpaperSelector:random"]="Pick a random wallpaper from the current folder"
+  ["wallpaperSelector:status"]="Return picker style, open surface, target monitor and selection target as JSON"
   ["wbar:toggle"]="Show/hide taskbar"
   ["wbar:close"]="Hide taskbar"
   ["wbar:open"]="Show taskbar"

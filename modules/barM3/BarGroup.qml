@@ -1,5 +1,6 @@
 import qs.modules.barM3
 import qs.modules.common
+import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
 
@@ -12,6 +13,11 @@ Item {
     property bool paintMaterialPill: false
     property real padding: (root.isMaterial && !root.paintMaterialPill) ? 0 : 5
     property color bgColor: M3Palette.primaryContainer
+    readonly property Item spectrumClipItem: background
+    readonly property var spectrumClipRadii: [
+        background.topLeftRadius, background.topRightRadius,
+        background.bottomRightRadius, background.bottomLeftRadius
+    ]
 
     readonly property real fullRadius: height / 2
     readonly property real midRadius: Config.options.bar.m3.cornerStyle === 2 ? Appearance.rounding.unsharpenmore + 2 : Appearance.rounding.unsharpenmore

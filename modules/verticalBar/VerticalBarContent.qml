@@ -21,7 +21,8 @@ Item { // Bar content region
     property alias backgroundItem: barBackground
     property bool nativeBlurAllowed: true
     readonly property string nativeBlurTopology: Appearance.blurTopology.roundedRectangle
-    readonly property bool nativeBlurActive: Appearance.useCompositorBlur("bar", root.nativeBlurTopology)
+    readonly property bool nativeBlurActive: !root.isIslands
+        && Appearance.useCompositorBlur("bar", root.nativeBlurTopology)
         && root.nativeBlurAllowed
         && (Config.options?.bar?.showBackground ?? true)
         && !root.gameModeMinimal
@@ -44,7 +45,7 @@ Item { // Bar content region
         const mapped = mouseArea.mapToItem(root, clickX, clickY)
         barContextMenuAnchor.x = root.barOnRight ? 0 : root.width
         barContextMenuAnchor.y = mapped.y
-        barContextMenu.active = true
+        barContextMenu.requestOpen()
     }
 
     ContextMenu {
@@ -81,6 +82,9 @@ Item { // Bar content region
     readonly property bool zzzEverywhere: Appearance.zzzEverywhere
     readonly property bool gameModeMinimal: Appearance.gameModeMinimal
 
+    readonly property string barAppearance: Config.options?.bar?.appearanceStyle ?? "classic"
+    readonly property bool isIslands: root.barAppearance === "islands"
+
     readonly property string wallpaperUrl: Wallpapers.effectiveWallpaperUrl
 
     ColorQuantizer {
@@ -106,6 +110,7 @@ Item { // Bar content region
     // Background shadow - for floating styles or always for angel
     Loader {
         active: (Config.options?.bar?.showBackground ?? true) && !root.gameModeMinimal
+            && !root.isIslands
             && (Appearance.angelEverywhere || ((Config.options?.bar?.cornerStyle ?? 0) === 1 || (Config.options?.bar?.cornerStyle ?? 0) === 3))
         anchors.fill: barBackground
         sourceComponent: StyledRectangularShadow {
@@ -126,7 +131,7 @@ Item { // Bar content region
             // Only add margins for floating styles, NOT for hug mode (cornerStyle 0)
             margins: floatingStyle ? Appearance.sizes.hyprlandGapsOut : 0
         }
-        visible: (Config.options?.bar?.showBackground ?? true) && !root.gameModeMinimal
+        visible: (Config.options?.bar?.showBackground ?? true) && !root.gameModeMinimal && !root.isIslands
         color: {
             if (root.zzzEverywhere) return Appearance.zzz.bg0
             if (root.angelEverywhere) {
@@ -210,6 +215,7 @@ Item { // Bar content region
         anchors.fill: barBackground
         visible: root.auroraEverywhere && !root.inirEverywhere && !root.gameModeMinimal
             && (Config.options?.bar?.showBackground ?? true) && !root.nativeBlurActive
+            && !root.isIslands
 
         // Clip + mask to barBackground shape
         clip: true
@@ -274,7 +280,7 @@ Item { // Bar content region
         onMovedAway: GlobalStates.osdBrightnessOpen = false
         onPressed: event => {
             if (event.button === Qt.LeftButton)
-                GlobalStates.sidebarLeftOpen = !GlobalStates.sidebarLeftOpen;
+                GlobalStates.toggleSidebarLeft(root.screen?.name ?? "");
             else if (event.button === Qt.RightButton)
                 root.openBarContextMenu(event.x, event.y, barTopSectionMouseArea)
         }
@@ -370,7 +376,7 @@ Item { // Bar content region
 
                     onPressed: event => {
                         if (event.button === Qt.RightButton) {
-                            GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
+                            GlobalStates.toggleOverview(root.screen?.name ?? "");
                         }
                     }
                 }
@@ -456,7 +462,7 @@ Item { // Bar content region
         onMovedAway: GlobalStates.osdVolumeOpen = false;
         onPressed: event => {
             if (event.button === Qt.LeftButton) {
-                GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen;
+                GlobalStates.toggleSidebarRight(root.screen?.name ?? "");
             } else if (event.button === Qt.RightButton) {
                 root.openBarContextMenu(event.x, event.y, barBottomSectionMouseArea)
             }
@@ -497,6 +503,7 @@ Item { // Bar content region
                 colBackgroundToggledHover: Appearance.zzzEverywhere ? Appearance.colors.colPrimaryHover : Appearance.colors.colSecondaryContainerHover
                 colRippleToggled: Appearance.zzzEverywhere ? Appearance.colors.colPrimaryActive : Appearance.colors.colSecondaryContainerActive
                 toggled: GlobalStates.sidebarRightOpen
+                    && GlobalStates.sidebarRightPresentationOutput === (root.screen?.name ?? "")
                 property color colText: toggled
                     ? (Appearance.zzzEverywhere ? Appearance.zzz.onSticker : Appearance.colors.colOnSecondaryContainer)
                     : Appearance.colors.colOnLayer0
@@ -506,7 +513,7 @@ Item { // Bar content region
                 }
 
                 onPressed: {
-                    GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen;
+                    GlobalStates.toggleSidebarRight(root.screen?.name ?? "");
                 }
 
                 ColumnLayout {

@@ -13,14 +13,41 @@ Rectangle {
     id: root
 
     property var screen: root.QsWindow.window?.screen
-    // Brightness monitor may be undefined (e.g. Niri without matching monitor); guard it.
     property var brightnessMonitor: screen ? Brightness.getMonitorForScreen(screen) : null
-    readonly property bool hasBrightnessMonitor: Boolean(root.brightnessMonitor)
+    property bool hasBrightnessMonitor: false
     readonly property bool brightnessEnabled: Config.options?.sidebar?.quickSliders?.showBrightness ?? true
-    readonly property real brightnessValue: Number(root.brightnessMonitor?.brightness ?? 0) || 0
-    readonly property real volumeValue: Number(Audio.sink?.audio?.volume ?? 0) || 0
+    property real brightnessValue: 0.0
+    property real volumeValue: 0.0
     property real sliderSpacing: 10
     property bool compactSurface: false
+
+    function syncBrightness(): void {
+        const monitor = root.brightnessMonitor;
+        root.hasBrightnessMonitor = monitor !== null && monitor !== undefined;
+        const value = Number(monitor?.brightness ?? 0.0);
+        root.brightnessValue = Number.isFinite(value) ? value : 0.0;
+    }
+
+    function syncVolume(): void {
+        const value = Number(Audio.value ?? 0.0);
+        root.volumeValue = Number.isFinite(value) ? value : 0.0;
+    }
+
+    onBrightnessMonitorChanged: root.syncBrightness()
+    Component.onCompleted: {
+        root.syncBrightness();
+        root.syncVolume();
+    }
+
+    Connections {
+        target: Brightness
+        function onBrightnessChanged(): void { root.syncBrightness(); }
+    }
+
+    Connections {
+        target: Audio
+        function onValueChanged(): void { root.syncVolume(); }
+    }
 
     implicitWidth: contentItem.implicitWidth + root.horizontalPadding * 2
     implicitHeight: contentItem.implicitHeight + root.verticalPadding * 2
@@ -98,47 +125,53 @@ Rectangle {
         }
     }
 
-    component DefaultQuickSlider: StyledSlider {
+    component DefaultQuickSlider: Item {
         id: quickSlider
         required property string materialSymbol
         property real modelValue: 0
-        configuration: StyledSlider.Configuration.M
-        stopIndicatorValues: []
-        scrollable: true
+        readonly property alias value: slider.value
+        signal moved(real value)
+
+        Layout.fillWidth: true
+        implicitHeight: slider.implicitHeight
 
         onModelValueChanged: {
-            if (!pressed && !_userInteracting && Math.abs(value - modelValue) > 0.005) {
-                value = modelValue
+            if (!slider.pressed && !slider._userInteracting
+                    && Math.abs(slider.value - modelValue) > 0.005) {
+                slider.value = modelValue
             }
+        }
+
+        StyledSlider {
+            id: slider
+            anchors {
+                left: parent.left
+                right: icon.left
+                rightMargin: 8
+                verticalCenter: parent.verticalCenter
+            }
+            configuration: StyledSlider.Configuration.M
+            stopIndicatorValues: []
+            scrollable: true
+            value: quickSlider.modelValue
+            onMoved: quickSlider.moved(value)
         }
 
         MaterialSymbol {
             id: icon
-            property bool nearFull: quickSlider.value >= 0.9
             anchors {
                 verticalCenter: parent.verticalCenter
-                right: nearFull ? quickSlider.handle.right : parent.right
-                rightMargin: nearFull ? 14 : 8
+                right: parent.right
             }
             iconSize: 20
-            color: nearFull
-                ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
-                 : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary
-                 : Appearance.auroraEverywhere ? Appearance.colors.colOnPrimary
-                 : Appearance.colors.colOnPrimary)
-                : (Appearance.angelEverywhere ? Appearance.angel.colText
-                 : Appearance.inirEverywhere ? Appearance.inir.colOnSecondaryContainer
-                 : Appearance.auroraEverywhere ? Appearance.colors.colOnSecondaryContainer
-                 : Appearance.colors.colOnSecondaryContainer)
+            color: Appearance.angelEverywhere ? Appearance.angel.colText
+                : Appearance.inirEverywhere ? Appearance.inir.colOnSecondaryContainer
+                : Appearance.colors.colOnSecondaryContainer
             text: quickSlider.materialSymbol
 
             Behavior on color {
                 enabled: Appearance.animationsEnabled
                 animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
-            }
-            Behavior on anchors.rightMargin {
-                enabled: Appearance.animationsEnabled
-                animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
             }
         }
     }
@@ -285,7 +318,7 @@ Rectangle {
         DefaultQuickSlider {
             materialSymbol: "brightness_6"
             modelValue: root.brightnessValue
-            onMoved: root.brightnessMonitor?.setBrightness(value)
+            onMoved: (value) => root.brightnessMonitor?.setBrightness(value)
         }
     }
 
@@ -294,7 +327,7 @@ Rectangle {
         DefaultQuickSlider {
             materialSymbol: "volume_up"
             modelValue: root.volumeValue
-            onMoved: Audio.setSinkVolume(value)
+            onMoved: (value) => Audio.setSinkVolume(value)
         }
     }
 
@@ -303,34 +336,37 @@ Rectangle {
         DefaultQuickSlider {
             materialSymbol: "mic"
             modelValue: Audio.micVolume
-            onMoved: Audio.setSourceVolume(value)
+            onMoved: (value) => Audio.setSourceVolume(value)
         }
     }
 
     Component {
         id: zzzBrightnessSlider
         ZzzQuickSlider {
+            id: brightnessSlider
             materialSymbol: "brightness_6"
             modelValue: root.brightnessValue
-            onMoved: root.brightnessMonitor?.setBrightness(value)
+            onMoved: () => root.brightnessMonitor?.setBrightness(brightnessSlider.value)
         }
     }
 
     Component {
         id: zzzVolumeSlider
         ZzzQuickSlider {
+            id: volumeSlider
             materialSymbol: "volume_up"
             modelValue: root.volumeValue
-            onMoved: Audio.setSinkVolume(value)
+            onMoved: () => Audio.setSinkVolume(volumeSlider.value)
         }
     }
 
     Component {
         id: zzzMicSlider
         ZzzQuickSlider {
+            id: micSlider
             materialSymbol: "mic"
             modelValue: Audio.micVolume
-            onMoved: Audio.setSourceVolume(value)
+            onMoved: () => Audio.setSourceVolume(micSlider.value)
         }
     }
 }

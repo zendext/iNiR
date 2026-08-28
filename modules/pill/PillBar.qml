@@ -8,6 +8,7 @@ import Quickshell.Wayland
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.widgets
 
 /**
  * Pill top shell. Each monitor carries two layer-shell windows:
@@ -30,6 +31,24 @@ Scope {
 
     property string openMon: ""
     property string openSurface: ""
+    property var autoHideShownByScreen: ({})
+
+    function scaleForScreen(screen): real {
+        if (!screen)
+            return Math.max(0.6, root.uiScale)
+        const shortEdge = Math.min(screen.width, screen.height)
+        const resolutionScale = Math.max(0.78, Math.min(1.6, shortEdge / 1080))
+        const requested = resolutionScale * 1.1 * root.uiScale
+        return Math.max(0.6, requested)
+    }
+
+    function setAutoHideShown(screenName: string, shown: bool): void {
+        if (!screenName || root.autoHideShownByScreen[screenName] === shown)
+            return
+        const next = Object.assign({}, root.autoHideShownByScreen)
+        next[screenName] = shown
+        root.autoHideShownByScreen = next
+    }
 
     function close() {
         openMon = "";
@@ -42,9 +61,21 @@ Scope {
             if (GlobalStates.widgetEditMode)
                 root.close()
         }
+        function onPillSurfaceCommand(command: string, surface: string): void {
+            if (command === "open")
+                root.openSurfaceByName(surface)
+            else if (command === "close")
+                root.close()
+            else if (command === "toggle") {
+                if (root.openSurface === surface)
+                    root.close()
+                else
+                    root.openSurfaceByName(surface)
+            }
+        }
     }
 
-    readonly property var surfaceNames: ["power", "media", "battery", "calendar", "link", "mixer", "sysmon", "clipboard", "glance", "launcher", "recorder"]
+    readonly property var surfaceNames: ["power", "media", "battery", "calendar", "link", "mixer", "sysmon", "clipboard", "glance", "launcher", "recorder", "settings"]
     readonly property var targetScreens: {
         const screens = Quickshell.screens;
         const list = Config.options?.bar?.screenList ?? [];
@@ -94,6 +125,8 @@ Scope {
     readonly property real uiScale: Config.options?.bar?.pill?.scale ?? 1
     readonly property real topGap: Config.options?.bar?.pill?.topGap ?? 1
     readonly property real appGap: Config.options?.bar?.pill?.appGap ?? 1
+    readonly property bool floatOverWindows:
+        Config.options?.bar?.pill?.floatOverWindows ?? false
 
     function openTrayMenu(item, anchorX, hostWindow) {
         trayMenu.s = hostWindow ? hostWindow.s : 1;
@@ -117,9 +150,11 @@ Scope {
             id: reserve
             required property var modelData
 
-            readonly property real s: modelData ? (modelData.height / 1080) * root.uiScale : 1
+            readonly property real s: root.scaleForScreen(modelData)
             readonly property real topGapPx: 8 * root.topGap * s
-            readonly property real restHeight: (Config.options?.bar?.pill?.barMode ?? false) ? 58 * s : 38 * s
+            readonly property real restHeight: (Config.options?.bar?.pill?.barMode ?? false)
+                ? Math.max(58, Config.options?.bar?.pill?.expandedHeight ?? 66) * s
+                : Math.max(38, Config.options?.bar?.pill?.restHeight ?? 44) * s
             readonly property real gameBarH: 34 * s
 
             /**
@@ -159,13 +194,19 @@ Scope {
             /** Game-face height only when the pill is actually hidden by a
              * focused fullscreen window, or Game Mode was manually engaged. */
             readonly property bool useGameZone: GameMode.manuallyActivated || fsCovered
+            readonly property bool autoHideEnabled: (Config.options?.bar?.autoHide?.enable ?? false)
+                && !useGameZone
+            readonly property bool autoHideShown: root.autoHideShownByScreen[screenName] ?? false
 
             screen: modelData
             visible: !GlobalStates.widgetEditMode
             color: "transparent"
             exclusionMode: ExclusionMode.Normal
             exclusiveZone: GlobalStates.widgetEditMode ? 0
-                : (useGameZone ? gameBarH : reservedH)
+                : useGameZone ? gameBarH
+                : autoHideEnabled
+                    ? ((Config.options?.bar?.autoHide?.pushWindows ?? false) && autoHideShown ? reservedH : 0)
+                    : root.floatOverWindows ? 0 : reservedH
             aboveWindows: true
 
             anchors { top: true; left: true; right: true }
@@ -183,11 +224,66 @@ Scope {
             id: overlay
             required property var modelData
 
-            readonly property real s: modelData ? (modelData.height / 1080) * root.uiScale : 1
+            readonly property real s: root.scaleForScreen(modelData)
             readonly property real topGapPx: 8 * root.topGap * s
             readonly property string surface: root.openMon === modelData.name ? root.openSurface : ""
             readonly property bool surfaceOpen: surface.length > 0
             readonly property bool modal: surfaceOpen || pill.held
+            readonly property bool autoHideEnabled: (Config.options?.bar?.autoHide?.enable ?? false)
+                && !pill.fsHide
+            readonly property bool transientMode: pill.mode !== "rest" && pill.mode !== "hover"
+            property bool pointerReveal: false
+            readonly property bool mustShow: !autoHideEnabled || pointerReveal
+                || superShow || surfaceOpen || pill.held || pill.hoverLatch || transientMode
+            readonly property bool autoHideHidden: autoHideEnabled && !mustShow
+            property bool superShow: false
+
+            function syncPointerReveal(): void {
+                if (edgeRevealHover.hovered || pill.hovered) {
+                    pointerHideGrace.stop()
+                    pointerReveal = true
+                } else if (pointerReveal) {
+                    pointerHideGrace.restart()
+                }
+            }
+
+            Timer {
+                id: pointerHideGrace
+                // Only bridges the screen edge to the centred pill. Once the
+                // pointer reaches the pill, Pill.hoverLatch owns collapse timing.
+                interval: 450
+                repeat: false
+                onTriggered: {
+                    if (!edgeRevealHover.hovered && !pill.hovered)
+                        overlay.pointerReveal = false
+                }
+            }
+
+            Timer {
+                id: showBarTimer
+                interval: Config.options?.bar?.autoHide?.showWhenPressingSuper?.delay ?? 100
+                repeat: false
+                onTriggered: overlay.superShow = true
+            }
+
+            Connections {
+                target: GlobalStates
+                function onSuperDownChanged() {
+                    if (!(Config.options?.bar?.autoHide?.showWhenPressingSuper?.enable ?? true))
+                        return
+                    if (GlobalStates.superDown)
+                        showBarTimer.restart()
+                    else {
+                        showBarTimer.stop()
+                        overlay.superShow = false
+                    }
+                }
+            }
+
+            onAutoHideHiddenChanged: root.setAutoHideShown(
+                modelData?.name ?? "", !autoHideHidden)
+            Component.onCompleted: root.setAutoHideShown(
+                modelData?.name ?? "", !autoHideHidden)
 
             screen: modelData
             color: "transparent"
@@ -217,7 +313,7 @@ Scope {
 
             // While a fullscreen window owns this monitor the pill is hidden and
             // must not eat pointer input either.
-            mask: modal ? fullRegion : (pill.fsHide ? emptyOverlay : pillRegion)
+            mask: modal ? fullRegion : (pill.fsHide ? emptyOverlay : interactiveRegion)
             Region { id: emptyOverlay }
             Region {
                 id: pillRegion
@@ -228,9 +324,28 @@ Scope {
                 height: Math.max(pill.height, pill.targetH)
             }
             Region {
+                id: interactiveRegion
+                x: pillRegion.x
+                y: pillRegion.y
+                width: pillRegion.width
+                height: pillRegion.height
+                Region { item: edgeRevealRegion }
+            }
+            Region {
                 id: fullRegion
                 width: overlay.width
                 height: overlay.height
+            }
+
+            Item {
+                id: edgeRevealRegion
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: overlay.autoHideEnabled
+                    ? Math.max(1, Config.options?.bar?.autoHide?.hoverRegionWidth ?? 2) : 0
+                HoverHandler {
+                    id: edgeRevealHover
+                    onHoveredChanged: overlay.syncPointerReveal()
+                }
             }
 
             MouseArea {
@@ -256,24 +371,71 @@ Scope {
              * and `hovered` flickers off on every mouse step inside the pill.
              */
             FocusScope {
+                id: spectrumScope
                 anchors.fill: parent
                 focus: overlay.surfaceOpen
 
+                readonly property bool spectrumPlaying: MprisController.isPlaying || YtMusic.isPlaying
+                readonly property bool spectrumOutputEnabled:
+                    (Config.options?.bar?.visualizer?.multiMonitorMode ?? "primary") === "all"
+                    || Quickshell.screens.length <= 1
+                    || String(overlay.modelData?.name ?? "")
+                        === String(GlobalStates.primaryScreen?.name ?? "")
+                readonly property bool spectrumConfigured: (Config.options?.bar?.pill?.musicViz ?? true)
+                    && spectrumOutputEnabled
+                    && !Appearance.gameModeMinimal
+                readonly property bool spectrumProcessWanted: spectrumConfigured && spectrumPlaying
+                readonly property bool spectrumVisible: spectrumConfigured
+                    && pillCava.audioSignalActive
+                    && !pill.fsHide
+                    && !overlay.surfaceOpen
+
                 HoverHandler {
-                    onHoveredChanged: pill.hovered = hovered
+                    onHoveredChanged: {
+                        pill.hovered = hovered
+                        overlay.syncPointerReveal()
+                    }
                 }
                 Keys.onEscapePressed: root.close()
 
+                CavaProcess {
+                    id: pillCava
+                    active: spectrumScope.spectrumProcessWanted
+                    sampleCount: pillWings.requestedSampleCount
+                }
+
+                PillSpectrumWings {
+                    id: pillWings
+                    anchors.fill: parent
+                    pillItem: pill
+                    active: spectrumScope.spectrumVisible
+                    points: active ? pillCava.points : []
+                    normalizationCeiling: active ? pillCava.normalizationCeiling : 100
+                    s: overlay.s
+                }
+
                 Pill {
                     id: pill
-                    s: overlay.s
+                    s: overlay.surfaceOpen ? Math.max(1, overlay.s) : overlay.s
                     screenName: overlay.modelData ? overlay.modelData.name : ""
                     barWindow: overlay
                     surface: overlay.surface
 
                     anchors.top: parent.top
-                    anchors.topMargin: pill.mode === "game" ? 0 : overlay.topGapPx
+                    anchors.topMargin: pill.mode === "game" ? 0
+                        : overlay.autoHideHidden
+                            ? -(pill.hoverH + overlay.topGapPx + 1)
+                            : overlay.topGapPx
                     anchors.horizontalCenter: parent.horizontalCenter
+
+                    Behavior on anchors.topMargin {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation {
+                            duration: Appearance.animation.elementMoveEnter.duration
+                            easing.type: Appearance.animation.elementMoveEnter.type
+                            easing.bezierCurve: Appearance.animation.elementMoveEnter.bezierCurve
+                        }
+                    }
 
                     trayMenuOpen: trayMenu.shown
 

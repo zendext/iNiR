@@ -60,7 +60,7 @@ Item { // Bar content region
         const mapped = mouseArea.mapToItem(root, clickX, clickY)
         barContextMenuAnchor.x = mapped.x
         barContextMenuAnchor.y = (Config.options?.bar?.bottom ?? false) ? 0 : root.height
-        barContextMenu.active = true
+        barContextMenu.requestOpen()
     }
 
     ContextMenu {
@@ -155,6 +155,7 @@ Item { // Bar content region
 
     readonly property bool inirEverywhere: root.surfaceDialect === "inir"
     readonly property bool angelEverywhere: root.surfaceDialect === "angel"
+    readonly property bool regaliaEverywhere: root.surfaceDialect === "regalia"
     readonly property bool auroraEverywhere: root.surfaceDialect === "aurora" || root.angelEverywhere
     // Bar appearance style: how the bar surface itself is drawn.
     //   classic — single full-width background (per cornerStyle, current default)
@@ -169,6 +170,13 @@ Item { // Bar content region
     // horizontal capsule padding the edge islands wrap their content with.
     readonly property int islandInset: Config.options?.bar?.islands?.inset ?? 4
     readonly property int islandPad: Config.options?.bar?.islands?.padding ?? 12
+    readonly property real islandShadowAllowance: root.isIslands
+        && Appearance.effectsEnabled
+        && (Config.options?.appearance?.island?.shadow ?? true)
+        ? Appearance.sizes.elevationMargin : 0
+    readonly property real islandOuterInset: root.isIslands
+        ? Math.max(Appearance.sizes.hyprlandGapsOut, root.islandShadowAllowance)
+        : Appearance.sizes.hyprlandGapsOut
     readonly property bool isScenic: root.barAppearance === "scenic"
     readonly property bool isFrame: root.barAppearance === "frame"
     // Name the exact Region topology published by Bar.qml. A five-card islands
@@ -199,6 +207,47 @@ Item { // Bar content region
         && (((Config.options?.bar?.cornerStyle ?? 0) === 1) || ((Config.options?.bar?.cornerStyle ?? 0) === 3))
     readonly property string leftAction: Config.options?.bar?.leftScrollAction ?? "brightness"
     readonly property string rightAction: Config.options?.bar?.rightScrollAction ?? "volume"
+    readonly property bool barSpectrumAudioPlaying: MprisController.isPlaying || YtMusic.isPlaying
+    readonly property bool barSpectrumOutputEnabled:
+        (Config.options?.bar?.visualizer?.multiMonitorMode ?? "primary") === "all"
+        || Quickshell.screens.length <= 1
+        || String(root.screen?.name ?? "") === String(GlobalStates.primaryScreen?.name ?? "")
+    readonly property bool barSpectrumConfigured: (Config.options?.bar?.visualizer?.enable ?? false)
+        && (root.isIslands || (Config.options?.bar?.showBackground ?? true))
+        && root.barSpectrumOutputEnabled
+        && !Appearance.gameModeMinimal
+        && root.visible
+    readonly property bool barSpectrumProcessWanted: root.barSpectrumConfigured
+        && root.barSpectrumAudioPlaying
+    readonly property bool barSpectrumVisible: root.barSpectrumConfigured
+        && barCavaProcess.audioSignalActive
+    readonly property real barSpectrumFillRatio: Math.max(0.1,
+        Math.min(1, Config.options?.bar?.visualizer?.height ?? 0.6))
+    readonly property real barSpectrumOpacity: Math.max(0,
+        Math.min(1, Config.options?.bar?.visualizer?.opacity ?? 0.35))
+    readonly property string barSpectrumType: Config.options?.bar?.visualizer?.type ?? "bars"
+    readonly property string barSpectrumBarsOrigin: Config.options?.bar?.visualizer?.barsOrigin ?? "bottom"
+    readonly property real barSpectrumDensity: Math.max(4, Config.options?.bar?.visualizer?.density ?? 12)
+    readonly property real barSpectrumGap: Math.max(0, Config.options?.bar?.visualizer?.gap ?? 2)
+    readonly property int barSpectrumSmoothing: Math.max(0, Config.options?.bar?.visualizer?.smoothing ?? 2)
+    readonly property string barSpectrumWaveMode: Config.options?.bar?.visualizer?.waveMode ?? "fill"
+    readonly property real barSpectrumLineWidth: Math.max(1, Config.options?.bar?.visualizer?.lineWidth ?? 2)
+    readonly property real barSpectrumEdgeInset: Math.max(0, Config.options?.bar?.visualizer?.edgeInset ?? 0)
+    readonly property real barSpectrumEdgeSoftness: Math.max(0,
+        Math.min(1, (Config.options?.bar?.visualizer?.edgeSoftness ?? 28) / 100))
+    readonly property string barSpectrumFrequencyProfile: Config.options?.bar?.visualizer?.frequencyProfile ?? "flat"
+    readonly property real barSpectrumAccentStrength: Math.max(0,
+        Math.min(1, (Config.options?.bar?.visualizer?.accentStrength ?? 70) / 100))
+    readonly property color barSpectrumColor: root.inirEverywhere ? Appearance.inir.colPrimary
+        : root.zzzEverywhere ? Appearance.zzz.accent
+        : root.regaliaEverywhere ? Appearance.regalia.hardwarePrimary
+        : (root.blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
+
+    CavaProcess {
+        id: barCavaProcess
+        active: root.barSpectrumProcessWanted
+        sampleCount: Math.max(50, Math.round(Math.max(1, root.width) / root.barSpectrumDensity))
+    }
 
     function performScrollAction(action: string, isUp: bool): void {
         if (action === "brightness") {
@@ -250,20 +299,49 @@ Item { // Bar content region
     // capsule left content poking outside it for the whole animation. Motion
     // is applied at the SOURCE instead (the activeWindow wrapper animates its
     // implicitWidth), so row and capsule move through the same frames.
-    component EdgeIsland: IslandPanel {
+    component EdgeIsland: BarIslandSurface {
+        id: edgeIsland
         glassEnabled: true
         nativeBlurActive: root.nativeBlurActive
         screen: root.screen
-        glassScreenX: {
-            const geometryDependency = x + width + (parent?.x ?? 0)
-            return mapToItem(null, 0, 0).x
+
+        readonly property real spectrumX: {
+            const geometryDependency = edgeIsland.x + edgeIsland.y
+                + edgeIsland.width + edgeIsland.height
+                + (edgeIsland.parent?.x ?? 0) + (edgeIsland.parent?.width ?? 0)
+            return edgeIsland.mapToItem(root, 0, 0).x
         }
-        glassScreenY: {
-            const geometryDependency = y + height + (parent?.y ?? 0)
-            return mapToItem(null, 0, 0).y
+
+        CavaSpectrum {
+            anchors.fill: parent
+            active: root.barSpectrumVisible && root.isIslands && edgeIsland.visible
+            threadedRendering: true
+            points: active ? barCavaProcess.points : []
+            normalizationCeiling: active ? barCavaProcess.normalizationCeiling : 100
+            visualizerType: root.barSpectrumType
+            spectrumOpacity: root.barSpectrumOpacity
+            fillRatio: root.barSpectrumFillRatio
+            spectrumColor: root.barSpectrumColor
+            sampleStartRatio: root.width > 0
+                ? Math.max(0, Math.min(1, edgeIsland.spectrumX / root.width)) : 0
+            sampleEndRatio: root.width > 0
+                ? Math.max(sampleStartRatio,
+                    Math.min(1, (edgeIsland.spectrumX + edgeIsland.width) / root.width)) : 1
+            barsOrigin: root.barSpectrumBarsOrigin
+            pixelsPerBar: root.barSpectrumDensity
+            barSpacing: root.barSpectrumGap
+            smoothing: root.barSpectrumSmoothing
+            waveMode: root.barSpectrumWaveMode
+            lineWidth: root.barSpectrumLineWidth
+            edgeInset: root.barSpectrumEdgeInset
+            edgeSoftness: root.barSpectrumEdgeSoftness
+            frequencyProfile: root.barSpectrumFrequencyProfile
+            accentStrength: root.barSpectrumAccentStrength
+            topLeftRadius: edgeIsland.radius
+            topRightRadius: edgeIsland.radius
+            bottomLeftRadius: edgeIsland.radius
+            bottomRightRadius: edgeIsland.radius
         }
-        glassScreenWidth: root.screen?.width ?? 1920
-        glassScreenHeight: root.screen?.height ?? 1080
     }
     // Edge-zone layout cell: hosts the module Loader. Layout hints live HERE
     // (the real layout child) — hints inside the loaded item are ignored.
@@ -340,6 +418,8 @@ Item { // Bar content region
         if (id === "tray") return root._moduleVisible("sysTray") && root.useShortenedForm === 0;
         if (!root._moduleVisible(id)) return false;
         if (!BarBreakpoints.moduleAllowedAtWidth(id, root.screen?.width ?? 0)) return false;
+        if (id === "activeWindow")
+            return root.taskbarEnabled || root.useShortenedForm === 0;
         if (id === "media") return root.useShortenedForm < 2;
         if (id === "utilButtons") return (Config.options?.bar?.verbose ?? true) && root.useShortenedForm === 0;
         if (id === "battery") return root.useShortenedForm < 2 && Battery.available;
@@ -432,7 +512,7 @@ Item { // Bar content region
                 acceptedButtons: Qt.RightButton
                 onPressed: event => {
                     if (event.button === Qt.RightButton)
-                        GlobalStates.overviewOpen = !GlobalStates.overviewOpen;
+                        GlobalStates.toggleOverview(root.screen?.name ?? "");
                 }
             }
         }
@@ -493,7 +573,9 @@ Item { // Bar content region
             // width, so a content-sized wrapper reflowed the whole island on every
             // focus change. The texts elide inside a constant box instead.
             implicitWidth: fillSlot ? 0
-                : (root.isIslands ? 220 : Math.min(_awItem.contentImplicitWidth, 220))
+                : (root.isIslands
+                    ? ((root.screen?.width ?? 1920) <= 1440 ? 150 : 220)
+                    : Math.min(_awItem.contentImplicitWidth, 220))
             // Be exactly as tall as the surface we sit on. The cell adopts this as
             // its implicitHeight, so at full bar height the module overflowed the
             // shorter island capsule by the inset on both edges.
@@ -574,7 +656,10 @@ Item { // Bar content region
         // without changing the global style). Applied as Item.opacity so border,
         // blurredWallpaper, inset glow and partial borders all fade together.
         // Widgets sit OUTSIDE this Rectangle so they stay fully opaque.
-        opacity: Math.max(0, Math.min(1, Config.options?.bar?.opacity ?? 1))
+        // Regalia is an opaque physical-material style. Preserve the user's
+        // persisted opacity for every other style instead of rewriting config.
+        opacity: root.regaliaEverywhere && root.barAppearance === "classic"
+            ? 1 : Math.max(0, Math.min(1, Config.options?.bar?.opacity ?? 1))
         Behavior on opacity {
             enabled: Appearance.animationsEnabled
             animation: NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
@@ -614,6 +699,9 @@ Item { // Bar content region
             if (root.isFrame || root.isScenic) {
                 return ColorUtils.transparentize(Appearance.colors.colLayer0, 1)
             }
+            if (root.regaliaEverywhere) {
+                return "transparent"
+            }
             if (root.angelEverywhere) {
                 const base = blendedColors?.colLayer0 ?? Appearance.colors.colLayer0
                 if (root.nativeBlurActive)
@@ -644,6 +732,19 @@ Item { // Bar content region
             }
         }
 
+        RegaliaPlate {
+            anchors.fill: parent
+            visible: root.regaliaEverywhere && !root.isFrame && !root.isScenic
+            fillColor: barBackground.floatingStyle ? Appearance.regalia.barSurfaceFloating
+                : Appearance.regalia.barSurface
+            radius: barBackground.radius
+            inset: barBackground.floatingStyle
+                ? Appearance.regalia.surfaceInset : Appearance.regalia.controlInset
+            elevated: barBackground.floatingStyle
+            deepFrame: !barBackground.floatingStyle
+            glassEnabled: true
+        }
+
         // Radius logic per global style and corner style
         radius: {
             if (root.isScenic) return 0
@@ -659,6 +760,9 @@ Item { // Bar content region
                 return root.angelEverywhere ? Appearance.angel.roundingNormal
                     : root.inirEverywhere ? Appearance.inir.roundingNormal
                     : Appearance.rounding.windowRounding
+            }
+            if (root.regaliaEverywhere) {
+                return (cornerStyle === 1 || cornerStyle === 3) ? Appearance.regalia.roundLarge : 0
             }
             if (root.angelEverywhere) {
                 return (cornerStyle === 1 || cornerStyle === 3) ? Appearance.angel.roundingNormal : 0
@@ -713,6 +817,7 @@ Item { // Bar content region
         border.width: {
             if (root.isScenic) return 0
             if (root.zzzEverywhere) return 1
+            if (root.regaliaEverywhere) return 0
             if (root.isFrame) return root.angelEverywhere ? Appearance.angel.panelBorderWidth : 1
             if (root.angelEverywhere) return Appearance.angel.panelBorderWidth
             if (root.inirEverywhere) {
@@ -733,6 +838,7 @@ Item { // Bar content region
         }
         border.color: {
             if (root.zzzEverywhere) return Appearance.zzz.hairline
+            if (root.regaliaEverywhere) return "transparent"
             // Frame is defined by its outline — use the visible outline token
             if (root.isFrame && !root.angelEverywhere && !root.inirEverywhere) {
                 return Appearance.colors.colOutlineVariant
@@ -849,66 +955,30 @@ Item { // Bar content region
             accentColor: Appearance.zzz.chromeStroke
         }
 
-        Item {
-            id: barVisualizer
-
-            readonly property bool wanted: (Config.options?.bar?.visualizer?.enable ?? false)
-                && !barBackground.gameModeMinimal
-                && root.visible
-                && MprisController.isPlaying
-            readonly property real fillRatio: Math.max(0.1, Math.min(1, Config.options?.bar?.visualizer?.height ?? 0.6))
-            readonly property string vizType: Config.options?.bar?.visualizer?.type ?? "bars"
-
-            anchors {
-                left: parent.left
-                right: parent.right
-                leftMargin: barBackground.radius
-                rightMargin: barBackground.radius
-            }
-            y: parent.height - height
-            height: parent.height * fillRatio
-            visible: wanted && barCavaProcess.points.length > 0
-            opacity: Math.max(0, Math.min(1, Config.options?.bar?.visualizer?.opacity ?? 0.35))
-
-            Behavior on opacity {
-                enabled: Appearance.animationsEnabled
-                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
-            }
-
-            CavaProcess {
-                id: barCavaProcess
-                active: barVisualizer.wanted
-            }
-
-            readonly property color spectrumColor: root.inirEverywhere ? Appearance.inir.colPrimary
-                : root.zzzEverywhere ? Appearance.zzz.accent
-                : (barBackground.blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
-
-            CavaVisualizer {
-                anchors.fill: parent
-                visible: barVisualizer.vizType === "bars"
-                live: barVisualizer.wanted
-                points: barCavaProcess.points
-                maxVisualizerValue: 1000
-                smoothing: 2
-                barCount: Math.max(16, Math.round(parent.width / 12))
-                barSpacing: 2
-                barRadius: 2
-                barMinHeight: 1
-                colorLow: ColorUtils.transparentize(barVisualizer.spectrumColor, 0.4)
-                colorMed: ColorUtils.transparentize(barVisualizer.spectrumColor, 0.2)
-                colorHigh: barVisualizer.spectrumColor
-            }
-
-            WaveVisualizer {
-                anchors.fill: parent
-                visible: barVisualizer.vizType === "wave"
-                live: barVisualizer.wanted
-                points: barCavaProcess.points
-                maxVisualizerValue: 1000
-                smoothing: 2
-                color: barVisualizer.spectrumColor
-            }
+        CavaSpectrum {
+            anchors.fill: parent
+            active: root.barSpectrumVisible && !root.isIslands
+            threadedRendering: true
+            points: active ? barCavaProcess.points : []
+            normalizationCeiling: active ? barCavaProcess.normalizationCeiling : 100
+            visualizerType: root.barSpectrumType
+            spectrumOpacity: root.barSpectrumOpacity
+            fillRatio: root.barSpectrumFillRatio
+            spectrumColor: root.barSpectrumColor
+            barsOrigin: root.barSpectrumBarsOrigin
+            pixelsPerBar: root.barSpectrumDensity
+            barSpacing: root.barSpectrumGap
+            smoothing: root.barSpectrumSmoothing
+            waveMode: root.barSpectrumWaveMode
+            lineWidth: root.barSpectrumLineWidth
+            edgeInset: root.barSpectrumEdgeInset
+            edgeSoftness: root.barSpectrumEdgeSoftness
+            frequencyProfile: root.barSpectrumFrequencyProfile
+            accentStrength: root.barSpectrumAccentStrength
+            topLeftRadius: barBackground.topLeftRadius
+            topRightRadius: barBackground.topRightRadius
+            bottomLeftRadius: barBackground.bottomLeftRadius
+            bottomRightRadius: barBackground.bottomRightRadius
         }
     }
 
@@ -968,7 +1038,7 @@ Item { // Bar content region
             anchors.left: parent.left
             anchors.right: root.isIslands ? undefined : parent.right
             anchors.leftMargin: root.isIslands
-                ? Appearance.sizes.hyprlandGapsOut + root.islandPad
+                ? root.islandOuterInset + root.islandPad
                 : Appearance.rounding.screenRounding
             anchors.rightMargin: Appearance.rounding.screenRounding
             spacing: 10
@@ -1002,6 +1072,23 @@ Item { // Bar content region
             id: middleCenterGroup
             nativeBlurActive: root.nativeBlurActive
             screen: root.screen
+            spectrumEnabled: root.barSpectrumVisible && root.isIslands && visible
+            spectrumPoints: spectrumEnabled ? barCavaProcess.points : []
+            spectrumCeiling: spectrumEnabled ? barCavaProcess.normalizationCeiling : 100
+            spectrumType: root.barSpectrumType
+            spectrumOpacity: root.barSpectrumOpacity
+            spectrumFillRatio: root.barSpectrumFillRatio
+            spectrumBarsOrigin: root.barSpectrumBarsOrigin
+            spectrumDensity: root.barSpectrumDensity
+            spectrumGap: root.barSpectrumGap
+            spectrumSmoothing: root.barSpectrumSmoothing
+            spectrumWaveMode: root.barSpectrumWaveMode
+            spectrumLineWidth: root.barSpectrumLineWidth
+            spectrumEdgeInset: root.barSpectrumEdgeInset
+            spectrumEdgeSoftness: root.barSpectrumEdgeSoftness
+            spectrumFrequencyProfile: root.barSpectrumFrequencyProfile
+            spectrumAccentStrength: root.barSpectrumAccentStrength
+            spectrumDomain: root
             anchors.verticalCenter: parent.verticalCenter
             anchors.horizontalCenter: parent.horizontalCenter
             padding: 4
@@ -1040,6 +1127,23 @@ Item { // Bar content region
             id: leftCenterGroup
             nativeBlurActive: root.nativeBlurActive
             screen: root.screen
+            spectrumEnabled: root.barSpectrumVisible && root.isIslands && visible
+            spectrumPoints: spectrumEnabled ? barCavaProcess.points : []
+            spectrumCeiling: spectrumEnabled ? barCavaProcess.normalizationCeiling : 100
+            spectrumType: root.barSpectrumType
+            spectrumOpacity: root.barSpectrumOpacity
+            spectrumFillRatio: root.barSpectrumFillRatio
+            spectrumBarsOrigin: root.barSpectrumBarsOrigin
+            spectrumDensity: root.barSpectrumDensity
+            spectrumGap: root.barSpectrumGap
+            spectrumSmoothing: root.barSpectrumSmoothing
+            spectrumWaveMode: root.barSpectrumWaveMode
+            spectrumLineWidth: root.barSpectrumLineWidth
+            spectrumEdgeInset: root.barSpectrumEdgeInset
+            spectrumEdgeSoftness: root.barSpectrumEdgeSoftness
+            spectrumFrequencyProfile: root.barSpectrumFrequencyProfile
+            spectrumAccentStrength: root.barSpectrumAccentStrength
+            spectrumDomain: root
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: (Config.options?.bar.borderless ?? false) ? leftSeparator.left : middleCenterGroup.left
             anchors.rightMargin: root.isIslands ? 8 : 4
@@ -1050,7 +1154,7 @@ Item { // Bar content region
             // which would leave dead space in the lighter side). Classic keeps the
             // mirrored width so the two side pills stay visually balanced.
             implicitWidth: empty ? 0 : (root.isIslands ? Math.min(contentWidth, root.centerSideMaxWidth) : root._pillWidth(contentWidth))
-            clip: true
+            clipContent: true
 
             Repeater {
                 model: root._centerLeftIds
@@ -1098,13 +1202,30 @@ Item { // Bar content region
                 id: rightCenterGroupPill
                 nativeBlurActive: root.nativeBlurActive
                 screen: root.screen
+                spectrumEnabled: root.barSpectrumVisible && root.isIslands && visible
+                spectrumPoints: spectrumEnabled ? barCavaProcess.points : []
+                spectrumCeiling: spectrumEnabled ? barCavaProcess.normalizationCeiling : 100
+                spectrumType: root.barSpectrumType
+                spectrumOpacity: root.barSpectrumOpacity
+                spectrumFillRatio: root.barSpectrumFillRatio
+                spectrumBarsOrigin: root.barSpectrumBarsOrigin
+                spectrumDensity: root.barSpectrumDensity
+                spectrumGap: root.barSpectrumGap
+                spectrumSmoothing: root.barSpectrumSmoothing
+                spectrumWaveMode: root.barSpectrumWaveMode
+                spectrumLineWidth: root.barSpectrumLineWidth
+                spectrumEdgeInset: root.barSpectrumEdgeInset
+                spectrumEdgeSoftness: root.barSpectrumEdgeSoftness
+                spectrumFrequencyProfile: root.barSpectrumFrequencyProfile
+                spectrumAccentStrength: root.barSpectrumAccentStrength
+                spectrumDomain: root
                 anchors.verticalCenter: parent.verticalCenter
                 visible: !empty
                 // Islands: each capsule hugs its own content (no symmetric mirroring,
                 // which would leave dead space in the lighter side). Classic keeps the
                 // mirrored width so the two side pills stay visually balanced.
                 implicitWidth: empty ? 0 : (root.isIslands ? Math.min(contentWidth, root.centerSideMaxWidth) : root._pillWidth(contentWidth))
-                clip: true
+                clipContent: true
 
                 Repeater {
                     model: root._centerRightIds
@@ -1227,7 +1348,7 @@ Item { // Bar content region
             anchors.left: root.isIslands ? undefined : parent.left
             anchors.leftMargin: Appearance.rounding.screenRounding
             anchors.rightMargin: root.isIslands
-                ? Appearance.sizes.hyprlandGapsOut + root.islandPad
+                ? root.islandOuterInset + root.islandPad
                 : Appearance.rounding.screenRounding
             spacing: 5
             layoutDirection: Qt.RightToLeft
@@ -1302,7 +1423,8 @@ Item { // Bar content region
             implicitWidth: indicatorsRowLayout.implicitWidth + (root.isIslands ? 7 : 10) * 2
             implicitHeight: indicatorsRowLayout.implicitHeight + (root.isIslands ? 2 : 5) * 2
 
-            buttonRadius: root.zzzEverywhere ? Appearance.zzz.controlRadius : Appearance.rounding.full
+            buttonRadius: root.regaliaEverywhere ? Appearance.regalia.controlRadius
+                : root.zzzEverywhere ? Appearance.zzz.controlRadius : Appearance.rounding.full
 
             // zzz: transparent everywhere on this Control's own background —
             // the ZzzPlate below is the only hover/toggle surface. Matches
@@ -1316,9 +1438,11 @@ Item { // Bar content region
                 : root.auroraEverywhere ? Appearance.aurora.colSubSurfaceHover : Appearance.colors.colLayer1Hover
             colRipple: root.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.20)
                 : root.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive : Appearance.colors.colLayer1Active
-            colBackgroundToggled: root.zzzEverywhere ? "transparent"
+            colBackgroundToggled: root.regaliaEverywhere ? Appearance.regalia.primaryPlate
+                : root.zzzEverywhere ? "transparent"
                 : root.auroraEverywhere ? Appearance.aurora.colElevatedSurface : Appearance.colors.colSecondaryContainer
-            colBackgroundToggledHover: root.zzzEverywhere ? "transparent"
+            colBackgroundToggledHover: root.regaliaEverywhere ? Appearance.regalia.primaryPlateHover
+                : root.zzzEverywhere ? "transparent"
                 : root.auroraEverywhere ? Appearance.aurora.colElevatedSurfaceHover : Appearance.colors.colSecondaryContainerHover
             colRippleToggled: root.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.20)
                 : root.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive : Appearance.colors.colSecondaryContainerActive
@@ -1338,7 +1462,9 @@ Item { // Bar content region
             }
 
             toggled: ShellLayoutController.sidebarOpenAtSlot("right")
-            property color colText: root.zzzEverywhere
+            property color colText: root.regaliaEverywhere
+                ? (toggled ? Appearance.regalia.primaryPlateInk : Appearance.regalia.onColor)
+                : root.zzzEverywhere
                 ? (toggled ? Appearance.zzz.onAccentSoft : Appearance.zzz.ink)
                 : toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer0
 

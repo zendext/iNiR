@@ -7,8 +7,26 @@ import qs.modules.common.functions
 import qs.modules.common.widgets
 
 ContentPage {
+    id: root
     settingsPageIndex: 1
     settingsPageName: Translation.tr("System")
+    property string activeSection: "audio"
+
+    SettingsTaskNavigator {
+        icon: "browse"
+        title: Translation.tr("System")
+        description: Translation.tr("System settings are grouped by the thing you are trying to change, so audio controls do not compete with language, input or safety policy.")
+        summary: Translation.tr("Audio · power · locale · input · safety")
+        currentValue: root.activeSection
+        onSelected: value => root.activeSection = value
+        options: [
+            { displayName: Translation.tr("Audio"), icon: "volume_up", value: "audio" },
+            { displayName: Translation.tr("Power"), icon: "battery_android_full", value: "power" },
+            { displayName: Translation.tr("Locale"), icon: "language", value: "locale" },
+            { displayName: Translation.tr("Input"), icon: "keyboard", value: "input" },
+            { displayName: Translation.tr("Safety"), icon: "lock", value: "safety" }
+        ]
+    }
 
     Process {
         id: translationProc
@@ -17,6 +35,8 @@ ContentPage {
     }
 
     SettingsCardSection {
+        settingsTaskSection: "audio"
+        visible: root.activeSection === "audio"
         expanded: true
         icon: "volume_up"
         title: Translation.tr("Audio")
@@ -71,7 +91,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "power"
+        visible: root.activeSection === "power"
+        expanded: true
         icon: "battery_android_full"
         title: Translation.tr("Battery")
 
@@ -170,9 +192,8 @@ ContentPage {
                     buttonIcon: "battery_saver"
                     text: Translation.tr("Charge limit")
                     checked: Config.options?.battery?.chargeLimit?.enable ?? false
-                    onCheckedChanged: {
-                        Config.setNestedValue("battery.chargeLimit.enable", checked);
-                    }
+                    autoToggle: false
+                    onToggledByUser: checked => Config.setNestedValue("battery.chargeLimit.enable", checked)
                     StyledToolTip {
                         text: !Battery.chargeLimitSupported
                             ? Translation.tr("Not supported on this device")
@@ -182,6 +203,7 @@ ContentPage {
                     }
                 }
                 ConfigSpinBox {
+                    property bool _ready: false
                     visible: Battery.chargeLimitAdjustable
                     enabled: (Config.options?.battery?.chargeLimit?.enable ?? false) && Battery.chargeLimitAdjustable
                     icon: "speed"
@@ -190,8 +212,10 @@ ContentPage {
                     from: 20
                     to: 100
                     stepSize: 5
+                    Component.onCompleted: _ready = true
                     onValueChanged: {
-                        Config.setNestedValue("battery.chargeLimit.threshold", value);
+                        if (_ready && value !== (Config.options?.battery?.chargeLimit?.threshold ?? 80))
+                            Config.setNestedValue("battery.chargeLimit.threshold", value);
                     }
                     StyledToolTip {
                         text: Translation.tr("Maximum charge percentage")
@@ -214,7 +238,9 @@ ContentPage {
     }
     
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "locale"
+        visible: root.activeSection === "locale"
+        expanded: true
         icon: "language"
         title: Translation.tr("Language")
 
@@ -275,8 +301,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        visible: !(Config.options?.settingsUi?.easyMode ?? false)
-        expanded: false
+        settingsTaskSection: "safety"
+        visible: root.activeSection === "safety" && !(Config.options?.settingsUi?.easyMode ?? false)
+        expanded: true
         icon: "rule"
         title: Translation.tr("Policies")
 
@@ -321,7 +348,9 @@ ContentPage {
 
     SettingsCardSection {
         id: soundsSection
-        expanded: false
+        settingsTaskSection: "audio"
+        visible: root.activeSection === "audio"
+        expanded: true
         icon: "notification_sound"
         title: Translation.tr("Sounds")
 
@@ -435,7 +464,9 @@ ContentPage {
     }
     
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "locale"
+        visible: root.activeSection === "locale"
+        expanded: true
         icon: "nest_clock_farsight_analog"
         title: Translation.tr("Time")
 
@@ -512,7 +543,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "input"
+        visible: root.activeSection === "input"
+        expanded: true
         icon: "keyboard"
         title: Translation.tr("Keyboard")
 
@@ -600,8 +633,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        visible: !(Config.options?.settingsUi?.easyMode ?? false)
-        expanded: false
+        settingsTaskSection: "input"
+        visible: root.activeSection === "input" && !(Config.options?.settingsUi?.easyMode ?? false)
+        expanded: true
         icon: "select_window"
         title: Translation.tr("Window Management")
 
@@ -622,8 +656,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        visible: !(Config.options?.settingsUi?.easyMode ?? false)
-        expanded: false
+        settingsTaskSection: "safety"
+        visible: root.activeSection === "safety" && !(Config.options?.settingsUi?.easyMode ?? false)
+        expanded: true
         icon: "work_alert"
         title: Translation.tr("Work safety")
 
@@ -657,7 +692,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "locale"
+        visible: root.activeSection === "locale"
+        expanded: true
         icon: "waving_hand"
         title: Translation.tr("Boot greeting")
 
@@ -719,7 +756,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "safety"
+        visible: root.activeSection === "safety"
+        expanded: true
         icon: "lock"
         title: Translation.tr("Lock screen")
 

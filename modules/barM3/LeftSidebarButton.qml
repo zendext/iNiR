@@ -1,6 +1,8 @@
 import QtQuick
+import Quickshell
 import qs
 import qs.services
+import qs.modules.barM3
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
@@ -21,16 +23,17 @@ RippleButton {
     implicitHeight: 32
 
     buttonRadius: Appearance.rounding.full
-    colBackground: isMaterial ? Appearance.colors.colPrimaryContainer : "transparent"
-    colBackgroundHover: isMaterial ? Appearance.colors.colPrimaryContainerHover : Appearance.colors.colLayer1Hover
-    colRipple: isMaterial ? Appearance.colors.colLayer1Active : Appearance.colors.colLayer1Active
-    colBackgroundToggled: Appearance.colors.colSecondaryContainer
-    colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
-    colRippleToggled: Appearance.colors.colSecondaryContainerActive
+    colBackground: isMaterial ? M3Palette.primaryContainer : "transparent"
+    colBackgroundHover: isMaterial ? M3Palette.primaryContainerHover : Appearance.colors.colLayer1Hover
+    colRipple: isMaterial ? M3Palette.primaryContainerActive : Appearance.colors.colLayer1Active
+    colBackgroundToggled: isMaterial ? M3Palette.secondaryContainer : Appearance.colors.colSecondaryContainer
+    colBackgroundToggledHover: isMaterial ? M3Palette.secondaryContainerHover : Appearance.colors.colSecondaryContainerHover
+    colRippleToggled: isMaterial ? M3Palette.secondaryContainerActive : Appearance.colors.colSecondaryContainerActive
     toggled: GlobalStates.sidebarLeftOpen
+        && GlobalStates.sidebarLeftPresentationOutput === (root.QsWindow.window?.screen?.name ?? "")
 
     onPressed: {
-        GlobalStates.sidebarLeftOpen = !GlobalStates.sidebarLeftOpen;
+        GlobalStates.toggleSidebarLeft(root.QsWindow.window?.screen?.name ?? "");
     }
 
     Connections {
@@ -65,7 +68,11 @@ RippleButton {
             ? SystemInfo.distroIcon
             : `${Config.options?.bar?.topLeftIcon ?? "distro"}-symbolic`
         colorize: true
-        color: Appearance.colors.colPrimary
+        color: (Config.options?.bar?.m3?.cornerStyle ?? 0) !== 3
+            ? Appearance.colors.colPrimary
+            : root.toggled
+                ? M3Palette.pillInk("sidebarToggle")
+                : M3Palette.pillInk("leftSidebarButton")
 
         Rectangle {
             opacity: root.showPing ? 1 : 0

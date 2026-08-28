@@ -26,14 +26,7 @@ Item {
             visible: source != ""
             sourceSize.width: size
             sourceSize.height: size
-            source: {
-                let icon;
-                icon = AppSearch.guessIcon(root.node.properties["application.icon-name"]);
-                if (AppSearch.iconExists(icon))
-                    return Quickshell.iconPath(icon, "image-missing");
-                icon = AppSearch.guessIcon(root.node.properties["node.name"]);
-                return Quickshell.iconPath(icon, "image-missing");
-            }
+            source: root.node ? Quickshell.iconPath(MprisController.streamIconName(root.node), "image-missing") : ""
         }
 
         ColumnLayout {
@@ -46,9 +39,10 @@ Item {
                 color: Appearance.colors.colSubtext
                 elide: Text.ElideRight
                 text: {
-                    // application.name -> description -> name
-                    const app = root.node.properties["application.name"] ?? (root.node.description != "" ? root.node.description : root.node.name);
-                    const media = root.node.properties["media.name"];
+                    if (!root.node)
+                        return ""
+                    const app = MprisController.streamDisplayName(root.node);
+                    const media = root.node.properties?.["media.name"];
                     return media != undefined ? `${app} • ${media}` : app;
                 }
             }

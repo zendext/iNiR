@@ -170,7 +170,7 @@ PopupWindow {
                         : Appearance.animation.elementMoveEnter.type
                     easing.bezierCurve: root.closing
                         ? Appearance.animation.elementMoveExit.bezierCurve
-                        : Appearance.animation.elementMoveEnter.bezierCurve
+                        : Appearance.motion.popupReveal.enterBezierCurve
                 }
             }
             Behavior on scale {
@@ -184,7 +184,7 @@ PopupWindow {
                         : Appearance.animation.elementMoveEnter.type
                     easing.bezierCurve: root.closing
                         ? Appearance.animation.elementMoveExit.bezierCurve
-                        : Appearance.animation.elementMoveEnter.bezierCurve
+                        : Appearance.motion.popupReveal.enterBezierCurve
                 }
             }
             Behavior on implicitHeight {

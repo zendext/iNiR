@@ -13,10 +13,10 @@ Scope {
     id: screenCorners
     readonly property Toplevel activeWindow: ToplevelManager.activeToplevel
     property var actionForCorner: ({
-        [RoundCorner.CornerEnum.TopLeft]: () => GlobalStates.sidebarLeftOpen = !GlobalStates.sidebarLeftOpen,
-        [RoundCorner.CornerEnum.BottomLeft]: () => GlobalStates.sidebarLeftOpen = !GlobalStates.sidebarLeftOpen,
-        [RoundCorner.CornerEnum.TopRight]: () => GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen,
-        [RoundCorner.CornerEnum.BottomRight]: () => GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen
+        [RoundCorner.CornerEnum.TopLeft]: outputName => GlobalStates.toggleSidebarLeft(outputName),
+        [RoundCorner.CornerEnum.BottomLeft]: outputName => GlobalStates.toggleSidebarLeft(outputName),
+        [RoundCorner.CornerEnum.TopRight]: outputName => GlobalStates.toggleSidebarRight(outputName),
+        [RoundCorner.CornerEnum.BottomRight]: outputName => GlobalStates.toggleSidebarRight(outputName)
     })
 
     component CornerPanelWindow: PanelWindow {
@@ -103,15 +103,15 @@ Scope {
                         const correctX = (cornerWidget.isRight && mouseArea.mouseX >= mouseArea.width - 2) || (cornerWidget.isLeft && mouseArea.mouseX <= 2);
                         const correctY = (cornerWidget.isTop && mouseArea.mouseY > verticalOffset || cornerWidget.isBottom && mouseArea.mouseY < mouseArea.height - verticalOffset);
                         if (correctX && correctY)
-                            screenCorners.actionForCorner[cornerPanelWindow.corner]();
+                            screenCorners.actionForCorner[cornerPanelWindow.corner](cornerPanelWindow.screen?.name ?? "");
                     }
                     onEntered: {
                         if (Config.options?.sidebar?.cornerOpen?.clickless ?? false)
-                            screenCorners.actionForCorner[cornerPanelWindow.corner]();
+                            screenCorners.actionForCorner[cornerPanelWindow.corner](cornerPanelWindow.screen?.name ?? "");
                     }
                     onPressed: {
                         if (!(Config.options?.sidebar?.cornerOpen?.clickless ?? false)) {
-                            screenCorners.actionForCorner[cornerPanelWindow.corner]();
+                            screenCorners.actionForCorner[cornerPanelWindow.corner](cornerPanelWindow.screen?.name ?? "");
                             if (Config.options?.background?.effects?.ripple?.hotcorners ?? true) {
                                 GlobalStates.requestRipple(0, 0, cornerPanelWindow.screen.name);
                             }

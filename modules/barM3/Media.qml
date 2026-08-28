@@ -39,6 +39,19 @@ Item {
     property bool   isPlaying:   activePlayer?.isPlaying   ?? false
     property bool   hasTrack:    trackTitle.length > 0
     readonly property bool shouldShow: (Config.options?.bar?.m3?.media?.alwaysVisible ?? false) || root.hasTrack
+    readonly property color mediaContainer: M3Palette.pillContainer("media")
+    readonly property color mediaInk: M3Palette.pillInk("media")
+    readonly property color playContainer: root.isPlaying
+        ? M3Palette.primary : M3Palette.surfaceContainerLow
+    readonly property color playInk: ColorUtils.ensureReadable(
+        root.isPlaying ? M3Palette.primaryForeground : M3Palette.surfaceForeground,
+        root.playContainer, 4.5)
+    readonly property color playHover: ColorUtils.mix(
+        root.playContainer, root.playInk, 0.90)
+    readonly property color playActive: ColorUtils.mix(
+        root.playContainer, root.playInk, 0.78)
+    readonly property color transparentHover: ColorUtils.applyAlpha(root.mediaInk, 0.12)
+    readonly property color transparentActive: ColorUtils.applyAlpha(root.mediaInk, 0.22)
 
     visible: root.shouldShow
 
@@ -77,8 +90,8 @@ Item {
         hoverEnabled: !Config.options.bar.m3.tooltips.clickToShow
         onPressed: (event) => {
             if (event.button === Qt.MiddleButton)      activePlayer?.togglePlaying()
-            else if (event.button === Qt.BackButton)   activePlayer?.previous()
-            else if (event.button === Qt.ForwardButton || event.button === Qt.RightButton) activePlayer?.next()
+            else if (event.button === Qt.BackButton)   MprisController.previousForPlayer(activePlayer)
+            else if (event.button === Qt.ForwardButton || event.button === Qt.RightButton) MprisController.nextForPlayer(activePlayer)
             else if (event.button === Qt.LeftButton)   GlobalStates.mediaControlsOpen = !GlobalStates.mediaControlsOpen
         }
     }
@@ -114,7 +127,7 @@ Item {
     Rectangle {
         visible: root.vertical && root.isMaterial
         anchors.centerIn: parent
-        color: M3Palette.secondaryContainer
+        color: root.mediaContainer
         radius: Appearance.rounding.full
         implicitWidth: 32
         implicitHeight: 32
@@ -124,7 +137,7 @@ Item {
             fill: 1
             text: root.activePlayer?.isPlaying ? "pause" : "music_note"
             iconSize: Appearance.font.pixelSize.normal
-            color: M3Palette.pillInk("media")
+            color: root.mediaInk
         }
     }
 
@@ -227,7 +240,7 @@ Item {
                             anchors.centerIn: parent
                             text: "account_circle"
                             iconSize: Appearance.font.pixelSize.normal
-                            color: M3Palette.onPrimaryContainer
+                            color: M3Palette.primaryContainerForeground
                             visible: avatarImage.status === Image.Error || avatarImage.status === Image.Null
                         }
                     }
@@ -240,7 +253,7 @@ Item {
                         StyledText {
                             text: SystemInfo.username
                             font.pixelSize: Appearance.font.pixelSize.smaller
-                            color: M3Palette.pillInk("media")
+                            color: root.mediaInk
                             elide: Text.ElideRight
                             Layout.maximumWidth: 120
                         }
@@ -248,7 +261,7 @@ Item {
                         StyledText {
                             id: distroLabel
                             font.pixelSize: Appearance.font.pixelSize.smaller
-                            color: M3Palette.pillInk("media")
+                            color: root.mediaInk
                             opacity: 0.7
                             elide: Text.ElideRight
                             Layout.rightMargin: 8
@@ -273,7 +286,7 @@ Item {
                         implicitWidth: 26
                         implicitHeight: 26
                         radius: Appearance.rounding.full
-                        color: M3Palette.secondaryContainer
+                        color: root.mediaContainer
                         Layout.alignment: Qt.AlignVCenter
 
                         MediaCrossSlideImage {
@@ -282,8 +295,8 @@ Item {
                             transitionKey: root.artworkTransitionKey
                             downloaded: root.artDownloaded
                             artRadius: artRect.radius
-                            placeholderColor: M3Palette.secondaryContainer
-                            iconColor: M3Palette.pillInk("media")
+                            placeholderColor: root.mediaContainer
+                            iconColor: root.mediaInk
                             iconSize: Appearance.font.pixelSize.normal
                         }
                     }
@@ -300,7 +313,7 @@ Item {
                                 && root.trackArtist.length > 0
                             text: root.trackArtist
                             font.pixelSize: Appearance.font.pixelSize.smaller
-                            color: M3Palette.pillInk("media")
+                            color: root.mediaInk
                             elide: Text.ElideRight
                             Layout.maximumWidth: 120
                             animateChange: true
@@ -315,8 +328,9 @@ Item {
                                 : Appearance.font.pixelSize.smallie
                             font.weight: titleOnly ? Font.Medium : Font.Normal
                             color: titleOnly
-                                ? M3Palette.pillInk("media")
-                                : ColorUtils.transparentize(M3Palette.pillInk("media"), 0.3)
+                                ? root.mediaInk
+                                : ColorUtils.readableSubtext(root.mediaInk,
+                                    root.mediaContainer, 0.72)
                             elide: Text.ElideRight
                             Layout.maximumWidth: 120
                             animateChange: true
@@ -328,9 +342,9 @@ Item {
                         implicitWidth: 40
                         implicitHeight: 23
                         buttonRadius: root.isPlaying ? Appearance.rounding.normal : 13
-                        colBackground: root.isPlaying ? M3Palette.primary : M3Palette.surfaceContainerLow
-                        colBackgroundHover: root.isPlaying ? Appearance.colors.colPrimaryHover : Appearance.colors.colPrimaryContainerHover
-                        colRipple: root.isPlaying ? Appearance.colors.colPrimaryActive : Appearance.colors.colPrimaryContainerActive
+                        colBackground: root.playContainer
+                        colBackgroundHover: root.playHover
+                        colRipple: root.playActive
                         downAction: () => root.activePlayer?.togglePlaying()
                         contentItem: MaterialSymbol {
                             anchors.centerIn: parent
@@ -338,7 +352,7 @@ Item {
                             text: root.isPlaying ? "pause" : "play_arrow"
                             iconSize: Appearance.font.pixelSize.large
                             fill: 1
-                            color: root.isPlaying ? M3Palette.onPrimary : M3Palette.onPrimaryContainer
+                            color: root.playInk
                         }
                     }
 
@@ -349,17 +363,17 @@ Item {
                         Layout.leftMargin: -4
                         buttonRadius: 13
                         colBackground: "transparent"
-                        colBackgroundHover: Appearance.colors.colPrimaryContainerHover
-                        colRipple: Appearance.colors.colPrimaryContainerActive
-                        downAction: () => root.activePlayer?.next()
-                        altAction: () => root.activePlayer?.previous()
+                        colBackgroundHover: root.transparentHover
+                        colRipple: root.transparentActive
+                        downAction: () => MprisController.nextForPlayer(root.activePlayer)
+                        altAction: () => MprisController.previousForPlayer(root.activePlayer)
                         contentItem: MaterialSymbol {
                             anchors.centerIn: parent
                             horizontalAlignment: Text.AlignHCenter
                             text: "skip_next"
                             iconSize: Appearance.font.pixelSize.large
                             fill: 1
-                            color: M3Palette.pillInk("media")
+                            color: root.mediaInk
                         }
                     }
                 }

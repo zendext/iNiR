@@ -22,6 +22,21 @@ bash -n \
     "$runtime_root/sdata/subcmd-install/"*.sh \
     "$runtime_root/sdata/migrations/"*.sh
 
+step "session tray ordering"
+service_unit="$runtime_root/assets/systemd/inir.service"
+if ! grep -qx 'Type=dbus' "$service_unit" \
+        || ! grep -qx 'BusName=org.kde.StatusNotifierWatcher' "$service_unit" \
+        || ! grep -qx 'Before=graphical-session.target' "$service_unit" \
+        || grep -qx 'After=graphical-session.target' "$service_unit" \
+        || grep -qx 'Requisite=graphical-session.target' "$service_unit"; then
+    printf 'FAIL: inir.service does not gate XDG autostart on the tray watcher\n' >&2
+    exit 1
+fi
+if ! grep -Fq 'property var _trayService: TrayService' "$runtime_root/shell.qml"; then
+    printf 'FAIL: shell startup does not instantiate the StatusNotifier watcher\n' >&2
+    exit 1
+fi
+
 step "fresh install defaults"
 python3 - "$runtime_root" <<'PY'
 import json
@@ -64,7 +79,7 @@ schema_checks = {
     "schema dock not hover-only": "property bool hoverToReveal: false" in schema,
     "schema right sidebar full height": "property bool collapseEmptyNotifications: false" in schema,
     "schema left sidebar full height": "property bool collapseWidgetsTab: false" in schema,
-    "schema wallhaven tab": "property JsonObject wallhaven: JsonObject {\n                    // Enable/disable the Wallhaven tab in the left sidebar\n                    property bool enable: true" in schema,
+    "schema wallhaven tab": "property JsonObject wallhaven: JsonObject {\n                    // Enable/disable the Wallpapers tab in the left sidebar\n                    property bool enable: true" in schema,
     "schema news tab": "property JsonObject news: JsonObject {\n                    property bool enable: true" in schema,
     "wizard applies initial profile": "root.applyProfile(root.selectedProfile)" in wizard,
     "wizard dock pinned": '"dock.pinnedOnStartup": true' in wizard,
@@ -107,6 +122,13 @@ while IFS= read -r runtime_dir; do
     [[ -n "$runtime_dir" ]] || continue
     [[ -d "$runtime_root/$runtime_dir" ]]
 done < "$runtime_root/sdata/runtime-payload-dirs.txt"
+
+snapshot_lib="$runtime_root/sdata/lib/snapshots.sh"
+if ! grep -Fq 'quickshell/user/desktop-items.json' "$snapshot_lib" \
+        || ! grep -Fq 'desktop-items.json' "$snapshot_lib"; then
+    printf 'FAIL: managed desktop items are absent from update snapshots\n' >&2
+    exit 1
+fi
 
 step "mascot runtime manifest"
 mascot_manifest="$runtime_root/assets/images/mascot/manifest.json"
@@ -172,6 +194,24 @@ fi
 step "launcher resolution"
 bash "$launcher" path >/dev/null
 bash "$launcher" status >/dev/null
+
+step "application launch environment"
+# XWayland is not guaranteed to own :0. Preserve live DISPLAY discovery and validation.
+shell_exec="$runtime_root/modules/common/functions/ShellExec.qml"
+inir_launcher="$runtime_root/scripts/inir"
+if ! grep -Fq 'systemctl --user show-environment' "$shell_exec" \
+        || ! grep -Fq '_manager_display="$(manager_value DISPLAY)"' "$shell_exec" \
+        || ! grep -Fq 'valid_display "$DISPLAY"' "$shell_exec" \
+        || ! grep -Fq 'for _x in /tmp/.X11-unix/X*' "$shell_exec"; then
+    printf 'FAIL: application launches do not recover the live XWayland DISPLAY environment\n' >&2
+    exit 1
+fi
+if ! grep -Fq 'vars_to_import+=("DISPLAY=$DISPLAY")' "$inir_launcher" \
+        || ! grep -Fq 'for _xsock in /tmp/.X11-unix/X*' "$inir_launcher" \
+        || ! grep -Fq 'systemctl --user set-environment "${vars_to_import[@]}"' "$inir_launcher"; then
+    printf 'FAIL: session environment does not publish the XWayland DISPLAY to the user manager\n' >&2
+    exit 1
+fi
 
 if command -v python3 &>/dev/null && [[ -f "$runtime_root/scripts/lib/generate-ipc-registry.py" ]]; then
     step "IPC registry freshness"

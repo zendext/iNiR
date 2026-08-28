@@ -18,7 +18,8 @@ RippleButton {
     property var sourceColors: []
     property string subLabel: ""
     property string statusLabel: ""
-    property color statusColor: Appearance.zzzEverywhere ? Appearance.zzz.accent
+    property color statusColor: Appearance.regaliaEverywhere ? Appearance.regalia.hardwarePrimary
+        : Appearance.zzzEverywhere ? Appearance.zzz.accent
         : Appearance.angelEverywhere ? Appearance.angel.colPrimary
         : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary
     readonly property bool hasSubLabel: subLabel.length > 0 && !isHeader
@@ -30,13 +31,16 @@ RippleButton {
     implicitHeight: 38
 
     toggled: (isToday == 1) && !isHeader
-    buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
+    buttonRadius: Appearance.regaliaEverywhere ? Appearance.regalia.controlRadius
+        : Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
         : Appearance.angelEverywhere ? Appearance.angel.roundingSmall
         : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.small
     // ZZZ today = confident accent "sticker" chip so onSticker text stays readable
     // (RippleButton's default zzz toggled bg is near-black chrome → dark-on-dark).
-    colBackgroundToggled: Appearance.zzzEverywhere ? Appearance.zzz.sticker : Appearance.colors.colPrimary
-    colBackgroundToggledHover: Appearance.zzzEverywhere ? ColorUtils.mix(Appearance.zzz.sticker, Appearance.zzz.accent, 0.5) : Appearance.colors.colPrimaryHover
+    colBackgroundToggled: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlate
+        : Appearance.zzzEverywhere ? Appearance.zzz.sticker : Appearance.colors.colPrimary
+    colBackgroundToggledHover: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlateHover
+        : Appearance.zzzEverywhere ? ColorUtils.mix(Appearance.zzz.sticker, Appearance.zzz.accent, 0.5) : Appearance.colors.colPrimaryHover
 
     contentItem: Item {
         anchors.fill: parent
@@ -51,7 +55,12 @@ RippleButton {
                 text: button.day
                 horizontalAlignment: Text.AlignHCenter
                 font.weight: button.bold ? Font.DemiBold : Font.Normal
-                color: Appearance.zzzEverywhere
+                color: Appearance.regaliaEverywhere
+                    ? (button.isHeader && (button.isToday == 1) ? Appearance.regalia.hardwarePrimary
+                        : (button.isToday == 1) ? Appearance.regalia.primaryPlateInk
+                        : (button.isToday == 0) ? Appearance.regalia.onColor
+                        : Appearance.regalia.onMuted)
+                    : Appearance.zzzEverywhere
                     ? (button.isHeader && (button.isToday == 1) ? Appearance.zzz.accent
                         : (button.isToday == 1) ? Appearance.zzz.onSticker
                         : (button.isToday == 0) ? Appearance.zzz.ink
@@ -83,7 +92,9 @@ RippleButton {
                 text: button.subLabel
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: Appearance.font.pixelSize.smallest
-                color: Appearance.zzzEverywhere
+                color: Appearance.regaliaEverywhere
+                    ? (button.isToday == 1 ? Appearance.regalia.primaryPlateInk : Appearance.regalia.onMuted)
+                    : Appearance.zzzEverywhere
                     ? (button.isToday == 1 ? Appearance.zzz.onSticker : Appearance.zzz.inkMuted)
                     : button.isToday == 1
                         ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
@@ -104,7 +115,9 @@ RippleButton {
             text: button.statusLabel
             font.pixelSize: Appearance.font.pixelSize.smallest
             font.weight: Font.DemiBold
-            color: Appearance.zzzEverywhere
+            color: Appearance.regaliaEverywhere
+                ? (button.isToday == 1 ? Appearance.regalia.primaryPlateInk : button.statusColor)
+                : Appearance.zzzEverywhere
                 ? (button.isToday == 1 ? Appearance.zzz.onSticker : button.statusColor)
                 : button.isToday == 1
                     ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary

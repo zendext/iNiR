@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell.Widgets
 import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
+import qs
 import qs.services
 import qs.modules.common
 
@@ -10,15 +11,19 @@ Item {
 
     property real s: 1
     property string screenName: ""
+    property bool outputAllowed: true
     property bool suppressed: false
+    property bool trackSuppressed: false
     property bool expanded: false
     property bool compact: false
     property bool flashing: false
     property string kind: "volume"
     property bool armed: false
     property bool dirty: false
+    property bool dirtyIntentional: false
     property bool cooling: false
     property int holdExtends: 0
+    property bool intentionalTrackChangePending: false
 
     /**
      * The player the current flash speaks for. Normally the active source, but an
@@ -27,6 +32,11 @@ Item {
      */
     property var pendingSubject: null
     readonly property var subject: pendingSubject ? pendingSubject : PillPlayers.active
+    readonly property bool mediaFeedbackEnabled: root.outputAllowed
+        && (Config.options?.bar?.pill?.osd ?? true)
+        && (Config.options?.osd?.mediaEnabled ?? true)
+    readonly property bool trackAllowed: (Config.options?.osd?.mediaEnabled ?? true)
+        && !root.trackSuppressed
     readonly property bool subjectHas: subject !== null
     readonly property bool subjectPlaying: subjectHas && subject.isPlaying
     readonly property string subjectTitle: subjectHas ? PillPlayers.refineTitle(subject, subject.trackTitle || PillPlayers.labelOf(subject)) : ""
@@ -96,34 +106,31 @@ Item {
      * the OSD is suppressed (a surface open, the pill pinned), stays `dirty` and
      * fires when the gate opens, so the stashed-player flash still replays.
      */
-    function tryShow() {
-        if (cooling)
+    function tryShow(intentional = root.dirtyIntentional) {
+        if (cooling && !intentional)
             return;
-        if (flash("track")) {
+        if (intentional) {
+            cooling = false;
+            cooldownTimer.stop();
+        }
+        if (flash("track", intentional)) {
             dirty = false;
+            dirtyIntentional = false;
             cooling = true;
             cooldownTimer.restart();
         }
     }
 
-    /**
-     * Every pill carries its own Osd but the volume/track/battery signals are
-     * global, so without this gate one keypress flashes every monitor at once.
-     * Workspace flashes skip it: those are already keyed to this screen's own
-     * active workspace.
-     */
-    readonly property bool onFocusedMonitor: CompositorService.isNiri
-        ? (NiriService.currentOutput.length === 0 || NiriService.currentOutput === root.screenName)
-        : (!Hyprland.focusedMonitor || Hyprland.focusedMonitor.name === root.screenName)
-
-    function flash(which) {
+    function flash(which, intentionalTrack = false) {
         // OSD face switched off: the standalone OnScreenDisplay panel owns the
         // flashes instead (ShellIiPanels hands it back when this key is false).
         if (!(Config.options?.bar?.pill?.osd ?? true))
             return false;
-        if (!armed || suppressed)
+        if (which === "track" && !(Config.options?.osd?.mediaEnabled ?? true))
             return false;
-        if (which !== "workspace" && !onFocusedMonitor)
+        if (which === "track" && !intentionalTrack && !root.trackAllowed)
+            return false;
+        if (!outputAllowed || !armed || suppressed)
             return false;
         if (which === "track" && flashing && (kind === "volume" || kind === "brightness" || kind === "mic"))
             return false;
@@ -142,6 +149,53 @@ Item {
             flashing = false;
         } else if (dirty) {
             tryShow();
+        }
+    }
+
+    onOutputAllowedChanged: if (!outputAllowed) {
+        dirty = false;
+        dirtyIntentional = false;
+        intentionalTrackChangePending = false;
+        intentionalTrackFallback.stop();
+        hideTimer.stop();
+        flashing = false;
+    }
+
+    onTrackAllowedChanged: if (!trackAllowed) {
+        dirty = false;
+        dirtyIntentional = false;
+        intentionalTrackChangePending = false;
+        intentionalTrackFallback.stop();
+        pendingSubject = null;
+        if (kind === "track") {
+            hideTimer.stop();
+            flashing = false;
+        }
+    }
+
+    onMediaFeedbackEnabledChanged: if (!mediaFeedbackEnabled) {
+        dirty = false;
+        dirtyIntentional = false;
+        intentionalTrackChangePending = false;
+        intentionalTrackFallback.stop();
+        pendingSubject = null;
+        if (kind === "track") {
+            hideTimer.stop();
+            flashing = false;
+        }
+    }
+
+    Timer {
+        id: intentionalTrackFallback
+        interval: 1200
+        onTriggered: {
+            if (!root.intentionalTrackChangePending)
+                return;
+            root.intentionalTrackChangePending = false;
+            root.pendingSubject = PillPlayers.active;
+            root.dirty = true;
+            root.dirtyIntentional = true;
+            root.tryShow(true);
         }
     }
 
@@ -202,9 +256,35 @@ Item {
     Connections {
         target: PillPlayers
         function onAnnounce(player) {
+            const intentional = root.intentionalTrackChangePending;
+            if (!root.mediaFeedbackEnabled
+                    || (!root.trackAllowed && !intentional))
+                return;
+            if (intentional) {
+                intentionalTrackFallback.stop();
+                root.intentionalTrackChangePending = false;
+            }
             root.pendingSubject = player;
             root.dirty = true;
-            root.tryShow();
+            root.dirtyIntentional = intentional;
+            root.tryShow(intentional);
+        }
+    }
+
+    Connections {
+        target: GlobalStates
+        function onOsdMediaActionTriggered(action: string) {
+            if (!root.mediaFeedbackEnabled)
+                return;
+            if (action === "next" || action === "previous") {
+                root.intentionalTrackChangePending = true;
+                intentionalTrackFallback.restart();
+                return;
+            }
+            root.pendingSubject = PillPlayers.active;
+            root.dirty = true;
+            root.dirtyIntentional = true;
+            root.tryShow(true);
         }
     }
 
@@ -279,6 +359,7 @@ Item {
             height: (root.compact ? 3 : 4) * root.s
             radius: height / 2
             color: PillTheme.threadBg
+            clip: true
 
             Rectangle {
                 anchors.left: parent.left
@@ -334,6 +415,7 @@ Item {
             height: (root.compact ? 3 : 4) * root.s
             radius: height / 2
             color: PillTheme.threadBg
+            clip: true
 
             Rectangle {
                 anchors.left: parent.left
@@ -501,6 +583,7 @@ Item {
             height: (root.compact ? 3 : 4) * root.s
             radius: height / 2
             color: PillTheme.threadBg
+            clip: true
 
             Rectangle {
                 anchors.left: parent.left

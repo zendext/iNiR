@@ -226,7 +226,7 @@ RippleButton {
         taskbarRoot.closeAllContextMenus()
         taskbarRoot.contextMenuOpen = true
         hoverDelayTimer.stop()
-        contextMenu.active = true
+        contextMenu.requestOpen()
     }
 
     Connections {
@@ -257,7 +257,7 @@ RippleButton {
             ...((root.desktopEntry?.actions?.length > 0) ? root.desktopEntry.actions.map(action => ({
                 iconName: action.icon ?? "",
                 text: action.name,
-                action: () => action.execute()
+                action: () => AppSearch.launchDesktopAction(root.desktopEntry, action)
             })).concat({ type: "separator" }) : []),
             // Launch
             {

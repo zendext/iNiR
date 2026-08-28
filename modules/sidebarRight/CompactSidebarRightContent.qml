@@ -724,14 +724,16 @@ Item {
         function onRequestWifiDialogChanged() {
             if (GlobalStates.requestWifiDialog) {
                 GlobalStates.requestWifiDialog = false
-                if (!GlobalStates.sidebarRightOpen) GlobalStates.sidebarRightOpen = true
+                if (!GlobalStates.sidebarRightOpen)
+                    GlobalStates.openSidebarRight(GlobalStates.sidebarLeftTargetOutput)
                 root.showWifiDialog = true
             }
         }
         function onRequestBluetoothDialogChanged() {
             if (GlobalStates.requestBluetoothDialog) {
                 GlobalStates.requestBluetoothDialog = false
-                if (!GlobalStates.sidebarRightOpen) GlobalStates.sidebarRightOpen = true
+                if (!GlobalStates.sidebarRightOpen)
+                    GlobalStates.openSidebarRight(GlobalStates.sidebarLeftTargetOutput)
                 root.showBluetoothDialog = true
             }
         }
@@ -743,6 +745,18 @@ Item {
     StyledRectangularShadow {
         target: bg
         visible: bg.angelEverywhere && !Appearance.gameModeMinimal
+    }
+
+    IslandPanel {
+        anchors.fill: bg
+        visible: bg.islandStyle
+        radius: bg.radius
+        glassEnabled: true
+        screen: root.panelScreen ?? root.QsWindow?.window?.screen ?? null
+        glassScreenX: root.screenWidth - bg.width - Appearance.sizes.hyprlandGapsOut
+        glassScreenY: Appearance.sizes.hyprlandGapsOut
+        glassScreenWidth: root.screenWidth
+        glassScreenHeight: root.screenHeight
     }
 
     ZzzPlate {
@@ -857,19 +871,6 @@ Item {
             maskSource: Rectangle {
                 width: bg.width; height: bg.height; radius: bg.radius
             }
-        }
-
-        // Ricelin island face. Angel alone keeps the outer stepped shadow.
-        IslandPanel {
-            anchors.fill: parent
-            visible: bg.islandStyle && !bg.gameModeMinimal
-            radius: bg.radius
-            shadow: false
-            glassEnabled: true
-            glassScreenX: root.screenWidth - bg.width - Appearance.sizes.hyprlandGapsOut
-            glassScreenY: Appearance.sizes.hyprlandGapsOut
-            glassScreenWidth: root.screenWidth ?? 1920
-            glassScreenHeight: root.screenHeight ?? 1080
         }
 
         // Aurora blurred wallpaper
@@ -2135,7 +2136,7 @@ Item {
                 label: Translation.tr("Color Picker")
                 onClicked: {
                     GlobalStates.sidebarRightOpen = false
-                    Qt.callLater(() => Quickshell.execDetached(["/usr/bin/hyprpicker", "-a"]))
+                    Qt.callLater(() => ShellExec.execDetachedArgs(["/usr/bin/hyprpicker", "-a"], "Pick color"))
                 }
             }
 
@@ -2143,7 +2144,7 @@ Item {
                 Layout.fillWidth: true
                 icon: "folder_open"
                 label: Translation.tr("Files")
-                onClicked: Quickshell.execDetached(["xdg-open", Quickshell.env("HOME")])
+                onClicked: ShellExec.execDetachedArgs(["xdg-open", Quickshell.env("HOME")], "Open home folder")
             }
         }
     }

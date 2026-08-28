@@ -19,6 +19,8 @@ singleton ConflictKiller 1.0 ConflictKiller.qml
 singleton CustomWidgets 1.0 CustomWidgets.qml
 DankSocket 1.0 DankSocket.qml
 singleton DateTime 1.0 DateTime.qml
+singleton DesktopItems 1.0 DesktopItems.qml
+singleton DesktopWidgetLayout 1.0 DesktopWidgetLayout.qml
 singleton DevNavigation 1.0 DevNavigation.qml
 singleton Events 1.0 Events.qml
 singleton FirstRunExperience 1.0 FirstRunExperience.qml

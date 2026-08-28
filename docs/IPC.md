@@ -95,11 +95,11 @@ bind "Super+Tab" { spawn "inir" "workspaceStrip" "toggle"; }
 
 ### overlay
 
-The central overlay. Search, quick actions, widgets. The thing that pops up and makes you feel productive.
+Floating tools (Super+G): notes, images, crosshair, recorder, resources and other pinnable desktop tools.
 
 | Function | Description |
 |----------|-------------|
-| `toggle` | Open/close overlay |
+| `toggle` | Open/close Floating tools |
 
 ```kdl
 bind "Super+G" { spawn "inir" "overlay" "toggle"; }
@@ -448,6 +448,7 @@ Wallpaper picker with grid, coverflow and compact launcher styles.
 | `openLauncher <mode>` | Open the compact launcher in `static` or `animated` mode |
 | `toggleOnMonitor <name>` | Open wallpaper selector on a specific monitor |
 | `random` | Pick a random wallpaper from the current folder |
+| `status` | Return picker style, open surface, target monitor and selection target as JSON |
 
 ```kdl
 bind "Ctrl+Alt+T" { spawn "inir" "wallpaperSelector" "toggle"; }
@@ -904,6 +905,7 @@ Desktop background and widget controls.
 | `toggleEditMode` | Toggle widget edit mode (drag, resize, configure desktop widgets) |
 | `setEditMode enabled` | Set widget edit mode explicitly |
 | `editState` | Report the active selection, physical panel insets, full desktop work area and panel-aware zone work area for each output |
+| `desktopItemsState` | Report desktop-item persistence, availability, item count, validation errors and undo state |
 | `focusWidget widgetName openControls` | Select a desktop widget and optionally open its quick controls |
 | `promoteWidget widgetName` | Move a desktop widget to the top of the persistent layer order |
 | `resetLayerOrder` | Reset desktop widgets to their built-in stacking order |

@@ -11,16 +11,36 @@ Item {
     property bool nativeBlurActive: false
     property var screen: null
     property bool vertical: false
+    property bool spectrumEnabled: false
+    property var spectrumPoints: []
+    property real spectrumCeiling: 1000
+    property string spectrumType: "bars"
+    property real spectrumOpacity: 0.35
+    property real spectrumFillRatio: 0.6
+    property string spectrumBarsOrigin: "bottom"
+    property real spectrumDensity: 12
+    property real spectrumGap: 2
+    property int spectrumSmoothing: 2
+    property string spectrumWaveMode: "fill"
+    property real spectrumLineWidth: 2
+    property real spectrumEdgeInset: 0
+    property real spectrumEdgeSoftness: 0.28
+    property string spectrumFrequencyProfile: "flat"
+    property real spectrumAccentStrength: 0.7
+    property Item spectrumDomain: null
     // Islands: the capsule needs real breathing room around content (matches
     // the edge islands' inner padding); classic groups keep the tight fit and
     // bare chips (no surface of their own) don't pad like a capsule.
-    property real padding: islandStyle && !bare ? 12 : 8
+    property real padding: islandStyle && !bare ? 12
+        : Appearance.regaliaEverywhere && !bare ? Appearance.regalia.tilePadding : 8
     readonly property bool cardStyleEverywhere: (Config.options?.dock?.cardStyle ?? false) && (Config.options?.sidebar?.cardStyle ?? false) && (Config.options?.bar?.cornerStyle === 3)
-    // Islands bar appearance: each group is its own floating surface
-    readonly property bool islandStyle: !vertical && (Config.options?.bar?.appearanceStyle ?? "classic") === "islands"
+    // Islands bar appearance: each group is its own floating surface.
+    // Works in both horizontal and vertical bar modes.
+    readonly property bool islandStyle: (Config.options?.bar?.appearanceStyle ?? "classic") === "islands"
     // Bare: no surface of its own — for groups that live INSIDE another island
     // (e.g. the weather chip in an edge island) so cards never nest.
     property bool bare: false
+    property bool clipContent: false
     readonly property bool zzzPlate: false
     implicitWidth: vertical ? Appearance.sizes.baseVerticalBarWidth : (gridLayout.implicitWidth + padding * 2)
     implicitHeight: vertical ? (gridLayout.implicitHeight + padding * 2) : Appearance.sizes.baseBarHeight
@@ -32,6 +52,21 @@ Item {
     // callers collapse the pill entirely instead of showing a ghost background.
     readonly property bool empty: gridLayout.implicitWidth < 1
     default property alias items: gridLayout.children
+
+    readonly property real _spectrumX: {
+        const geometryDependency = root.x + root.y + root.width + root.height
+            + (root.parent?.x ?? 0) + (root.parent?.width ?? 0)
+        if (!root.spectrumDomain || !(root.spectrumDomain.width > 0))
+            return 0
+        return root.mapToItem(root.spectrumDomain, 0, 0).x
+    }
+    readonly property real _spectrumStartRatio: !root.spectrumDomain
+        ? 0
+        : Math.max(0, Math.min(1, root._spectrumX / root.spectrumDomain.width))
+    readonly property real _spectrumEndRatio: !root.spectrumDomain
+        ? 1
+        : Math.max(root._spectrumStartRatio,
+            Math.min(1, (root._spectrumX + root.width) / root.spectrumDomain.width))
 
     // El fondo de cada grupo de la barra ahora sale del molde compartido
     // (PanelSurface) en vez de dibujarse a mano. Misma pinta que antes, pero
@@ -47,8 +82,10 @@ Item {
         }
         visible: !root.islandStyle && !root.bare
         cardStyle: root.cardStyleEverywhere
-        borderless: !root.islandStyle && (Config.options?.bar?.borderless ?? false)
-        elevation: 1
+        borderless: Appearance.regaliaEverywhere ? false
+            : !root.islandStyle && (Config.options?.bar?.borderless ?? false)
+        radiusOverride: Appearance.regaliaEverywhere ? Appearance.regalia.roundSmall : -1
+        elevation: Appearance.regaliaEverywhere ? 2 : 1
         // En zzz la barra mantiene su contorno unificado; los grupos quedan transparentes.
         zzzChamfer: false
     }
@@ -57,7 +94,7 @@ Item {
     // islands bar is an explicit opt-in to that dialect, so the zzz "groups
     // stay transparent" doctrine (which left the centre groups naked over the
     // wallpaper) does not apply here.
-    IslandPanel {
+    BarIslandSurface {
         id: islandSurface
         readonly property int inset: Config.options?.bar?.islands?.inset ?? 4
         anchors {
@@ -71,29 +108,53 @@ Item {
         glassEnabled: true
         nativeBlurActive: root.nativeBlurActive
         screen: root.screen
-        glassScreenX: {
-            const geometryDependency = root.x + root.width + islandSurface.x
-            return islandSurface.mapToItem(null, 0, 0).x
+        compactShadow: !root.vertical
+
+        CavaSpectrum {
+            anchors.fill: parent
+            active: root.spectrumEnabled && islandSurface.visible
+            threadedRendering: true
+            points: active ? root.spectrumPoints : []
+            normalizationCeiling: active ? root.spectrumCeiling : 100
+            visualizerType: root.spectrumType
+            spectrumOpacity: root.spectrumOpacity
+            fillRatio: root.spectrumFillRatio
+            spectrumColor: Appearance.colors.colPrimary
+            sampleStartRatio: root._spectrumStartRatio
+            sampleEndRatio: root._spectrumEndRatio
+            barsOrigin: root.spectrumBarsOrigin
+            pixelsPerBar: root.spectrumDensity
+            barSpacing: root.spectrumGap
+            smoothing: root.spectrumSmoothing
+            waveMode: root.spectrumWaveMode
+            lineWidth: root.spectrumLineWidth
+            edgeInset: root.spectrumEdgeInset
+            edgeSoftness: root.spectrumEdgeSoftness
+            frequencyProfile: root.spectrumFrequencyProfile
+            accentStrength: root.spectrumAccentStrength
+            topLeftRadius: islandSurface.radius
+            topRightRadius: islandSurface.radius
+            bottomLeftRadius: islandSurface.radius
+            bottomRightRadius: islandSurface.radius
         }
-        glassScreenY: {
-            const geometryDependency = root.y + root.height + islandSurface.y
-            return islandSurface.mapToItem(null, 0, 0).y
-        }
-        glassScreenWidth: root.screen?.width ?? 1920
-        glassScreenHeight: root.screen?.height ?? 1080
     }
 
-    GridLayout {
-        id: gridLayout
-        columns: root.vertical ? 1 : -1
-        anchors {
-            verticalCenter: root.vertical ? undefined : parent.verticalCenter
-            horizontalCenter: parent.horizontalCenter
-            top: root.vertical ? parent.top : undefined
-            bottom: root.vertical ? parent.bottom : undefined
-            margins: root.padding
+    Item {
+        anchors.fill: parent
+        clip: root.clipContent
+
+        GridLayout {
+            id: gridLayout
+            columns: root.vertical ? 1 : -1
+            anchors {
+                verticalCenter: root.vertical ? undefined : parent.verticalCenter
+                horizontalCenter: parent.horizontalCenter
+                top: root.vertical ? parent.top : undefined
+                bottom: root.vertical ? parent.bottom : undefined
+                margins: root.padding
+            }
+            columnSpacing: 4
+            rowSpacing: 12
         }
-        columnSpacing: 4
-        rowSpacing: 12
     }
 }

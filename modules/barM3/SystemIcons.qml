@@ -24,7 +24,7 @@ Item {
             if (mouse.button === Qt.MiddleButton)
                 Audio.sink.audio.muted = !Audio.sink.audio.muted;
             else
-                GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen;
+                GlobalStates.toggleSidebarRight(root.QsWindow.window?.screen?.name ?? "");
         }
 
         property real wheelAccum: 0

@@ -26,7 +26,10 @@ StyledPopup {
             interfaceDetailsProcess.running = true
     }
 
-    Process {
+    // StyledPopup's default property accepts one visual content item. Keep the
+    // non-visual probe in an explicit property so it is not assigned as popup
+    // content during construction.
+    property Process interfaceDetailsProcess: Process {
         id: interfaceDetailsProcess
         running: false
         command: [

@@ -8,6 +8,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Wayland
 
 PopupWindow {
     id: root
@@ -59,6 +60,20 @@ PopupWindow {
 
     function close() {
         root.visible = false;
+    }
+
+    PanelWindow {
+        visible: root.visible && CompositorService.isNiri
+        color: "transparent"
+        exclusiveZone: 0
+        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.namespace: "quickshell:m3TrayMenuBackdrop"
+        anchors { top: true; bottom: true; left: true; right: true }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.close()
+        }
     }
 
     MouseArea {

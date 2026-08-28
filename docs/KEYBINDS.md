@@ -12,7 +12,7 @@ Change them. Break them. Make them yours. We won't judge.
 |-----|--------|
 | `Mod+Space` | iNiR overview / app launcher |
 | `Mod+Tab` | Niri overview (native compositor) |
-| `Super+G` | Crosshair overlay toggle |
+| `Super+G` | Floating tools (notes, images, crosshair, resources) |
 | `Alt+Tab` | Niri Recent Windows (next) |
 | `Alt+Shift+Tab` | Niri Recent Windows (previous) |
 | `Mod+V` | Clipboard history |

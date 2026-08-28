@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Dialogs
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -11,8 +13,32 @@ ContentPage {
     settingsPageName: Translation.tr("Bar")
 
     property bool isIiActive: Config.options?.panelFamily !== "waffle"
+    property string activeSection: "appearance"
+
+    SettingsTaskNavigator {
+        icon: "toolbar"
+        title: Translation.tr("Bar")
+        description: Translation.tr("Position and sizing, the bar surface styles, and the widgets and modules that live in the bar.")
+        summary: Translation.tr("Shape · M3 · Islands · Spectrum · Behavior · Modules")
+        currentValue: root.activeSection
+        onSelected: value => root.activeSection = value
+        options: [
+            { displayName: Translation.tr("Shape & position"), icon: "style", value: "appearance" },
+            { displayName: Translation.tr("M3 bar"), icon: "category", value: "m3",
+              dimmed: (Config.options?.bar?.appearanceStyle ?? "classic") !== "m3" },
+            { displayName: Translation.tr("Islands"), icon: "linear_scale", value: "islands",
+              dimmed: (Config.options?.bar?.appearanceStyle ?? "classic") !== "islands" },
+            { displayName: Translation.tr("Audio spectrum"), icon: "graphic_eq", value: "spectrum" },
+            { displayName: Translation.tr("Behavior & clock"), icon: "visibility", value: "behavior" },
+            { displayName: Translation.tr("Modules"), icon: "widgets", value: "modules" }
+        ]
+    }
     property bool m3ControlsReady: false
-    Component.onCompleted: Qt.callLater(() => root.m3ControlsReady = true)
+    property bool spectrumControlsReady: false
+    Component.onCompleted: Qt.callLater(() => {
+        root.m3ControlsReady = true
+        root.spectrumControlsReady = true
+    })
 
     function setM3Value(path, value): void {
         if (root.m3ControlsReady)
@@ -34,6 +60,71 @@ ContentPage {
     readonly property bool isAutoHide: Config.options?.bar?.autoHide?.enable ?? false
     readonly property bool isBorderless: Config.options?.bar?.borderless ?? false
     readonly property bool showBackground: Config.options?.bar?.showBackground ?? true
+    readonly property string barAppearance: Config.options?.bar?.appearanceStyle ?? "classic"
+    readonly property bool spectrumEnabled: root.barAppearance === "pill"
+        ? (Config.options?.bar?.pill?.musicViz ?? true)
+        : (Config.options?.bar?.visualizer?.enable ?? false)
+    readonly property color workspaceThemeIndicatorColor: Appearance.zzzEverywhere ? Appearance.zzz.accentSoft
+        : Appearance.angelEverywhere ? Appearance.angel.colPrimary : Appearance.colors.colPrimary
+    readonly property color workspaceIndicatorPreviewColor: {
+        const saved = Config.options?.bar?.workspaces?.indicatorColor ?? ""
+        if (saved.length === 0)
+            return root.workspaceThemeIndicatorColor
+        const parsed = Qt.color(saved)
+        return parsed.valid ? parsed : root.workspaceThemeIndicatorColor
+    }
+
+    ColorDialog {
+        id: workspaceIndicatorColorDialog
+        selectedColor: root.workspaceIndicatorPreviewColor
+        onAccepted: Config.setNestedValue("bar.workspaces.indicatorColor", selectedColor.toString())
+    }
+
+    SettingsNativeDialogGuard {
+        dialog: workspaceIndicatorColorDialog
+        dialogKey: "bar-workspace-indicator-color"
+    }
+
+    function setSpectrumEnabled(enabled): void {
+        if (!root.spectrumControlsReady)
+            return
+        Config.setNestedValue(root.barAppearance === "pill"
+            ? "bar.pill.musicViz" : "bar.visualizer.enable", enabled)
+    }
+
+    function setSpectrumValue(path, value): void {
+        if (root.spectrumControlsReady)
+            Config.setNestedValue(path, value)
+    }
+
+    function resetSpectrumDefaults(): void {
+        if (!root.spectrumControlsReady)
+            return
+        Config.setNestedValues({
+            "bar.visualizer.enable": false,
+            "bar.visualizer.multiMonitorMode": "primary",
+            "bar.visualizer.type": "bars",
+            "bar.visualizer.height": 0.6,
+            "bar.visualizer.opacity": 0.35,
+            "bar.visualizer.barsOrigin": "bottom",
+            "bar.visualizer.density": 12,
+            "bar.visualizer.gap": 2,
+            "bar.visualizer.smoothing": 2,
+            "bar.visualizer.waveMode": "fill",
+            "bar.visualizer.lineWidth": 2,
+            "bar.visualizer.edgeInset": 0,
+            "bar.visualizer.edgeSoftness": 28,
+            "bar.visualizer.frequencyProfile": "flat",
+            "bar.visualizer.accentStrength": 70,
+            "bar.visualizer.pillWingMode": "bounded",
+            "bar.visualizer.pillWingLength": 180,
+            "bar.visualizer.pillWingGap": 12,
+            "bar.visualizer.pillScreenPadding": 24,
+            "bar.visualizer.pillUnderlap": 28,
+            "bar.visualizer.pillEdgeFade": 92,
+            "bar.pill.musicViz": true,
+        })
+    }
 
     // Global style detection
     readonly property string currentGlobalStyle: Config.options?.appearance?.globalStyle ?? "material"
@@ -216,12 +307,70 @@ ContentPage {
     // APPEARANCE & LAYOUT
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive
+        settingsTaskSection: "appearance"
+        visible: root.isIiActive && root.activeSection === "appearance"
         expanded: true
         icon: "dashboard"
         title: Translation.tr("Appearance & Layout")
 
         SettingsGroup {
+            ContentSubsection {
+                title: Translation.tr("Bar appearance")
+
+                ConfigSelectionArray {
+                    currentValue: Config.options?.bar?.appearanceStyle ?? "classic"
+                    onSelected: newValue => {
+                        Config.setNestedValue("bar.appearanceStyle", newValue);
+                    }
+                    options: [
+                        { displayName: Translation.tr("Classic"), icon: "toolbar", value: "classic" },
+                        { displayName: Translation.tr("Islands"), icon: "linear_scale", value: "islands" },
+                        { displayName: Translation.tr("Scenic"), icon: "gradient", value: "scenic" },
+                        { displayName: Translation.tr("Frame"), icon: "crop_free", value: "frame" },
+                        { displayName: Translation.tr("M3"), icon: "category", value: "m3" },
+                        { displayName: Translation.tr("Pill"), icon: "blur_on", value: "pill" }
+                    ]
+                }
+
+                SettingsNote {
+                    icon: "toolbar"
+                    text: Translation.tr("Decides the bar surface style. Islands works in horizontal and vertical bars; the rest are horizontal only.")
+                }
+
+                RippleButton {
+                    visible: (Config.options?.bar?.appearanceStyle ?? "classic") === "pill"
+                    Layout.fillWidth: true
+                    implicitHeight: 40
+                    buttonRadius: Appearance.rounding.small
+                    colBackground: Appearance.colors.colLayer1
+                    colBackgroundHover: Appearance.colors.colLayer1Hover
+                    onClicked: GlobalStates.openSettingsPage(21)
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        spacing: 8
+                        MaterialSymbol {
+                            text: "tune"
+                            iconSize: 18
+                            color: Appearance.colors.colPrimary
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: Translation.tr("Open Ricelin Pill settings")
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            font.weight: Font.Medium
+                        }
+                        MaterialSymbol {
+                            text: "chevron_right"
+                            iconSize: 18
+                            color: Appearance.colors.colSubtext
+                        }
+                    }
+                }
+            }
+
             ConfigRow {
                 uniform: true
 
@@ -273,28 +422,49 @@ ContentPage {
                     }
                 }
             }
+        }
+    }
 
-            ContentSubsection {
-                title: Translation.tr("Bar appearance")
+    SettingsCardSection {
+        settingsTaskSection: "m3"
+        visible: root.isIiActive && root.activeSection === "m3"
+        expanded: true
+        icon: "category"
+        title: Translation.tr("M3 Bar")
 
-                ConfigSelectionArray {
-                    currentValue: Config.options?.bar?.appearanceStyle ?? "classic"
-                    onSelected: newValue => {
-                        Config.setNestedValue("bar.appearanceStyle", newValue);
+        SettingsGroup {
+
+            SettingsNote {
+                visible: (Config.options?.bar?.appearanceStyle ?? "classic") !== "m3"
+                icon: "info"
+                text: Translation.tr("These options configure the M3 bar and take effect when M3 is the active bar appearance.")
+            }
+
+            RippleButton {
+                visible: (Config.options?.bar?.appearanceStyle ?? "classic") !== "m3"
+                Layout.fillWidth: true
+                implicitHeight: 40
+                buttonRadius: Appearance.rounding.small
+                colBackground: Appearance.colors.colLayer1
+                colBackgroundHover: Appearance.colors.colLayer1Hover
+                onClicked: Config.setNestedValue("bar.appearanceStyle", "m3")
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 8
+                    MaterialSymbol {
+                        text: "category"
+                        iconSize: 18
+                        color: Appearance.colors.colPrimary
                     }
-                    options: [
-                        { displayName: Translation.tr("Classic"), icon: "toolbar", value: "classic" },
-                        { displayName: Translation.tr("Islands"), icon: "linear_scale", value: "islands" },
-                        { displayName: Translation.tr("Scenic"), icon: "gradient", value: "scenic" },
-                        { displayName: Translation.tr("Frame"), icon: "crop_free", value: "frame" },
-                        { displayName: Translation.tr("M3"), icon: "category", value: "m3" },
-                        { displayName: Translation.tr("Pill"), icon: "blur_on", value: "pill" }
-                    ]
-                }
-
-                SettingsNote {
-                    icon: "toolbar"
-                    text: Translation.tr("Redraws the bar surface. Horizontal bar only.")
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: Translation.tr("Switch the bar to M3 appearance")
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.weight: Font.Medium
+                    }
                 }
             }
 
@@ -427,6 +597,119 @@ ContentPage {
                     text: Translation.tr("Verbose labels needs Clock, System Icons or Media in the layout.")
                 }
 
+                }
+
+                ContentSubsection {
+                    visible: root.m3HasWidget("clockWidget")
+                    title: Translation.tr("Clock")
+
+                    ConfigRow {
+                        uniform: true
+
+                        FontSelector {
+                            id: m3TimeFontSelector
+                            label: Translation.tr("Time font")
+                            icon: "schedule"
+                            selectedFont: Config.options?.bar?.m3?.clock?.timeFontFamily ?? ""
+                            onSelectedFontChanged: {
+                                root.setM3Value("bar.m3.clock.timeFontFamily", selectedFont)
+                            }
+                            Connections {
+                                target: Config.options?.bar?.m3?.clock ?? null
+                                function onTimeFontFamilyChanged() {
+                                    m3TimeFontSelector.selectedFont = Config.options.bar.m3.clock.timeFontFamily
+                                }
+                            }
+                        }
+
+                        ConfigSpinBox {
+                            icon: "format_size"
+                            text: Translation.tr("Time size (px)")
+                            description: Translation.tr("0 = inherit global size")
+                            value: Config.options?.bar?.m3?.clock?.timePixelSize ?? 0
+                            from: 0
+                            to: 64
+                            stepSize: 1
+                            onValueChanged: root.setM3Value("bar.m3.clock.timePixelSize", value)
+                            StyledToolTip {
+                                text: Translation.tr("Pixel size of the time digits in the M3 bar clock. 0 inherits the global typography scale.")
+                            }
+                        }
+                    }
+
+                    ConfigRow {
+                        uniform: true
+
+                        FontSelector {
+                            id: m3DateFontSelector
+                            label: Translation.tr("Date font")
+                            icon: "font_download"
+                            selectedFont: Config.options?.bar?.m3?.clock?.dateFontFamily ?? ""
+                            onSelectedFontChanged: {
+                                root.setM3Value("bar.m3.clock.dateFontFamily", selectedFont)
+                            }
+                            Connections {
+                                target: Config.options?.bar?.m3?.clock ?? null
+                                function onDateFontFamilyChanged() {
+                                    m3DateFontSelector.selectedFont = Config.options.bar.m3.clock.dateFontFamily
+                                }
+                            }
+                        }
+
+                        ConfigSpinBox {
+                            icon: "format_size"
+                            text: Translation.tr("Date size (px)")
+                            description: Translation.tr("0 = inherit global size")
+                            value: Config.options?.bar?.m3?.clock?.datePixelSize ?? 0
+                            from: 0
+                            to: 64
+                            stepSize: 1
+                            onValueChanged: root.setM3Value("bar.m3.clock.datePixelSize", value)
+                            StyledToolTip {
+                                text: Translation.tr("Pixel size of the date string in the M3 bar clock. 0 inherits the global typography scale.")
+                            }
+                        }
+                    }
+
+                    RippleButton {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 32
+                        buttonRadius: Appearance.rounding.small
+                        colBackground: Appearance.colors.colLayer2
+                        colBackgroundHover: Appearance.colors.colLayer2Hover
+                        enabled: (Config.options?.bar?.m3?.clock?.timeFontFamily ?? "").length > 0
+                            || (Config.options?.bar?.m3?.clock?.timePixelSize ?? 0) > 0
+                            || (Config.options?.bar?.m3?.clock?.dateFontFamily ?? "").length > 0
+                            || (Config.options?.bar?.m3?.clock?.datePixelSize ?? 0) > 0
+                        opacity: enabled ? 1 : 0.5
+                        onClicked: root.setM3Values({
+                            "bar.m3.clock.timeFontFamily": "",
+                            "bar.m3.clock.timePixelSize": 0,
+                            "bar.m3.clock.dateFontFamily": "",
+                            "bar.m3.clock.datePixelSize": 0
+                        })
+
+                        contentItem: RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 5
+
+                            MaterialSymbol {
+                                text: "restart_alt"
+                                iconSize: 15
+                                color: Appearance.colors.colOnLayer1
+                            }
+                            StyledText {
+                                text: Translation.tr("Reset to default")
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colOnLayer1
+                            }
+                        }
+                    }
+
+                    SettingsNote {
+                        icon: "info"
+                        text: Translation.tr("Override the font and pixel size of the time and date in the M3 bar clock. Leave at 0 / pick the same family as your main font to keep the default look.")
+                    }
                 }
 
                 ContentSubsection {
@@ -708,6 +991,22 @@ ContentPage {
                 }
 
                 ContentSubsection {
+                    visible: root.m3HasWidget("sysTray")
+                    title: Translation.tr("System tray")
+
+                    SettingsSwitch {
+                        Layout.fillWidth: true
+                        buttonIcon: "colors"
+                        text: Translation.tr("Match M3 colors")
+                        checked: Config.options?.bar?.m3?.tray?.monochromeIcons ?? true
+                        onCheckedChanged: root.setM3Value("bar.m3.tray.monochromeIcons", checked)
+                        StyledToolTip {
+                            text: Translation.tr("Use the tray's semantic M3 foreground color instead of each app's original icon colors")
+                        }
+                    }
+                }
+
+                ContentSubsection {
                     visible: root.m3HasWidget("utilButtons")
                     title: Translation.tr("Utility buttons")
 
@@ -812,323 +1111,50 @@ ContentPage {
                         }
                     }
                 }
+            }
+        }
+    }
 
+    SettingsCardSection {
+        settingsTaskSection: "islands"
+        visible: root.isIiActive && root.activeSection === "islands"
+        expanded: true
+        icon: "linear_scale"
+        title: Translation.tr("Islands options")
+
+        SettingsGroup {
+
+            SettingsNote {
+                visible: (Config.options?.bar?.appearanceStyle ?? "classic") !== "islands"
+                icon: "info"
+                text: Translation.tr("Islands is not the active bar appearance. Switch to it to see these geometry changes live.")
             }
 
-            ContentSubsection {
-                visible: (Config.options?.bar?.appearanceStyle ?? "classic") === "pill"
-                title: Translation.tr("Pill options")
+            RippleButton {
+                visible: (Config.options?.bar?.appearanceStyle ?? "classic") !== "islands"
+                Layout.fillWidth: true
+                implicitHeight: 40
+                buttonRadius: Appearance.rounding.small
+                colBackground: Appearance.colors.colLayer1
+                colBackgroundHover: Appearance.colors.colLayer1Hover
+                onClicked: Config.setNestedValue("bar.appearanceStyle", "islands")
 
-                SettingsSwitch {
-                    buttonIcon: "expand_content"
-                    text: Translation.tr("Bar mode")
-                    checked: Config.options?.bar?.pill?.barMode ?? false
-                    onCheckedChanged: Config.setNestedValue("bar.pill.barMode", checked)
-                    StyledToolTip {
-                        text: Translation.tr("Keep the pill expanded as a persistent bar: workspaces, clock and every trigger stay visible without hovering.")
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 8
+                    MaterialSymbol {
+                        text: "linear_scale"
+                        iconSize: 18
+                        color: Appearance.colors.colPrimary
                     }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    SettingsSwitch {
-                        buttonIcon: "notifications"
-                        text: Translation.tr("Pill toasts")
-                        checked: Config.options?.bar?.pill?.toasts ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.toasts", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Notifications take over the resting pill. Off shows iNiR's regular notification popups instead.")
-                        }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: Translation.tr("Switch the bar to Islands appearance")
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.weight: Font.Medium
                     }
-                    SettingsSwitch {
-                        buttonIcon: "page_info"
-                        text: Translation.tr("Pill OSD")
-                        checked: Config.options?.bar?.pill?.osd ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.osd", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Volume, brightness and mic changes flash on the pill. Off shows iNiR's regular on-screen display instead.")
-                        }
-                    }
-                }
-
-                SettingsSwitch {
-                    buttonIcon: "unfold_less"
-                    text: Translation.tr("Compact notifications and OSD")
-                    enabled: (Config.options?.bar?.pill?.toasts ?? true)
-                        || (Config.options?.bar?.pill?.osd ?? true)
-                    checked: Config.options?.bar?.pill?.compactAnnounces ?? false
-                    onCheckedChanged: Config.setNestedValue("bar.pill.compactAnnounces", checked)
-                    StyledToolTip {
-                        text: Translation.tr("Keep transient notifications and OSD feedback inside the resting pill instead of expanding into a larger card.")
-                    }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    ConfigSpinBox {
-                        icon: "pinch"
-                        text: Translation.tr("Icon size (px)")
-                        value: Config.options?.bar?.pill?.iconSize ?? 17
-                        from: 14
-                        to: 26
-                        stepSize: 1
-                        onValueChanged: Config.setNestedValue("bar.pill.iconSize", value)
-                        StyledToolTip {
-                            text: Translation.tr("Size of the hover-row icons. Click targets grow with them.")
-                        }
-                    }
-                    ConfigSpinBox {
-                        icon: "space_bar"
-                        text: Translation.tr("Icon spacing (px)")
-                        value: Config.options?.bar?.pill?.iconSpacing ?? 12
-                        from: 6
-                        to: 24
-                        stepSize: 2
-                        onValueChanged: Config.setNestedValue("bar.pill.iconSpacing", value)
-                    }
-                }
-
-                ConfigSpinBox {
-                    icon: "format_letter_spacing"
-                    text: Translation.tr("Group spacing (px)")
-                    value: Config.options?.bar?.pill?.rowSpacing ?? 20
-                    from: 10
-                    to: 36
-                    stepSize: 2
-                    onValueChanged: Config.setNestedValue("bar.pill.rowSpacing", value)
-                    StyledToolTip {
-                        text: Translation.tr("Air between the row's groups: workspaces, clock and the status icons.")
-                    }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    ConfigSpinBox {
-                        icon: "zoom_in"
-                        text: Translation.tr("Scale (%)")
-                        value: Math.round((Config.options?.bar?.pill?.scale ?? 1) * 100)
-                        from: 60
-                        to: 160
-                        stepSize: 5
-                        onValueChanged: Config.setNestedValue("bar.pill.scale", value / 100)
-                        StyledToolTip {
-                            text: Translation.tr("Size multiplier for the whole pill and its surfaces.")
-                        }
-                    }
-                    ConfigSpinBox {
-                        icon: "opacity"
-                        text: Translation.tr("Body opacity (%)")
-                        value: Math.round((Config.options?.bar?.pill?.opacity ?? 1) * 100)
-                        from: 20
-                        to: 100
-                        stepSize: 5
-                        onValueChanged: Config.setNestedValue("bar.pill.opacity", value / 100)
-                        StyledToolTip {
-                            text: Translation.tr("Fill opacity of the pill body. Content stays fully opaque.")
-                        }
-                    }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    ConfigSpinBox {
-                        icon: "vertical_align_top"
-                        text: Translation.tr("Top gap (px)")
-                        value: Math.round((Config.options?.bar?.pill?.topGap ?? 1) * 8)
-                        from: 0
-                        to: 32
-                        stepSize: 2
-                        onValueChanged: Config.setNestedValue("bar.pill.topGap", value / 8)
-                        StyledToolTip {
-                            text: Translation.tr("Air between the screen edge and the pill.")
-                        }
-                    }
-                    ConfigSpinBox {
-                        icon: "expand"
-                        text: Translation.tr("Window gap (%)")
-                        value: Math.round((Config.options?.bar?.pill?.appGap ?? 1) * 100)
-                        from: 0
-                        to: 200
-                        stepSize: 10
-                        onValueChanged: Config.setNestedValue("bar.pill.appGap", value / 100)
-                        StyledToolTip {
-                            text: Translation.tr("How much reserved space the pill keeps between itself and tiled windows.")
-                        }
-                    }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    SettingsSwitch {
-                        buttonIcon: "translate"
-                        text: Translation.tr("Kanji glyphs")
-                        checked: Config.options?.bar?.pill?.showGlyphs ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.showGlyphs", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Label the pill faces with kanji instead of plain icons.")
-                        }
-                    }
-                    SettingsSwitch {
-                        buttonIcon: "graphic_eq"
-                        text: Translation.tr("Music visualizer")
-                        checked: Config.options?.bar?.pill?.musicViz ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.musicViz", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Swap the resting glyph for a live spectrum while audio plays.")
-                        }
-                    }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    SettingsSwitch {
-                        buttonIcon: "schedule"
-                        text: Translation.tr("Clock seconds")
-                        checked: Config.options?.bar?.pill?.clockSeconds ?? false
-                        onCheckedChanged: Config.setNestedValue("bar.pill.clockSeconds", checked)
-                    }
-                    SettingsSwitch {
-                        buttonIcon: "update"
-                        text: Translation.tr("12-hour time")
-                        checked: Config.options?.bar?.pill?.time12h ?? false
-                        onCheckedChanged: Config.setNestedValue("bar.pill.time12h", checked)
-                    }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    SettingsSwitch {
-                        buttonIcon: "monitor_heart"
-                        text: Translation.tr("System monitor")
-                        checked: Config.options?.bar?.pill?.surfaces?.sysmon ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.surfaces.sysmon", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Show the system vitals surface and its hover icon.")
-                        }
-                    }
-                    SettingsSwitch {
-                        buttonIcon: "content_paste"
-                        text: Translation.tr("Clipboard")
-                        checked: Config.options?.bar?.pill?.surfaces?.clipboard ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.surfaces.clipboard", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Show the clipboard history surface and its hover icon.")
-                        }
-                    }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    SettingsSwitch {
-                        buttonIcon: "today"
-                        text: Translation.tr("Today glance")
-                        checked: Config.options?.bar?.pill?.surfaces?.glance ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.surfaces.glance", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Show the day-at-a-glance surface: weather, agenda and pending tasks in one look.")
-                        }
-                    }
-                    SettingsSwitch {
-                        buttonIcon: "apps"
-                        text: Translation.tr("App launcher")
-                        checked: Config.options?.bar?.pill?.surfaces?.launcher ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.surfaces.launcher", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Show the fuzzy app launcher surface with inline calculator.")
-                        }
-                    }
-                }
-
-                ConfigRow {
-                    uniform: true
-                    SettingsSwitch {
-                        buttonIcon: "screen_record"
-                        text: Translation.tr("Screen recorder")
-                        checked: Config.options?.bar?.pill?.surfaces?.recorder ?? false
-                        onCheckedChanged: Config.setNestedValue("bar.pill.surfaces.recorder", checked)
-                        StyledToolTip {
-                            text: Translation.tr("Show the screen recorder icon. The surface stays reachable via 'inir pill open recorder' either way.")
-                        }
-                    }
-                }
-            }
-
-            ContentSubsection {
-                id: pillHoverRowSection
-                visible: (Config.options?.bar?.appearanceStyle ?? "classic") === "pill"
-                title: Translation.tr("Pill hover row")
-
-                readonly property var moduleDescriptors: [
-                    { key: "workspaces", icon: "workspaces", label: Translation.tr("Workspaces"), tip: Translation.tr("Workspace dots on the left of the expanded row.") },
-                    { key: "weather", icon: "partly_cloudy_day", label: Translation.tr("Weather"), tip: Translation.tr("Current condition and temperature. Opens the calendar surface.") },
-                    { key: "tray", icon: "shelf_position", label: Translation.tr("System tray"), tip: Translation.tr("Tray icons of running apps.") },
-                    { key: "wifi", icon: "wifi", label: Translation.tr("Wi-Fi"), tip: Translation.tr("Signal glyph. Opens the link surface on the network list.") },
-                    { key: "battery", icon: "battery_5_bar", label: Translation.tr("Battery"), tip: Translation.tr("Charge percentage. Opens the battery surface.") },
-                    { key: "inbox", icon: "inbox", label: Translation.tr("Inbox"), tip: Translation.tr("Notification inbox with unread dot. Opens the link surface.") },
-                    { key: "mixer", icon: "tune", label: Translation.tr("Mixer"), tip: Translation.tr("Opens the volume/brightness fader surface.") },
-                    { key: "sidebars", icon: "view_sidebar", label: Translation.tr("Sidebar shortcuts"), tip: Translation.tr("The two icons that open iNiR's left and right sidebars.") },
-                    { key: "power", icon: "power_settings_new", label: Translation.tr("Power"), tip: Translation.tr("Opens the session surface. Still reachable via 'inir pill open power'.") }
-                ]
-
-                Repeater {
-                    model: pillHoverRowSection.moduleDescriptors
-
-                    SettingsSwitch {
-                        required property var modelData
-                        buttonIcon: modelData.icon
-                        text: modelData.label
-                        checked: Config.options?.bar?.pill?.modules?.[modelData.key] ?? true
-                        onCheckedChanged: Config.setNestedValue("bar.pill.modules." + modelData.key, checked)
-                        StyledToolTip {
-                            text: modelData.tip
-                        }
-                    }
-                }
-
-                StyledText {
-                    Layout.fillWidth: true
-                    text: Translation.tr("Surface icons (launcher, clipboard, glance, …) follow their surface toggles above.")
-                    color: Appearance.colors.colSubtext
-                    font.pixelSize: Appearance.font.pixelSize.smaller
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            ContentSubsection {
-                visible: (Config.options?.bar?.appearanceStyle ?? "classic") === "pill"
-                title: Translation.tr("Soul bead")
-
-                SettingsSwitch {
-                    buttonIcon: "motion_photos_on"
-                    text: Translation.tr("Show the soul bead")
-                    checked: Config.options?.bar?.pill?.soul?.enable ?? true
-                    onCheckedChanged: Config.setNestedValue("bar.pill.soul.enable", checked)
-                    StyledToolTip {
-                        text: Translation.tr("The little companion that glides between hover targets. Surface cursors stay either way.")
-                    }
-                }
-
-                ConfigSelectionArray {
-                    Layout.fillWidth: true
-                    currentValue: Config.options?.bar?.pill?.soul?.style ?? "orb"
-                    onSelected: (newValue) => {
-                        Config.setNestedValue("bar.pill.soul.style", newValue)
-                    }
-                    options: [
-                        { displayName: Translation.tr("Orb"), icon: "blur_circular", value: "orb" },
-                        { displayName: Translation.tr("Ember"), icon: "circle", value: "ember" },
-                        { displayName: Translation.tr("Ring"), icon: "radio_button_unchecked", value: "ring" }
-                    ]
-                }
-
-                ConfigSpinBox {
-                    icon: "zoom_in"
-                    text: Translation.tr("Bead size (%)")
-                    value: Math.round((Config.options?.bar?.pill?.soul?.size ?? 1) * 100)
-                    from: 60
-                    to: 160
-                    stepSize: 10
-                    onValueChanged: Config.setNestedValue("bar.pill.soul.size", value / 100)
                 }
             }
 
@@ -1166,12 +1192,23 @@ ContentPage {
 
                 StyledText {
                     Layout.fillWidth: true
-                    text: Translation.tr("Island corner radius, opacity, shadow and top sheen are shared with every island surface: Settings › Ricelin › Island skin.")
+                    text: Translation.tr("Island body opacity, glass, blur, radius, shadow and top edge are shared with every Ricelin surface: Settings › Ricelin › Island surfaces.")
                     color: Appearance.colors.colSubtext
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     wrapMode: Text.WordWrap
                 }
             }
+        }
+    }
+
+    SettingsCardSection {
+        settingsTaskSection: "appearance"
+        visible: root.isIiActive && root.activeSection === "appearance"
+        expanded: true
+        icon: "straighten"
+        title: Translation.tr("Sizing & surface")
+
+        SettingsGroup {
 
             // Corner style conflict notes
             SettingsNote {
@@ -1203,6 +1240,7 @@ ContentPage {
             }
 
             ConfigSpinBox {
+                visible: root.barAppearance !== "islands"
                 icon: "rounded_corner"
                 text: Translation.tr("Custom bar rounding (px)")
                 value: Config.options?.bar?.customRounding ?? -1
@@ -1256,68 +1294,351 @@ ContentPage {
                 text: Translation.tr("Opacity has no effect while ‘Show background’ is off.")
             }
 
-            SettingsDivider {}
+        }
+    }
 
+    SettingsCardSection {
+        settingsTaskSection: "spectrum"
+        visible: root.isIiActive && root.activeSection === "spectrum"
+        expanded: false
+        icon: "graphic_eq"
+        title: Translation.tr("Audio spectrum")
+
+        SettingsGroup {
             ContentSubsection {
                 title: Translation.tr("Audio spectrum")
 
                 ConfigSwitch {
                     buttonIcon: "graphic_eq"
                     text: Translation.tr("Show spectrum in the bar")
-                    checked: Config.options?.bar?.visualizer?.enable ?? false
-                    onCheckedChanged: Config.setNestedValue("bar.visualizer.enable", checked)
+                    checked: root.spectrumEnabled
+                    onCheckedChanged: root.setSpectrumEnabled(checked)
                     StyledToolTip {
-                        text: Translation.tr("Paints the audio spectrum into the bar surface. Only runs while something is playing.")
+                        text: root.barAppearance === "pill"
+                            ? Translation.tr("Draws balanced spectrum wings outside the pill while audio plays.")
+                            : Translation.tr("Paints the audio spectrum into the bar surface. Only runs while something is playing.")
                     }
                 }
 
                 ConfigSelectionArray {
-                    enabled: Config.options?.bar?.visualizer?.enable ?? false
+                    enabled: root.spectrumEnabled
+                    opacity: enabled ? 1 : 0.5
+                    currentValue: Config.options?.bar?.visualizer?.multiMonitorMode ?? "primary"
+                    onSelected: newValue => root.setSpectrumValue(
+                        "bar.visualizer.multiMonitorMode", newValue)
+                    options: [
+                        { displayName: Translation.tr("Primary only"), icon: "filter_1", value: "primary" },
+                        { displayName: Translation.tr("All monitors"), icon: "select_all", value: "all" },
+                    ]
+                }
+
+                ConfigSelectionArray {
+                    enabled: root.spectrumEnabled
                     opacity: enabled ? 1 : 0.5
                     currentValue: Config.options?.bar?.visualizer?.type ?? "bars"
-                    onSelected: newValue => Config.setNestedValue("bar.visualizer.type", newValue)
+                    onSelected: newValue => root.setSpectrumValue("bar.visualizer.type", newValue)
                     options: [
                         { displayName: Translation.tr("Bars"), icon: "equalizer", value: "bars" },
                         { displayName: Translation.tr("Wave"), icon: "waves", value: "wave" },
                     ]
                 }
 
+                ConfigSelectionArray {
+                    visible: (Config.options?.bar?.visualizer?.type ?? "bars") === "bars"
+                    enabled: root.spectrumEnabled
+                    opacity: enabled ? 1 : 0.5
+                    currentValue: Config.options?.bar?.visualizer?.barsOrigin ?? "bottom"
+                    onSelected: newValue => root.setSpectrumValue("bar.visualizer.barsOrigin", newValue)
+                    options: [
+                        { displayName: Translation.tr("Bottom"), icon: "vertical_align_bottom", value: "bottom" },
+                        { displayName: Translation.tr("Top"), icon: "vertical_align_top", value: "top" },
+                        { displayName: Translation.tr("Center rise"), icon: "center_focus_strong", value: "center" },
+                        { displayName: Translation.tr("Mirrored"), icon: "unfold_more", value: "mirror" },
+                    ]
+                }
+
+                ConfigSelectionArray {
+                    visible: (Config.options?.bar?.visualizer?.type ?? "bars") === "wave"
+                    enabled: root.spectrumEnabled
+                    opacity: enabled ? 1 : 0.5
+                    currentValue: Config.options?.bar?.visualizer?.waveMode ?? "fill"
+                    onSelected: newValue => root.setSpectrumValue("bar.visualizer.waveMode", newValue)
+                    options: [
+                        { displayName: Translation.tr("Fill"), icon: "waves", value: "fill" },
+                        { displayName: Translation.tr("Line"), icon: "line_weight", value: "line" },
+                        { displayName: Translation.tr("Ribbon"), icon: "unfold_more", value: "ribbon" },
+                    ]
+                }
+
+                ConfigSelectionArray {
+                    enabled: root.spectrumEnabled
+                    opacity: enabled ? 1 : 0.5
+                    currentValue: Config.options?.bar?.visualizer?.frequencyProfile ?? "flat"
+                    onSelected: newValue => root.setSpectrumValue("bar.visualizer.frequencyProfile", newValue)
+                    options: [
+                        { displayName: Translation.tr("Flat"), icon: "horizontal_rule", value: "flat" },
+                        { displayName: Translation.tr("Bass"), icon: "graphic_eq", value: "bass" },
+                        { displayName: Translation.tr("Warm"), icon: "local_fire_department", value: "warm" },
+                        { displayName: Translation.tr("Vocal"), icon: "record_voice_over", value: "vocal" },
+                        { displayName: Translation.tr("Treble"), icon: "trending_up", value: "treble" },
+                        { displayName: Translation.tr("Smile"), icon: "waves", value: "smile" },
+                    ]
+                    StyledToolTip {
+                        text: Translation.tr("Shapes the frequency balance after Cava. Sensitivity, sample count and framerate come from Advanced → Cava; the internal bar stays mono so it always fills the whole surface.")
+                    }
+                }
+
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 8
-                    enabled: Config.options?.bar?.visualizer?.enable ?? false
+                    enabled: root.spectrumEnabled
                     opacity: enabled ? 1 : 0.5
+
+                    ConfigRow {
+                        uniform: true
+                        ConfigSpinBox {
+                            icon: "view_column"
+                            text: Translation.tr("Band density (px)")
+                            value: Config.options?.bar?.visualizer?.density ?? 12
+                            from: 4
+                            to: 32
+                            stepSize: 1
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.density", value)
+                        }
+                        ConfigSpinBox {
+                            icon: "space_bar"
+                            text: Translation.tr("Band gap (px)")
+                            value: Config.options?.bar?.visualizer?.gap ?? 2
+                            from: 0
+                            to: 12
+                            stepSize: 1
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.gap", value)
+                        }
+                        ConfigSpinBox {
+                            icon: "blur_on"
+                            text: Translation.tr("Smoothing")
+                            value: Config.options?.bar?.visualizer?.smoothing ?? 2
+                            from: 0
+                            to: 8
+                            stepSize: 1
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.smoothing", value)
+                        }
+                    }
+
+                    ConfigRow {
+                        uniform: true
+                        ConfigSpinBox {
+                            icon: "height"
+                            text: Translation.tr("Spectrum height (%)")
+                            value: Math.round((Config.options?.bar?.visualizer?.height ?? 0.6) * 100)
+                            from: 10
+                            to: 100
+                            stepSize: 5
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.height", value / 100)
+                        }
+                        ConfigSpinBox {
+                            icon: "opacity"
+                            text: Translation.tr("Spectrum opacity (%)")
+                            value: Math.round((Config.options?.bar?.visualizer?.opacity ?? 0.35) * 100)
+                            from: 5
+                            to: 100
+                            stepSize: 5
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.opacity", value / 100)
+                        }
+                    }
+
+                    ConfigRow {
+                        uniform: true
+                        ConfigSpinBox {
+                            icon: "line_weight"
+                            text: Translation.tr("Wave edge (px)")
+                            value: Config.options?.bar?.visualizer?.lineWidth ?? 2
+                            from: 1
+                            to: 8
+                            stepSize: 1
+                            enabled: (Config.options?.bar?.visualizer?.type ?? "bars") === "wave"
+                            opacity: enabled ? 1 : 0.45
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.lineWidth", value)
+                        }
+                        ConfigSpinBox {
+                            icon: "width_full"
+                            text: Translation.tr("Edge inset (px)")
+                            value: Config.options?.bar?.visualizer?.edgeInset ?? 0
+                            from: 0
+                            to: 32
+                            stepSize: 1
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.edgeInset", value)
+                        }
+                        ConfigSpinBox {
+                            icon: "rounded_corner"
+                            text: Translation.tr("Curve headroom (%)")
+                            value: Config.options?.bar?.visualizer?.edgeSoftness ?? 28
+                            from: 0
+                            to: 100
+                            stepSize: 5
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.edgeSoftness", value)
+                            StyledToolTip {
+                                text: Translation.tr("Compresses peaks only near rounded corners. Square surfaces remain edge-to-edge.")
+                            }
+                        }
+                    }
 
                     ConfigSpinBox {
                         Layout.fillWidth: true
-                        icon: "height"
-                        text: Translation.tr("Spectrum height (%)")
-                        value: Math.round((Config.options?.bar?.visualizer?.height ?? 0.6) * 100)
-                        from: 10
+                        icon: "tune"
+                        text: Translation.tr("Frequency accent strength (%)")
+                        value: Config.options?.bar?.visualizer?.accentStrength ?? 70
+                        from: 0
                         to: 100
                         stepSize: 5
-                        onValueChanged: Config.setNestedValue("bar.visualizer.height", value / 100)
+                        enabled: (Config.options?.bar?.visualizer?.frequencyProfile ?? "flat") !== "flat"
+                        opacity: enabled ? 1 : 0.45
+                        onValueChanged: root.setSpectrumValue("bar.visualizer.accentStrength", value)
                     }
+
+                    ConfigSelectionArray {
+                        visible: root.barAppearance === "pill"
+                        currentValue: Config.options?.bar?.visualizer?.pillWingMode ?? "bounded"
+                        onSelected: newValue => root.setSpectrumValue("bar.visualizer.pillWingMode", newValue)
+                        options: [
+                            { displayName: Translation.tr("Bounded"), icon: "width_normal", value: "bounded" },
+                            { displayName: Translation.tr("Full screen"), icon: "width_full", value: "screen" },
+                            { displayName: Translation.tr("Behind pill"), icon: "layers", value: "bleed" },
+                        ]
+                    }
+
+                    ConfigRow {
+                        visible: root.barAppearance === "pill"
+                            && (Config.options?.bar?.visualizer?.pillWingMode ?? "bounded") === "bounded"
+                        uniform: true
+                        ConfigSpinBox {
+                            icon: "swap_horiz"
+                            text: Translation.tr("Wing length (px)")
+                            value: Config.options?.bar?.visualizer?.pillWingLength ?? 180
+                            from: 60
+                            to: 480
+                            stepSize: 10
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.pillWingLength", value)
+                        }
+                        ConfigSpinBox {
+                            icon: "space_bar"
+                            text: Translation.tr("Wing gap (px)")
+                            value: Config.options?.bar?.visualizer?.pillWingGap ?? 12
+                            from: 0
+                            to: 64
+                            stepSize: 2
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.pillWingGap", value)
+                        }
+                    }
+
+                    ConfigRow {
+                        visible: root.barAppearance === "pill"
+                            && (Config.options?.bar?.visualizer?.pillWingMode ?? "bounded") === "screen"
+                        uniform: true
+                        ConfigSpinBox {
+                            icon: "width_full"
+                            text: Translation.tr("Screen padding (px)")
+                            value: Config.options?.bar?.visualizer?.pillScreenPadding ?? 24
+                            from: 0
+                            to: 240
+                            stepSize: 4
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.pillScreenPadding", value)
+                        }
+                        ConfigSpinBox {
+                            icon: "space_bar"
+                            text: Translation.tr("Pill gap (px)")
+                            value: Config.options?.bar?.visualizer?.pillWingGap ?? 12
+                            from: 0
+                            to: 64
+                            stepSize: 2
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.pillWingGap", value)
+                        }
+                    }
+
+                    ConfigRow {
+                        visible: root.barAppearance === "pill"
+                            && (Config.options?.bar?.visualizer?.pillWingMode ?? "bounded") === "bleed"
+                        uniform: true
+                        ConfigSpinBox {
+                            icon: "width_full"
+                            text: Translation.tr("Screen padding (px)")
+                            value: Config.options?.bar?.visualizer?.pillScreenPadding ?? 24
+                            from: 0
+                            to: 240
+                            stepSize: 4
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.pillScreenPadding", value)
+                        }
+                        ConfigSpinBox {
+                            icon: "layers"
+                            text: Translation.tr("Underlap (px)")
+                            value: Config.options?.bar?.visualizer?.pillUnderlap ?? 28
+                            from: 0
+                            to: 160
+                            stepSize: 4
+                            onValueChanged: root.setSpectrumValue("bar.visualizer.pillUnderlap", value)
+                        }
+                    }
+
                     ConfigSpinBox {
+                        visible: root.barAppearance === "pill"
                         Layout.fillWidth: true
-                        icon: "opacity"
-                        text: Translation.tr("Spectrum opacity (%)")
-                        value: Math.round((Config.options?.bar?.visualizer?.opacity ?? 0.35) * 100)
-                        from: 5
+                        icon: "gradient"
+                        text: Translation.tr("Screen-edge fade (%)")
+                        value: Config.options?.bar?.visualizer?.pillEdgeFade ?? 92
+                        from: 0
                         to: 100
                         stepSize: 5
-                        onValueChanged: Config.setNestedValue("bar.visualizer.opacity", value / 100)
+                        onValueChanged: root.setSpectrumValue("bar.visualizer.pillEdgeFade", value)
+                    }
+                }
+
+                RippleButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 34
+                    buttonRadius: Appearance.rounding.small
+                    colBackground: Appearance.colors.colLayer2
+                    colBackgroundHover: Appearance.colors.colLayer2Hover
+                    onClicked: root.resetSpectrumDefaults()
+
+                    contentItem: RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 5
+
+                        MaterialSymbol {
+                            text: "restart_alt"
+                            iconSize: 15
+                            color: Appearance.colors.colOnLayer1
+                        }
+                        StyledText {
+                            text: Translation.tr("Reset spectrum defaults")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colOnLayer1
+                        }
                     }
                 }
 
                 SettingsNote {
-                    visible: !(Config.options?.bar?.showBackground ?? true) && (Config.options?.bar?.visualizer?.enable ?? false)
+                    visible: root.barAppearance !== "pill" && root.barAppearance !== "islands"
+                        && ((root.barAppearance === "m3"
+                                && !(Config.options?.bar?.m3?.showBackground ?? true))
+                            || (root.barAppearance !== "m3"
+                                && !(Config.options?.bar?.showBackground ?? true)))
+                        && root.spectrumEnabled
                     icon: "info"
-                    text: Translation.tr("The spectrum is painted into the bar background, so it is hidden while ‘Show background’ is off.")
+                    text: Translation.tr("The spectrum needs a visible bar surface, so it is hidden while the background is off.")
                 }
             }
+        }
+    }
 
-            SettingsDivider {}
+    SettingsCardSection {
+        settingsTaskSection: "behavior"
+        visible: root.isIiActive && root.activeSection === "behavior"
+        expanded: true
+        icon: "visibility"
+        title: Translation.tr("Behavior & clock")
+
+        SettingsGroup {
 
             ConfigRow {
                 uniform: true
@@ -1397,7 +1718,8 @@ ContentPage {
                             to: 800
                             stepSize: 20
                             onValueChanged: Config.setNestedValue("bar.autoHide.showWhenPressingSuper.delay", value)
-                            enabled: Config.options?.bar?.autoHide?.showWhenPressingSuper?.enable ?? true
+                            enabled: CompositorService.isHyprland
+                                && (Config.options?.bar?.autoHide?.showWhenPressingSuper?.enable ?? true)
                             opacity: enabled ? 1 : 0.5
                         }
                     }
@@ -1408,9 +1730,13 @@ ContentPage {
                             buttonIcon: "keyboard_command_key"
                             text: Translation.tr("Peek on Super press")
                             checked: Config.options?.bar?.autoHide?.showWhenPressingSuper?.enable ?? true
+                            enabled: CompositorService.isHyprland
+                            opacity: enabled ? 1 : 0.5
                             onCheckedChanged: Config.setNestedValue("bar.autoHide.showWhenPressingSuper.enable", checked)
                             StyledToolTip {
-                                text: Translation.tr("Reveal the bar while the Super key is held.")
+                                text: CompositorService.isHyprland
+                                    ? Translation.tr("Reveal the bar while the Super key is held.")
+                                    : Translation.tr("Super-only hold detection is not available on Niri.")
                             }
                         }
                         SettingsSwitch {
@@ -1455,6 +1781,119 @@ ContentPage {
                 onCheckedChanged: Config.setNestedValue("bar.verbose", checked)
                 StyledToolTip {
                     text: Translation.tr("Wider center groups, plus the date next to the clock, the media title and the utility buttons. Off = compact bar.")
+                }
+            }
+
+            ContentSubsection {
+                visible: root.barAppearance !== "m3" && root.barAppearance !== "pill"
+                title: Translation.tr("Clock")
+
+                ConfigRow {
+                    uniform: true
+
+                    FontSelector {
+                        id: barTimeFontSelector
+                        label: Translation.tr("Time font")
+                        icon: "schedule"
+                        selectedFont: Config.options?.bar?.clock?.timeFontFamily ?? ""
+                        onSelectedFontChanged: {
+                            Config.setNestedValue("bar.clock.timeFontFamily", selectedFont)
+                        }
+                        Connections {
+                            target: Config.options?.bar?.clock ?? null
+                            function onTimeFontFamilyChanged() {
+                                barTimeFontSelector.selectedFont = Config.options.bar.clock.timeFontFamily
+                            }
+                        }
+                    }
+
+                    ConfigSpinBox {
+                        icon: "format_size"
+                        text: Translation.tr("Time size (px)")
+                        description: Translation.tr("0 = inherit global size")
+                        value: Config.options?.bar?.clock?.timePixelSize ?? 0
+                        from: 0
+                        to: 64
+                        stepSize: 1
+                        onValueChanged: Config.setNestedValue("bar.clock.timePixelSize", value)
+                        StyledToolTip {
+                            text: Translation.tr("Pixel size of the time digits in the bar clock. 0 inherits the global typography scale.")
+                        }
+                    }
+                }
+
+                ConfigRow {
+                    uniform: true
+
+                    FontSelector {
+                        id: barDateFontSelector
+                        label: Translation.tr("Date font")
+                        icon: "font_download"
+                        selectedFont: Config.options?.bar?.clock?.dateFontFamily ?? ""
+                        onSelectedFontChanged: {
+                            Config.setNestedValue("bar.clock.dateFontFamily", selectedFont)
+                        }
+                        Connections {
+                            target: Config.options?.bar?.clock ?? null
+                            function onDateFontFamilyChanged() {
+                                barDateFontSelector.selectedFont = Config.options.bar.clock.dateFontFamily
+                            }
+                        }
+                    }
+
+                    ConfigSpinBox {
+                        icon: "format_size"
+                        text: Translation.tr("Date size (px)")
+                        description: Translation.tr("0 = inherit global size")
+                        value: Config.options?.bar?.clock?.datePixelSize ?? 0
+                        from: 0
+                        to: 64
+                        stepSize: 1
+                        onValueChanged: Config.setNestedValue("bar.clock.datePixelSize", value)
+                        StyledToolTip {
+                            text: Translation.tr("Pixel size of the date string in the bar clock. 0 inherits the global typography scale.")
+                        }
+                    }
+                }
+
+                RippleButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    buttonRadius: Appearance.rounding.small
+                    colBackground: Appearance.colors.colLayer2
+                    colBackgroundHover: Appearance.colors.colLayer2Hover
+                    enabled: (Config.options?.bar?.clock?.timeFontFamily ?? "").length > 0
+                        || (Config.options?.bar?.clock?.timePixelSize ?? 0) > 0
+                        || (Config.options?.bar?.clock?.dateFontFamily ?? "").length > 0
+                        || (Config.options?.bar?.clock?.datePixelSize ?? 0) > 0
+                    opacity: enabled ? 1 : 0.5
+                    onClicked: Config.setNestedValues({
+                        "bar.clock.timeFontFamily": "",
+                        "bar.clock.timePixelSize": 0,
+                        "bar.clock.dateFontFamily": "",
+                        "bar.clock.datePixelSize": 0
+                    })
+
+                    contentItem: RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 5
+
+                        MaterialSymbol {
+                            text: "restart_alt"
+                            iconSize: 15
+                            color: Appearance.colors.colOnLayer1
+                        }
+                        StyledText {
+                            text: Translation.tr("Reset to default")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colOnLayer1
+                        }
+                    }
+                }
+
+                SettingsNote {
+                    icon: "info"
+                    text: Translation.tr("Override the font and pixel size of the time and date in the bar clock. Leave at 0 / pick the same family as your main font to keep the default look.")
                 }
             }
 
@@ -1566,7 +2005,8 @@ ContentPage {
     // MODULES (what to show)
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive
+        settingsTaskSection: "modules"
+        visible: root.isIiActive && root.activeSection === "modules"
         expanded: false
         icon: "widgets"
         title: Translation.tr("Modules")
@@ -1756,7 +2196,8 @@ ContentPage {
     // MODULE LAYOUT (reorder / relocate)
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive
+        settingsTaskSection: "modules"
+        visible: root.isIiActive && root.activeSection === "modules"
         expanded: false
         icon: "reorder"
         title: Translation.tr("Bar module layout")
@@ -1793,7 +2234,8 @@ ContentPage {
     // RESOURCES
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive && !(Config.options?.settingsUi?.easyMode ?? false)
+        settingsTaskSection: "modules"
+        visible: root.isIiActive && !(Config.options?.settingsUi?.easyMode ?? false) && root.activeSection === "modules"
         expanded: false
         icon: "browse_activity"
         title: Translation.tr("Resources")
@@ -1952,7 +2394,8 @@ ContentPage {
     // MEDIA
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive
+        settingsTaskSection: "modules"
+        visible: root.isIiActive && root.activeSection === "modules"
         expanded: false
         icon: "music_note"
         title: Translation.tr("Media")
@@ -1986,7 +2429,8 @@ ContentPage {
     // WORKSPACES
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive && !(Config.options?.settingsUi?.easyMode ?? false)
+        settingsTaskSection: "modules"
+        visible: root.isIiActive && !(Config.options?.settingsUi?.easyMode ?? false) && root.activeSection === "modules"
         expanded: false
         icon: "workspaces"
         title: Translation.tr("Workspaces")
@@ -2081,6 +2525,70 @@ ContentPage {
 
             SettingsDivider {}
 
+            ContentSubsection {
+                title: Translation.tr("Color")
+
+                ConfigRow {
+                    uniform: true
+
+                    SettingsSwitch {
+                        buttonIcon: "auto_awesome"
+                        text: Translation.tr("Automatic")
+                        checked: Config.options?.bar?.workspaces?.automaticIndicatorColor ?? true
+                        onCheckedChanged: Config.setNestedValue("bar.workspaces.automaticIndicatorColor", checked)
+                    }
+
+                    RippleButton {
+                        Layout.fillWidth: true
+                        implicitHeight: 40
+                        enabled: !(Config.options?.bar?.workspaces?.automaticIndicatorColor ?? true)
+                        opacity: enabled ? 1 : 0.5
+                        colBackground: Appearance.colors.colLayer2
+                        colBackgroundHover: Appearance.colors.colLayer2Hover
+                        colRipple: Appearance.colors.colLayer2Active
+                        downAction: () => workspaceIndicatorColorDialog.open()
+
+                        contentItem: RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            spacing: 8
+
+                            Rectangle {
+                                width: 18
+                                height: 18
+                                radius: 9
+                                color: root.workspaceIndicatorPreviewColor
+                                border.width: 1
+                                border.color: Appearance.colors.colOutline
+                            }
+
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: Translation.tr("Color")
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colOnLayer1
+                            }
+
+                            StyledText {
+                                text: root.workspaceIndicatorPreviewColor.toString().toUpperCase().substring(0, 7)
+                                font.pixelSize: Appearance.font.pixelSize.smallest
+                                font.family: Appearance.font.family.monospace
+                                color: Appearance.colors.colSubtext
+                            }
+
+                            MaterialSymbol {
+                                text: "edit"
+                                iconSize: 16
+                                color: Appearance.colors.colSubtext
+                            }
+                        }
+                    }
+                }
+            }
+
+            SettingsDivider {}
+
             ConfigRow {
                 uniform: true
                 ConfigSpinBox {
@@ -2155,7 +2663,8 @@ ContentPage {
     // SYSTEM TRAY
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive
+        settingsTaskSection: "modules"
+        visible: root.isIiActive && root.activeSection === "modules"
         expanded: false
         icon: "shelf_auto_hide"
         title: Translation.tr("System Tray")
@@ -2204,7 +2713,8 @@ ContentPage {
     // UTILITY BUTTONS
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive
+        settingsTaskSection: "modules"
+        visible: root.isIiActive && root.activeSection === "modules"
         expanded: false
         icon: "build"
         title: Translation.tr("Utility Buttons")
@@ -2343,7 +2853,8 @@ ContentPage {
     // NOTIFICATIONS
     // ═══════════════════════════════════════════════════════════════════
     SettingsCardSection {
-        visible: root.isIiActive
+        settingsTaskSection: "modules"
+        visible: root.isIiActive && root.activeSection === "modules"
         expanded: false
         icon: "notifications"
         title: Translation.tr("Notifications")

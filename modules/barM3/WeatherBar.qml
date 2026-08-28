@@ -68,7 +68,7 @@ MouseArea {
             StyledText {
                 visible: root.isMaterial
                 font.pixelSize: Appearance.font.pixelSize.small
-                color: Appearance.colors.colPrimary
+                color: M3Palette.pillAccent("weatherBar", M3Palette.primary)
                 text: Weather.data?.temp ?? "--°"
                 Layout.alignment: Qt.AlignVCenter
                 leftPadding: 5
@@ -79,14 +79,14 @@ MouseArea {
                 width: 25
                 height: 25
                 radius: Appearance.rounding.full
-                color: Appearance.colors.colPrimary
+                color: M3Palette.primary
 
                 MaterialSymbol {
                     anchors.centerIn: parent
                     fill: 0
                     text: Icons.getWeatherIcon(Weather.data.wCode) ?? "cloud"
                     iconSize: Appearance.font.pixelSize.normal
-                    color: Appearance.colors.colOnPrimary
+                    color: M3Palette.primaryForeground
                 }
             }
         }
@@ -117,7 +117,7 @@ MouseArea {
             StyledText {
                 visible: root.isMaterial
                 font.pixelSize: Appearance.font.pixelSize.small
-                color: Appearance.colors.colPrimary
+                color: M3Palette.pillAccent("weatherBar", M3Palette.primary)
                 text: (Weather.data?.temp ?? "--°").replace(/[CF]$/, "")
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 3
@@ -128,7 +128,7 @@ MouseArea {
                 width: 25
                 height: 25
                 radius: Appearance.rounding.full
-                color: Appearance.colors.colPrimary
+                color: M3Palette.primary
                 Layout.alignment: Qt.AlignHCenter
 
                 MaterialSymbol {
@@ -136,7 +136,7 @@ MouseArea {
                     fill: 0
                     text: Icons.getWeatherIcon(Weather.data.wCode) ?? "cloud"
                     iconSize: Appearance.font.pixelSize.normal
-                    color: Appearance.colors.colOnPrimary
+                    color: M3Palette.primaryForeground
                 }
             }
         }

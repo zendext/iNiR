@@ -361,7 +361,7 @@ Singleton {
         for (const id in root.workspaces) {
             const workspace = root.workspaces[id]
             const got_activated = workspace.id === data.id
-            const needsUpdate = (workspace.output === output) || (data.focused && got_activated)
+            const needsUpdate = (workspace.output === output) || data.focused
 
             if (!needsUpdate) {
                 updatedWorkspaces[id] = workspace

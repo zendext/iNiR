@@ -13,6 +13,12 @@ MouseArea {
     id: root
     property bool vertical: Config.options.bar.vertical
     property bool isMaterial: Config.options.bar.m3.cornerStyle === 3
+    readonly property color statusContainer: Updates.updateStronglyAdvised
+        ? M3Palette.error
+        : Updates.updateAdvised ? M3Palette.tertiary : M3Palette.primary
+    readonly property color statusInk: Updates.updateStronglyAdvised
+        ? M3Palette.errorForeground
+        : Updates.updateAdvised ? M3Palette.tertiaryForeground : M3Palette.primaryForeground
 
     implicitWidth: vertical ? Appearance.sizes.verticalBarWidth : (contentLoader.item?.implicitWidth ?? 0)
     implicitHeight: vertical ? (contentLoader.item?.implicitHeight ?? 0) : Appearance.sizes.barHeight
@@ -37,7 +43,9 @@ MouseArea {
             leftPadding: 5
             rightPadding: 3
             font.pixelSize: Appearance.font.pixelSize.small
-            color: root.isMaterial ? Appearance.colors.colPrimary : Appearance.colors.colOnLayer1
+            color: root.isMaterial
+                ? M3Palette.pillInk("updatesCount")
+                : Appearance.colors.colOnLayer1
             text: Updates.count
         }
     }
@@ -68,15 +76,13 @@ MouseArea {
                 width: 24
                 height: 24
                 radius: Appearance.rounding.full
-                color: Updates.updateStronglyAdvised ? Appearance.m3colors.m3error
-                    : Updates.updateAdvised ? Appearance.colors.colTertiary
-                    : Appearance.colors.colPrimary
+                color: root.statusContainer
 
                 MaterialSymbol {
                     anchors.centerIn: parent
                     text: "deployed_code_update"
                     iconSize: Appearance.font.pixelSize.normal
-                    color: Appearance.colors.colOnPrimary
+                    color: root.statusInk
                 }
             }
 
@@ -107,16 +113,14 @@ MouseArea {
                 width: 24
                 height: 24
                 radius: Appearance.rounding.full
-                color: Updates.updateStronglyAdvised ? Appearance.m3colors.m3error
-                    : Updates.updateAdvised ? Appearance.colors.colTertiary
-                    : Appearance.colors.colPrimary
+                color: root.statusContainer
                 Layout.alignment: Qt.AlignHCenter
 
                 MaterialSymbol {
                     anchors.centerIn: parent
                     text: "deployed_code_update"
                     iconSize: Appearance.font.pixelSize.normal
-                    color: Appearance.colors.colOnPrimary
+                    color: root.statusInk
                 }
             }
 

@@ -11,6 +11,23 @@ ContentPage {
     id: root
     settingsPageIndex: 6
     settingsPageName: Translation.tr("Tools")
+    property string activeSection: "recording"
+
+    SettingsTaskNavigator {
+        icon: "build"
+        title: Translation.tr("Tools")
+        description: Translation.tr("Open only the tool you are configuring; capture, selection and overlay controls no longer share one long settings stack.")
+        summary: Translation.tr("Recording · snipping · crosshair · Discord · OSD")
+        currentValue: root.activeSection
+        onSelected: value => root.activeSection = value
+        options: [
+            { displayName: Translation.tr("Recording"), icon: "screen_record", value: "recording" },
+            { displayName: Translation.tr("Snipping"), icon: "screenshot_frame_2", value: "snipping" },
+            { displayName: Translation.tr("Crosshair"), icon: "point_scan", value: "crosshair" },
+            { displayName: Translation.tr("Discord"), icon: "forum", value: "discord" },
+            { displayName: Translation.tr("OSD"), icon: "voting_chip", value: "osd" }
+        ]
+    }
 
     property bool recordingCapabilitiesLoaded: false
     property var detectedVideoCodecs: []
@@ -322,7 +339,9 @@ ContentPage {
 
     SettingsCardSection {
         id: screenRecordSection
-        expanded: false
+        settingsTaskSection: "recording"
+        visible: root.activeSection === "recording"
+        expanded: true
         icon: "screen_record"
         title: Translation.tr("Screen recording")
 
@@ -665,7 +684,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "snipping"
+        visible: root.activeSection === "snipping"
+        expanded: true
         icon: "screenshot_frame_2"
         title: Translation.tr("Region selector (screen snipping/Google Lens)")
 
@@ -839,7 +860,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "crosshair"
+        visible: root.activeSection === "crosshair"
+        expanded: true
         icon: "point_scan"
         title: Translation.tr("Crosshair overlay")
 
@@ -857,9 +880,9 @@ ContentPage {
             RowLayout {
                 StyledText {
                     Layout.leftMargin: 10
-                    color: Appearance.colors.colSubtext
-                    font.pixelSize: Appearance.font.pixelSize.smallie
-                    text: Translation.tr("Press Super+G to toggle appearance")
+                    color: Appearance.colors.colOnLayer1
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    text: Translation.tr("Floating tools (Super+G)")
                 }
                 Item {
                     Layout.fillWidth: true
@@ -881,7 +904,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "discord"
+        visible: root.activeSection === "discord"
+        expanded: true
         icon: "forum"
         title: Translation.tr("Overlay: Discord")
 
@@ -899,108 +924,9 @@ ContentPage {
     }
 
     SettingsCardSection {
-        expanded: false
-        icon: "layers"
-        title: Translation.tr("Overlay widgets")
-
-        SettingsGroup {
-            ContentSubsection {
-                title: Translation.tr("Background & dim")
-
-                SettingsSwitch {
-                    buttonIcon: "water"
-                    text: Translation.tr("Darken screen behind overlay")
-                    checked: Config.options?.overlay?.darkenScreen ?? false
-                    onCheckedChanged: {
-                        Config.setNestedValue("overlay.darkenScreen", checked);
-                    }
-                    StyledToolTip {
-                        text: Translation.tr("Add a dark scrim behind overlay panels for better visibility")
-                    }
-                }
-
-                ConfigSpinBox {
-                    icon: "opacity"
-                    text: Translation.tr("Overlay scrim dim (%)")
-                    value: Config.options?.overlay?.scrimDim ?? 30
-                    from: 0
-                    to: 100
-                    stepSize: 5
-                    enabled: Config.options?.overlay?.darkenScreen ?? false
-                    onValueChanged: {
-                        Config.setNestedValue("overlay.scrimDim", value);
-                    }
-                    StyledToolTip {
-                        text: Translation.tr("How dark the background scrim should be")
-                    }
-                }
-
-                ConfigSpinBox {
-                    icon: "opacity"
-                    text: Translation.tr("Overlay background opacity (%)")
-                    value: Math.round((Config.options?.overlay?.backgroundOpacity ?? 0.9) * 100)
-                    from: 20
-                    to: 100
-                    stepSize: 5
-                    onValueChanged: {
-                        Config.setNestedValue("overlay.backgroundOpacity", value / 100);
-                    }
-                    StyledToolTip {
-                        text: Translation.tr("Opacity of the overlay panel background")
-                    }
-                }
-            }
-
-            ContentSubsection {
-                title: Translation.tr("Animations")
-
-                SettingsSwitch {
-                    buttonIcon: "movie"
-                    text: Translation.tr("Enable opening zoom animation")
-                    checked: Config.options?.overlay?.openingZoomAnimation ?? true
-                    onCheckedChanged: {
-                        Config.setNestedValue("overlay.openingZoomAnimation", checked);
-                    }
-                    StyledToolTip {
-                        text: Translation.tr("Animate overlay panels with a zoom effect when opening")
-                    }
-                }
-
-                ConfigSpinBox {
-                    icon: "speed"
-                    text: Translation.tr("Overlay animation duration (ms)")
-                    value: Config.options?.overlay?.animationDurationMs ?? 180
-                    from: 0
-                    to: 1000
-                    stepSize: 20
-                    onValueChanged: {
-                        Config.setNestedValue("overlay.animationDurationMs", value);
-                    }
-                    StyledToolTip {
-                        text: Translation.tr("Duration of overlay open/close animations")
-                    }
-                }
-
-                ConfigSpinBox {
-                    icon: "speed"
-                    text: Translation.tr("Background dim animation (ms)")
-                    value: Config.options?.overlay?.scrimAnimationDurationMs ?? 140
-                    from: 0
-                    to: 1000
-                    stepSize: 20
-                    onValueChanged: {
-                        Config.setNestedValue("overlay.scrimAnimationDurationMs", value);
-                    }
-                    StyledToolTip {
-                        text: Translation.tr("Duration of the background scrim fade animation")
-                    }
-                }
-            }
-        }
-    }
-
-    SettingsCardSection {
-        expanded: false
+        settingsTaskSection: "osd"
+        visible: root.activeSection === "osd"
+        expanded: true
         icon: "voting_chip"
         title: Translation.tr("On-screen display")
 
@@ -1013,7 +939,7 @@ ContentPage {
                     Config.setNestedValue("osd.mediaEnabled", checked);
                 }
                 StyledToolTip {
-                    text: Translation.tr("Show now playing feedback when media shortcuts are pressed")
+                    text: Translation.tr("Show feedback for explicit media controls and Pill track changes. During games, explicit skips stay visible while automatic track progression stays hidden.")
                 }
             }
 

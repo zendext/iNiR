@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs
 import qs.services
 import qs.modules.common
@@ -14,7 +15,8 @@ RippleButton {
     property real buttonPadding: 5
     implicitWidth: distroIcon.width + buttonPadding * 2
     implicitHeight: distroIcon.height + buttonPadding * 2
-    buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
+    buttonRadius: Appearance.regaliaEverywhere ? Appearance.regalia.controlRadius
+        : Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
         : Appearance.angelEverywhere ? Appearance.angel.roundingSmall
         : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.full
     // zzz stays transparent here — the ZzzPlate below is the only hover
@@ -31,12 +33,14 @@ RippleButton {
         : Appearance.inirEverywhere ? Appearance.inir.colLayer1Active
         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive
         : Appearance.colors.colLayer1Active
-    colBackgroundToggled: Appearance.zzzEverywhere ? Appearance.zzz.sticker
+    colBackgroundToggled: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlate
+        : Appearance.zzzEverywhere ? Appearance.zzz.sticker
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
         : Appearance.inirEverywhere ? Appearance.inir.colPrimaryContainer
         : Appearance.auroraEverywhere ? Appearance.aurora.colElevatedSurface
         : Appearance.colors.colSecondaryContainer
-    colBackgroundToggledHover: Appearance.zzzEverywhere ? "transparent"
+    colBackgroundToggledHover: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlateHover
+        : Appearance.zzzEverywhere ? "transparent"
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
         : Appearance.inirEverywhere ? Appearance.inir.colSelectionHover
         : Appearance.auroraEverywhere ? Appearance.aurora.colElevatedSurfaceHover
@@ -47,10 +51,12 @@ RippleButton {
         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive
         : Appearance.colors.colSecondaryContainerActive
     // Spatial control: addresses whatever sidebar role occupies the left slot.
-    toggled: ShellLayoutController.sidebarOpenAtSlot("left")
+    toggled: ShellLayoutController.sidebarOpenAtSlot("left",
+        root.QsWindow.window?.screen?.name ?? "")
 
     onPressed: {
-        ShellLayoutController.toggleSidebarAtSlot("left");
+        ShellLayoutController.toggleSidebarAtSlot("left",
+            root.QsWindow.window?.screen?.name ?? "");
     }
 
     Connections {

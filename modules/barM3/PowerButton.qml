@@ -1,7 +1,9 @@
 import QtQuick
 import qs
 import qs.services
+import qs.modules.barM3
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 
 RippleButton {
@@ -14,9 +16,13 @@ RippleButton {
     implicitHeight: implicitWidth
 
     buttonRadius: Appearance.rounding.full
-    colBackground: isMaterial ? Appearance.colors.colPrimary : "transparent"
-    colBackgroundHover: isMaterial ? Appearance.colors.colPrimaryHover : Appearance.colors.colLayer1Hover
-    colRipple: isMaterial ? Appearance.colors.colPrimaryActive : Appearance.colors.colLayer1Active
+    colBackground: isMaterial ? M3Palette.primary : "transparent"
+    colBackgroundHover: isMaterial
+        ? ColorUtils.mix(M3Palette.primary, M3Palette.primaryForeground, 0.90)
+        : Appearance.colors.colLayer1Hover
+    colRipple: isMaterial
+        ? ColorUtils.mix(M3Palette.primary, M3Palette.primaryForeground, 0.78)
+        : Appearance.colors.colLayer1Active
 
     onPressed: {
         GlobalStates.sessionOpen = !GlobalStates.sessionOpen
@@ -35,8 +41,8 @@ RippleButton {
         visible: root.isMaterial
         text: "power_settings_new"
         iconSize: Appearance.font.pixelSize.normal
-        color: Appearance.colors.colOnPrimary
-        colSymbol: Appearance.colors.colPrimary
+        color: M3Palette.primaryForeground
+        colSymbol: M3Palette.primary
         shape: MaterialShape.Shape.Cookie12Sided
         padding: 2
     }

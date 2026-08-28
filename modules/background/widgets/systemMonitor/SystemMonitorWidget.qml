@@ -20,7 +20,7 @@ AbstractBackgroundWidget {
         barCount: 32, barSpacing: 2, trackAlpha: 0.08,
         fillOpacity: 0.7, graphFillOpacity: 0.3,
         showCpu: true, showMemory: true, showGpu: true,
-        showTemp: false, showDisk: false, showLabels: true,
+        showTemp: false, showGpuTemp: false, showDisk: false, showLabels: true,
         contentWidth: 320, contentHeight: 120, dim: 0,
         widgetScale: 100, widgetOpacity: 100, colorMode: "auto",
         showBackground: true, useBlur: false, showBorder: true,
@@ -79,6 +79,7 @@ AbstractBackgroundWidget {
                         { label: Translation.tr("RAM"), icon: "storage", key: "showMemory", active: root.showMemory },
                         { label: Translation.tr("GPU"), icon: "developer_board", key: "showGpu", active: root.showGpu },
                         { label: Translation.tr("Temp"), icon: "thermostat", key: "showTemp", active: root.showTemp },
+                        { label: Translation.tr("GPU temp"), icon: "device_thermostat", key: "showGpuTemp", active: root.showGpuTemp },
                         { label: Translation.tr("Disk"), icon: "hard_drive", key: "showDisk", active: root.showDisk }
                     ]
                     SelectionGroupButton {
@@ -96,12 +97,16 @@ AbstractBackgroundWidget {
     }
 
     // ── Config properties ──
-    readonly property bool _active: Config.getNestedValue("background.widgets.systemMonitor.enable", false)
+    // The loader already represents the effective per-output enabled state.
+    // Rechecking the global base here breaks output-local overrides and can
+    // leave a visible monitor without ResourceUsage keep-alive.
+    readonly property bool _active: root.visible
     readonly property string displayMode: Config.getNestedValue("background.widgets.systemMonitor.displayMode", "bars")
     readonly property bool showCpu: Config.getNestedValue("background.widgets.systemMonitor.showCpu", true)
     readonly property bool showMemory: Config.getNestedValue("background.widgets.systemMonitor.showMemory", true)
     readonly property bool showGpu: Config.getNestedValue("background.widgets.systemMonitor.showGpu", true)
     readonly property bool showTemp: Config.getNestedValue("background.widgets.systemMonitor.showTemp", false)
+    readonly property bool showGpuTemp: Config.getNestedValue("background.widgets.systemMonitor.showGpuTemp", false)
     readonly property bool showDisk: Config.getNestedValue("background.widgets.systemMonitor.showDisk", false)
     readonly property bool showLabels: Config.getNestedValue("background.widgets.systemMonitor.showLabels", true)
     readonly property real trackAlpha: Config.getNestedValue("background.widgets.systemMonitor.trackAlpha", 0.08)
@@ -115,6 +120,7 @@ AbstractBackgroundWidget {
         if (root.showMemory) items.push({ icon: "storage", label: Translation.tr("RAM"), key: "mem" });
         if (root.showGpu) items.push({ icon: "developer_board", label: Translation.tr("GPU"), key: "gpu" });
         if (root.showTemp) items.push({ icon: "thermostat", label: Translation.tr("Temp"), key: "temp" });
+        if (root.showGpuTemp) items.push({ icon: "device_thermostat", label: Translation.tr("GPU temp"), key: "gpuTemp" });
         if (root.showDisk) items.push({ icon: "hard_drive", label: Translation.tr("Disk"), key: "disk" });
         return items;
     }
@@ -126,6 +132,7 @@ AbstractBackgroundWidget {
             case "mem": return ResourceUsage.memoryUsedPercentage;
             case "gpu": return ResourceUsage.gpuUsage;
             case "temp": return ResourceUsage.tempPercentage;
+            case "gpuTemp": return ResourceUsage.gpuTempPercentage;
             case "disk": return ResourceUsage.diskUsedPercentage;
             default: return 0;
         }
@@ -137,6 +144,7 @@ AbstractBackgroundWidget {
             case "mem": return root.memColor;
             case "gpu": return root.gpuColor;
             case "temp": return root.tempColor;
+            case "gpuTemp": return root.gpuTempColor;
             case "disk": return root.diskColor;
             default: return root.cpuColor;
         }
@@ -144,6 +152,7 @@ AbstractBackgroundWidget {
 
     function _getDisplayText(key: string): string {
         if (key === "temp") return ResourceUsage.maxTemp + "°C";
+        if (key === "gpuTemp") return ResourceUsage.gpuTemp + "°C";
         return Math.round(root._getValue(key) * 100) + "%";
     }
 
@@ -153,26 +162,28 @@ AbstractBackgroundWidget {
             case "mem": return MaterialShape.Shape.Cookie4Sided;
             case "gpu": return MaterialShape.Shape.Cookie12Sided;
             case "temp": return MaterialShape.Shape.Sunny;
+            case "gpuTemp": return MaterialShape.Shape.Cookie9Sided;
             case "disk": return MaterialShape.Shape.Clover4Leaf;
             default: return MaterialShape.Shape.Cookie12Sided;
         }
     }
 
-    // Real M3 tonal container roles, one family per metric.
+    // Tiles are the reference composition: each resource is a semantic role pair
+    // (container + badge). The same selected slots feed every other monitor mode.
     function _tileRole(key: string): var {
-        const c = Appearance.colors;
-        switch (key) {
-            case "mem": return { bg: c.colSecondaryContainer, ink: c.colOnSecondaryContainer,
-                badge: c.colSecondary, onBadge: c.colOnSecondary };
-            case "gpu": return { bg: c.colTertiaryContainer, ink: c.colOnTertiaryContainer,
-                badge: c.colTertiary, onBadge: c.colOnTertiary };
-            case "temp": return { bg: c.colErrorContainer, ink: c.colOnErrorContainer,
-                badge: c.colError, onBadge: c.colOnError };
-            case "disk": return { bg: c.colSurfaceContainerHighest, ink: c.colOnSurface,
-                badge: c.colTertiary, onBadge: c.colOnTertiary };
-            default: return { bg: c.colPrimaryContainer, ink: c.colOnPrimaryContainer,
-                badge: c.colPrimary, onBadge: c.colOnPrimary };
+        const role = key === "mem" ? root.widgetSecondaryRole
+            : key === "gpu" ? root.widgetTertiaryRole
+            : key === "temp" || key === "gpuTemp" ? root.widgetSignalRole
+            : key === "disk" ? root.widgetSurfaceRole
+            : root.widgetPrimaryRole;
+        const set = root.widgetSemanticSet(role);
+        if (key === "disk") {
+            const accent = root.widgetSemanticSet(root.widgetTertiaryRole);
+            return { bg: set.container, ink: set.onContainer,
+                badge: accent.color, onBadge: accent.onColor };
         }
+        return { bg: set.container, ink: set.onContainer,
+            badge: set.color, onBadge: set.onColor };
     }
 
     readonly property real _tileUnit: Math.round(96 * root.scaleFactor)
@@ -193,15 +204,82 @@ AbstractBackgroundWidget {
     readonly property real cardRadius: root.widgetCardRadius
     readonly property int _innerMargin: Appearance.angelEverywhere || Appearance.inirEverywhere ? 6 : 2
 
-    // Shared desktop-widget identity (AbstractBackgroundWidget) so every metric reads
-    // as the same wallpaper-generated family across all widgets.
-    // Display variants: clamped against the plate/region actually behind them.
-    readonly property color cpuColor: root.widgetAccentVisible
-    readonly property color memColor: root.widgetAccent2Visible
-    readonly property color gpuColor: root.widgetAccent3Visible
-    readonly property color tempColor: root.widgetRoleColor(root.widgetSignal, 3.0, 0.50)
-    readonly property color diskColor: root.widgetRoleColor(
-        ColorUtils.mix(root.widgetAccent2, root.widgetAccent3, 0.55), 3.0, 0.42)
+    // Rings/bars/text reuse the same categorical palette as Tiles. The wallpaper
+    // already generated these semantic roles, so position analysis must not invent
+    // a second hue. Threshold state only overrides that base role when a metric is
+    // actually caution/warning.
+    function _metricBaseColor(key: string): color {
+        return root._tileRole(key).badge;
+    }
+    readonly property color _metricNormal: root._metricBaseColor("cpu")
+    readonly property color _metricCaution: root.widgetSemanticColor("warning")
+    readonly property color _metricWarning: root.widgetSignal
+
+    // Telemetry text is neutral information, not another accent. Select between
+    // the generated on-surface and inverse-on-surface roles according to the real
+    // backdrop polarity; do not saturate or re-hue either token. This keeps the
+    // labels consistent with the shell's text hierarchy while the metric arc owns
+    // the accent color.
+    readonly property color _metricLightInk: Appearance.m3colors.darkmode
+        ? Appearance.colors.colOnLayer0 : Appearance.m3colors.m3inverseOnSurface
+    readonly property color _metricDarkInk: Appearance.m3colors.darkmode
+        ? Appearance.m3colors.m3inverseOnSurface : Appearance.colors.colOnLayer0
+    readonly property color _metricText: root.forceLightInk ? root._metricLightInk
+        : root.forceDarkInk ? root._metricDarkInk
+        : root.widgetHasSurface
+            ? (root.widgetPlateIsDark ? root._metricLightInk : root._metricDarkInk)
+            : (root.regionIsBright ? root._metricDarkInk : root._metricLightInk)
+    readonly property color _metricSubtext: ColorUtils.applyAlpha(root._metricText, 0.66)
+
+    // The track is the background of the metric, not an outline. Keep it in the
+    // exact same semantic color family as the active arc and let the existing
+    // Track opacity setting control only its alpha. This restores the original
+    // System Monitor composition without reintroducing gray/black helper rings.
+    function _metricTrackColor(key: string): color {
+        return ColorUtils.applyAlpha(root._metricColor(key), root.trackAlpha);
+    }
+
+    // Graph mode needs categorical identity but no severity override: use the
+    // exact same generated role that the corresponding Tile badge uses.
+    function _graphColor(key: string): color {
+        return root._metricBaseColor(key);
+    }
+
+    function _metricSeverity(key: string): int {
+        const value = root._getValue(key) * 100;
+        switch (key) {
+        case "temp":
+        case "gpuTemp": {
+            const caution = Config.options?.bar?.resources?.tempCautionThreshold ?? 65;
+            const warning = Config.options?.bar?.resources?.tempWarningThreshold ?? 80;
+            return value >= warning ? 2 : value >= caution ? 1 : 0;
+        }
+        case "cpu":
+            return value >= (Config.options?.bar?.resources?.cpuWarningThreshold ?? 90) ? 2 : 0;
+        case "mem":
+            return value >= (Config.options?.bar?.resources?.memoryWarningThreshold ?? 90) ? 2 : 0;
+        case "gpu":
+            return value >= (Config.options?.bar?.resources?.gpuWarningThreshold ?? 90) ? 2 : 0;
+        case "disk":
+            return value >= 90 ? 2 : 0;
+        default:
+            return 0;
+        }
+    }
+
+    function _metricColor(key: string): color {
+        const severity = root._metricSeverity(key);
+        return severity >= 2 ? root._metricWarning
+            : severity === 1 ? root._metricCaution
+            : root._metricBaseColor(key);
+    }
+
+    readonly property color cpuColor: root._metricColor("cpu")
+    readonly property color memColor: root._metricColor("mem")
+    readonly property color gpuColor: root._metricColor("gpu")
+    readonly property color tempColor: root._metricColor("temp")
+    readonly property color gpuTempColor: root._metricColor("gpuTemp")
+    readonly property color diskColor: root._metricColor("disk")
 
     // Animation duration for smooth value transitions
     readonly property int _animDuration: Appearance.animation.elementMove.duration
@@ -236,6 +314,7 @@ AbstractBackgroundWidget {
         surfaceColor: root.widgetSurfaceInk
         colorMode: root.colorMode
         surfaceAccent: root.widgetAccent
+        surfaceFill: root.widgetPlateColor
         surfaceUseBlur: root.effectiveBlur
         screenX: root.x
         screenY: root.y
@@ -282,7 +361,7 @@ AbstractBackgroundWidget {
                     Rectangle {
                         anchors.fill: parent
                         radius: Appearance.rounding.verysmall
-                        color: ColorUtils.applyAlpha(barRow._liveColor, root.trackAlpha)
+                        color: root._metricTrackColor(barRow.modelData.key)
                     }
 
                     Rectangle {
@@ -304,7 +383,7 @@ AbstractBackgroundWidget {
                 StyledText {
                     visible: root.showLabels
                     text: root._getDisplayText(barRow.modelData.key)
-                    color: ColorUtils.applyAlpha(root.widgetInk, root.fillOpacity)
+                    color: barRow._liveColor
                     font {
                         pixelSize: Appearance.font.pixelSize.smaller
                         family: Appearance.font.family.numbers
@@ -340,12 +419,12 @@ AbstractBackgroundWidget {
                     MaterialSymbol {
                         text: modelData.icon
                         iconSize: Appearance.font.pixelSize.smaller
-                        color: root._getColor(modelData.key)
+                        color: root._graphColor(modelData.key)
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     StyledText {
                         text: root._getDisplayText(modelData.key)
-                        color: root._getColor(modelData.key)
+                        color: root._graphColor(modelData.key)
                         font { pixelSize: Appearance.font.pixelSize.smaller; family: Appearance.font.family.numbers }
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -363,7 +442,7 @@ AbstractBackgroundWidget {
             StyledText {
                 required property var modelData
                 text: modelData.label
-                color: ColorUtils.applyAlpha(root.widgetInk, 0.3)
+                color: root._metricSubtext
                 font { pixelSize: Appearance.font.pixelSize.smaller - 2; family: Appearance.font.family.numbers }
                 anchors.right: parent.right
                 anchors.rightMargin: 2
@@ -379,7 +458,7 @@ AbstractBackgroundWidget {
                 anchors { left: parent.left; right: parent.right }
                 y: parent._legendH + (parent.height - parent._legendH) * (1.0 - modelData)
                 height: 1
-                color: ColorUtils.applyAlpha(root.widgetInk, 0.06)
+                color: ColorUtils.applyAlpha(root._metricText, 0.06)
             }
         }
 
@@ -387,7 +466,7 @@ AbstractBackgroundWidget {
             anchors.fill: parent
             anchors.topMargin: parent._legendH
             values: root.showCpu ? ResourceUsage.cpuUsageHistory : []
-            color: root.cpuColor
+            color: root._graphColor("cpu")
             fillOpacity: root.graphFillOpacity + 0.05
             alignment: Graph.Alignment.Right
             visible: root.showCpu
@@ -397,7 +476,7 @@ AbstractBackgroundWidget {
             anchors.fill: parent
             anchors.topMargin: parent._legendH
             values: root.showMemory ? ResourceUsage.memoryUsageHistory : []
-            color: root.memColor
+            color: root._graphColor("mem")
             fillOpacity: root.graphFillOpacity
             alignment: Graph.Alignment.Right
             visible: root.showMemory
@@ -406,8 +485,18 @@ AbstractBackgroundWidget {
         Graph {
             anchors.fill: parent
             anchors.topMargin: parent._legendH
+            values: root.showGpuTemp ? ResourceUsage.gpuTempHistory : []
+            color: root._graphColor("gpuTemp")
+            fillOpacity: root.graphFillOpacity - 0.05
+            alignment: Graph.Alignment.Right
+            visible: root.showGpuTemp
+        }
+
+        Graph {
+            anchors.fill: parent
+            anchors.topMargin: parent._legendH
             values: root.showGpu ? ResourceUsage.gpuUsageHistory : []
-            color: root.gpuColor
+            color: root._graphColor("gpu")
             fillOpacity: root.graphFillOpacity - 0.05
             alignment: Graph.Alignment.Right
             visible: root.showGpu
@@ -459,13 +548,15 @@ AbstractBackgroundWidget {
                         // rendering for most of every 3-second polling cycle.
                         enableAnimation: false
                         colPrimary: ringCol._liveColor
-                        colSecondary: ColorUtils.applyAlpha(ringCol._liveColor, root.trackAlpha + 0.04)
+                        colSecondary: root._metricTrackColor(ringCol.modelData.key)
                     }
 
                     // Percentage/value inside the ring
                     StyledText {
                         anchors.centerIn: parent
-                        text: ringCol.modelData.key === "temp" ? ResourceUsage.maxTemp + "°" : Math.round(ringCol._animatedValue * 100)
+                        text: ringCol.modelData.key === "temp" ? ResourceUsage.maxTemp + "°"
+                            : ringCol.modelData.key === "gpuTemp" ? ResourceUsage.gpuTemp + "°"
+                            : Math.round(ringCol._animatedValue * 100)
                         color: ringCol._liveColor
                         font {
                             pixelSize: Math.max(10, Math.round(ringCol._ringSize * 0.26))
@@ -483,12 +574,12 @@ AbstractBackgroundWidget {
                     MaterialSymbol {
                         text: ringCol.modelData.icon
                         iconSize: Appearance.font.pixelSize.smaller
-                        color: root.widgetInkMuted
+                        color: root._metricSubtext
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     StyledText {
                         text: ringCol.modelData.label
-                        color: root.widgetInkMuted
+                        color: root._metricSubtext
                         font { pixelSize: Appearance.font.pixelSize.smaller; family: Appearance.font.family.main }
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -516,7 +607,7 @@ AbstractBackgroundWidget {
                 width: chipRow.implicitWidth + 12
                 height: chipRow.implicitHeight + 8
                 radius: Appearance.rounding.small
-                color: ColorUtils.applyAlpha(textChip._liveColor, root.trackAlpha)
+                color: root._metricTrackColor(textChip.modelData.key)
 
                 Row {
                     id: chipRow
@@ -532,7 +623,7 @@ AbstractBackgroundWidget {
 
                     StyledText {
                         text: textChip.modelData.label
-                        color: root.widgetInkMuted
+                        color: root._metricSubtext
                         font {
                             pixelSize: Math.round(Appearance.font.pixelSize.small * root.scaleFactor)
                             family: Appearance.font.family.main
@@ -575,7 +666,17 @@ AbstractBackgroundWidget {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 radius: root.cardRadius
-                color: tile.role.bg
+                color: Appearance.regaliaEverywhere ? "transparent" : tile.role.bg
+
+                RegaliaPlate {
+                    anchors.fill: parent
+                    z: -1
+                    visible: Appearance.regaliaEverywhere
+                    radius: tile.radius
+                    fillColor: tile.role.bg
+                    inset: Appearance.regalia.surfaceInset
+                    elevated: true
+                }
 
                 Behavior on color {
                     enabled: Appearance.animationsEnabled
@@ -590,6 +691,7 @@ AbstractBackgroundWidget {
                     target: tile
                     z: -2
                     visible: !Appearance.zzzEverywhere && !Appearance.inirEverywhere
+                        && !Appearance.regaliaEverywhere
                 }
 
                 ColumnLayout {
@@ -651,20 +753,20 @@ AbstractBackgroundWidget {
             anchors.horizontalCenter: parent.horizontalCenter
             implicitSize: Math.round(48 * root.scaleFactor)
             shape: MaterialShape.Shape.Ghostish
-            color: ColorUtils.applyAlpha(root.widgetAccent, 0.16)
+            color: ColorUtils.applyAlpha(root._metricNormal, 0.16)
 
             MaterialSymbol {
                 anchors.centerIn: parent
                 text: "monitor_heart"
                 iconSize: Math.round(24 * root.scaleFactor)
-                color: root.widgetAccentVisible
+                color: root._metricNormal
             }
         }
 
         StyledText {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Translation.tr("Select a metric")
-            color: root.widgetInkMuted
+            color: root._metricSubtext
             font.pixelSize: Math.round(Appearance.font.pixelSize.small * root.scaleFactor)
         }
     }

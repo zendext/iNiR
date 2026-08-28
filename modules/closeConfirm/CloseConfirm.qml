@@ -11,6 +11,7 @@ Scope {
 
     // Window captured at the moment of trigger (prevents race condition)
     property var targetWindow: null
+    property var dialogScreen: null
     property bool dialogVisible: false
 
     // Debounce to prevent double-trigger
@@ -44,6 +45,7 @@ Scope {
     function processWindow(win): void {
         if (root.confirmEnabled) {
             root.targetWindow = win;
+            root.dialogScreen = GlobalStates.focusedScreen;
             root.dialogVisible = true;
         } else {
             root.closeWindowFast(win);
@@ -86,6 +88,7 @@ Scope {
         function close(): void {
             root.dialogVisible = false;
             root.targetWindow = null;
+            root.dialogScreen = null;
         }
     }
 
@@ -107,63 +110,61 @@ Scope {
         }
         dialogVisible = false;
         targetWindow = null;
+        dialogScreen = null;
     }
 
     function cancel(): void {
         dialogVisible = false;
         targetWindow = null;
+        dialogScreen = null;
     }
 
     // Dialog UI
     Loader {
         active: root.dialogVisible
 
-        sourceComponent: Variants {
-            model: Quickshell.screens
-            delegate: PanelWindow {
-                required property var modelData
-                screen: modelData
+        sourceComponent: PanelWindow {
+            screen: root.dialogScreen ?? GlobalStates.focusedScreen
 
-                anchors {
-                    top: true
-                    left: true
-                    right: true
-                    bottom: true
+            anchors {
+                top: true
+                left: true
+                right: true
+                bottom: true
+            }
+
+            color: "transparent"
+            WlrLayershell.namespace: "quickshell:closeConfirm"
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+            WlrLayershell.layer: WlrLayer.Overlay
+            exclusionMode: ExclusionMode.Ignore
+
+            Loader {
+                id: contentLoader
+                anchors.fill: parent
+                focus: true
+                // Both contents declare targetWindow as required, so they must be
+                // instantiated from an inline Component. A Loader source URL cannot
+                // initialize required properties and fails to Loader.Error, leaving
+                // this keyboard-exclusive fullscreen window with no way out.
+                sourceComponent: Config.options?.panelFamily === "waffle" ? waffleContent : iiContent
+                onLoaded: if (item) item.forceActiveFocus()
+
+                Component {
+                    id: iiContent
+                    CloseConfirmContent {
+                        targetWindow: root.targetWindow
+                        onConfirm: root.confirmClose()
+                        onCancel: root.cancel()
+                    }
                 }
 
-                color: "transparent"
-                WlrLayershell.namespace: "quickshell:closeConfirm"
-                WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-                WlrLayershell.layer: WlrLayer.Overlay
-                exclusionMode: ExclusionMode.Ignore
-
-                Loader {
-                    id: contentLoader
-                    anchors.fill: parent
-                    focus: true
-                    // Both contents declare targetWindow as required, so they must be
-                    // instantiated from an inline Component. A Loader source URL cannot
-                    // initialize required properties and fails to Loader.Error, leaving
-                    // this keyboard-exclusive fullscreen window with no way out.
-                    sourceComponent: Config.options?.panelFamily === "waffle" ? waffleContent : iiContent
-                    onLoaded: if (item) item.forceActiveFocus()
-
-                    Component {
-                        id: iiContent
-                        CloseConfirmContent {
-                            targetWindow: root.targetWindow
-                            onConfirm: root.confirmClose()
-                            onCancel: root.cancel()
-                        }
-                    }
-
-                    Component {
-                        id: waffleContent
-                        WCloseConfirmContent {
-                            targetWindow: root.targetWindow
-                            onConfirm: root.confirmClose()
-                            onCancel: root.cancel()
-                        }
+                Component {
+                    id: waffleContent
+                    WCloseConfirmContent {
+                        targetWindow: root.targetWindow
+                        onConfirm: root.confirmClose()
+                        onCancel: root.cancel()
                     }
                 }
             }

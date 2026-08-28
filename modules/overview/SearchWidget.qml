@@ -18,6 +18,7 @@ Item { // Wrapper
     property string searchingText: ""
     property bool showResults: searchingText != ""
     property bool panelVisible: true
+    property bool applicationDragActive: false
     property real availableHeight: root.QsWindow?.window?.height ?? (root.QsWindow?.window?.screen?.height ?? 1080)
     readonly property bool zzzEverywhere: Appearance.zzzEverywhere
     // Island: the search surface wears the Ricelin gradient card; the glass
@@ -221,6 +222,7 @@ Item { // Wrapper
 
             appResultObjects.push({
                 key: `app_${entry.name}`,
+                desktopEntryId: String(entry.id ?? "").trim().replace(/\.desktop$/i, ""),
                 name: entry.name,
                 clickActionName: Translation.tr("Launch"),
                 type: Translation.tr("App"),
@@ -245,12 +247,12 @@ Item { // Wrapper
                 }
                 cleanedCommand = cleanedCommand.trim();
                 if (!cleanedCommand.length) return;
-                const term = Config.options?.apps?.terminal ?? "ghostty";
+                const term = String(Config.options?.apps?.terminal ?? "ghostty").trim() || "ghostty";
+                const quotedCommand = `'${StringUtils.shellSingleQuoteEscape(cleanedCommand)}'`;
                 if (term.indexOf("ghostty") !== -1) {
-                    Quickshell.execDetached([term, "-e", "/usr/bin/sh", "-lc", cleanedCommand]);
+                    ShellExec.execCmd(`${term} -e /usr/bin/sh -lc ${quotedCommand}`);
                 } else {
-                    const commandToRun = `${term} /usr/bin/bash -lc '${cleanedCommand}'`;
-                    Quickshell.execDetached(["/usr/bin/bash", "-c", commandToRun]);
+                    ShellExec.execCmd(`${term} /usr/bin/bash -lc ${quotedCommand}`);
                 }
             }
         };
@@ -428,7 +430,17 @@ Item { // Wrapper
 
     StyledRectangularShadow {
         target: searchWidgetContent
+        visible: !root.islandStyle
     }
+
+    IslandPanel {
+        anchors.fill: searchWidgetContent
+        visible: root.islandStyle
+        radius: searchWidgetContent.radius
+        glassEnabled: true
+        screen: root.QsWindow?.window?.screen ?? null
+    }
+
     GlassBackground { // Background
         id: searchWidgetContent
         anchors {
@@ -439,18 +451,25 @@ Item { // Wrapper
         clip: true
         implicitWidth: columnLayout.implicitWidth
         implicitHeight: columnLayout.implicitHeight
-        radius: root.zzzEverywhere ? Appearance.zzz.panelRadius : searchBar.height / 2 + searchBar.verticalPadding
+        radius: root.islandStyle
+            ? (root.showResults ? (Config.options?.appearance?.island?.radius ?? 18)
+                : searchBar.height / 2 + searchBar.verticalPadding)
+            : root.zzzEverywhere ? Appearance.zzz.panelRadius
+            : Appearance.regaliaEverywhere
+                ? (root.showResults ? Appearance.regalia.panelRadius : Appearance.regalia.roundLarge)
+                : searchBar.height / 2 + searchBar.verticalPadding
         // Collapsed zzz search: let ZzzGraphicPlate own the (chamfered/rounded) fill so
         // the GlassBackground's rounded rect doesn't escape behind it. Results surface
         // still needs the paper fill (its backdrop is decoration only).
-        fallbackColor: root.islandStyle ? "transparent"
+        fallbackColor: root.islandStyle || Appearance.regaliaEverywhere ? "transparent"
             : root.zzzEverywhere ? (root.showResults ? Appearance.zzz.paper : "transparent") : Appearance.colors.colBackgroundSurfaceContainer
         inirColor: root.islandStyle ? "transparent" : Appearance.inir.colLayer1
         auroraTransparency: Appearance.aurora.popupTransparentize
-        wallpaperBackdropEnabled: root.panelVisible && !root.zzzEverywhere && !root.islandStyle
+        wallpaperBackdropEnabled: root.panelVisible && !root.zzzEverywhere
+            && !Appearance.regaliaEverywhere && !root.islandStyle
         // Collapsed ZZZ search keeps its integrated plate border, while the
         // expanded results surface uses the shared panel backdrop + real border.
-        border.width: root.islandStyle ? 0
+        border.width: root.islandStyle || Appearance.regaliaEverywhere ? 0
             : root.zzzEverywhere
             ? (root.showResults ? Appearance.zzz.borderThick : 0)
             : auroraEverywhere || inirEverywhere ? 1 : 0
@@ -466,28 +485,14 @@ Item { // Wrapper
             ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
         }
 
-        // Ricelin island face — outer shadow already comes from
-        // StyledRectangularShadow; content is masked to this same radius.
-        IslandPanel {
+        RegaliaPlate {
             anchors.fill: parent
-            visible: root.islandStyle
+            visible: Appearance.regaliaEverywhere && !root.islandStyle
+            fillColor: root.showResults ? Appearance.regalia.bg1 : Appearance.regalia.barSurfaceFloating
             radius: searchWidgetContent.radius
-            shadow: false
+            inset: root.showResults ? Appearance.regalia.surfaceInset : Appearance.regalia.controlInset
+            elevated: true
             glassEnabled: true
-            // The overview window is fullscreen, so window coords ARE screen
-            // coords; re-map when the search surface moves or resizes.
-            glassScreenX: {
-                void searchWidgetContent.width;
-                void searchWidgetContent.height;
-                return searchWidgetContent.mapToItem(null, 0, 0).x;
-            }
-            glassScreenY: {
-                void searchWidgetContent.width;
-                void searchWidgetContent.height;
-                return searchWidgetContent.mapToItem(null, 0, 0).y;
-            }
-            glassScreenWidth: root.QsWindow?.window?.screen?.width ?? 1920
-            glassScreenHeight: root.QsWindow?.window?.screen?.height ?? 1080
         }
 
         // Collapsed search: a CLEAN plate (just the left category accent bar). The
@@ -561,7 +566,9 @@ Item { // Wrapper
                 visible: root.showResults && !root.actionMode
                 Layout.fillWidth: true
                 height: 1
-                color: root.zzzEverywhere ? Appearance.zzz.hairline : Appearance.colors.colOutlineVariant
+                color: root.zzzEverywhere ? Appearance.zzz.hairline
+                    : Appearance.regaliaEverywhere ? Appearance.regalia.separator
+                    : Appearance.colors.colOutlineVariant
                 Behavior on color { enabled: Appearance.animationsEnabled; ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve } }
             }
 
@@ -644,6 +651,7 @@ Item { // Wrapper
                     anchors.left: parent?.left
                     anchors.right: parent?.right
                     entry: modelData
+                    onApplicationDragChanged: active => root.applicationDragActive = active
                     upTarget: searchBar.searchInput
                     query: StringUtils.cleanOnePrefix(root.debouncedSearchText, [
                         root.prefixAction,
