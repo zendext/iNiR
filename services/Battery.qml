@@ -212,7 +212,7 @@ Singleton {
         return _rawChargeLimitValue === _desiredChargeLimitValue(enable)
     }
 
-    function _buildChargeLimitWriteCommand(enable: bool) {
+    function _buildChargeLimitWriteCommand(enable: bool): var {
         switch (_chargeLimitBackend) {
         case "ideapad":
         case "samsung":
