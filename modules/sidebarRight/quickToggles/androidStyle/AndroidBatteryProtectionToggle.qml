@@ -6,6 +6,7 @@ import qs.services
 AndroidQuickToggleButton {
     id: root
 
+    visible: Battery.available
     name: Translation.tr("Battery Protection")
     toggled: Config.options?.battery?.chargeLimit?.enable ?? false
     enabled: Battery.chargeLimitSupported && !Battery.chargeLimitBusy

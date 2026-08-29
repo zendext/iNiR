@@ -6,6 +6,7 @@ import qs.services
 QuickToggleButton {
     id: root
 
+    visible: Battery.available
     toggled: Config.options?.battery?.chargeLimit?.enable ?? false
     enabled: Battery.chargeLimitSupported && !Battery.chargeLimitBusy
     buttonIcon: toggled ? "battery_saver" : "battery_full"
