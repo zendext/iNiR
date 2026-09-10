@@ -76,6 +76,39 @@ bind "Mod+Space" { spawn "inir" "overview" "toggle"; }
 
 ---
 
+### orbit
+
+Niri-only Material session navigator for the ii family. Orbit presents nearby workspaces and readable window previews, with MRU Trail navigation and temporary Stash parking.
+
+| Function | Description |
+|----------|-------------|
+| `toggle` | Open/close Orbit |
+| `open` | Open Orbit on the focused output |
+| `close` | Close Orbit if it is active |
+| `pocket` | Open Orbit directly into Pocket |
+| `studio` | Open Orbit directly into the live Studio editor |
+| `find` | Open Orbit Focus Lens and filter session windows by app or title |
+| `stage` | Open Orbit in the classic Stage view for this session |
+| `orbital` | Open Orbit in the Orbital workspace view for this session |
+| `next` | Switch Niri to the next workspace while Orbit stays open |
+| `previous` | Switch Niri to the previous workspace while Orbit stays open |
+| `status` | Print the effective Orbit runtime state used by diagnostics and visual audits |
+| `toggleView` | Switch the open Orbit session between Stage and Orbital |
+
+---
+
+### taskview
+
+Compatibility entry point for task navigation. On Waffle it opens the Waffle Task View; on ii/Niri it routes to Orbit.
+
+| Function | Description |
+|----------|-------------|
+| `toggle` | Open/close the active family's task navigator |
+| `open` | Open the active family's task navigator |
+| `close` | Close the active family's task navigator |
+
+---
+
 ### workspaceStrip
 
 Workspace edge strip. Shows a compact per-workspace rail and expands it for switching without opening the full overview.
@@ -225,8 +258,9 @@ Lock screen. For when you need to pretend you're working.
 | Function | Description |
 |----------|-------------|
 | `activate` | Lock the screen |
+| `prepareSleep` | Suspend handshake: activate immediately and wait until the compositor confirms the session lock is secure |
 | `deactivate` | Cancel lock and mark screen unlocked |
-| `status` | Return lock state (`locked`, `activating`, or `unlocked`) |
+| `status` | Return lock state (`secure`, `locked`, `activating`, or `unlocked`) |
 | `focus` | Refocus the lock screen input |
 
 ```kdl
@@ -502,6 +536,28 @@ Floating media controls panel.
 
 ---
 
+### equalizer
+
+Open the ii-family EasyEffects output equalizer. The integration is optional and disabled until you enable it. Run `inir settings`, then go to **Modules → Optional → EasyEffects Equalizer** and enable the switch. While it is disabled the IPC target is intentionally not constructed. On a fresh empty EasyEffects output pipeline, iNiR bootstraps a neutral 10-band `iNiR Equalizer` preset. Existing non-empty effect chains are never replaced automatically.
+
+| Function | Description |
+|----------|-------------|
+| `toggle` | Open/close equalizer |
+| `open` | Show equalizer |
+| `close` | Hide equalizer |
+| `refresh` | Refresh EasyEffects equalizer state |
+| `ensure` | Ensure Equalizer control is available; bootstraps a neutral Equalizer only when the output pipeline is empty |
+| `status` | Return current equalizer state as JSON |
+| `setBand <index> <gain>` | Set one 0-based band gain in dB |
+| `preset <name>` | Apply one built-in EQ preset |
+| `configure` | Convert the active Equalizer to the iNiR 10-band layout |
+
+```kdl
+bind "Ctrl+Alt+F" { spawn "inir" "equalizer" "toggle"; }
+```
+
+---
+
 ### osk
 
 On-screen keyboard.
@@ -749,7 +805,9 @@ Window minimization (Niri workaround - moves windows to hidden workspace).
 | Function | Description |
 |----------|-------------|
 | `minimize` | Minimize focused window |
+| `minimizeId` | Minimize a window by Niri window ID |
 | `restore` | Restore a minimized window by ID |
+| `restoreOriginal` | Restore a minimized window to the workspace it came from |
 
 ---
 
@@ -857,18 +915,6 @@ Waffle taskbar visibility.
 | `toggle` | Show/hide taskbar |
 | `open` | Show taskbar |
 | `close` | Hide taskbar |
-
----
-
-### taskview
-
-Waffle task view (Win+Tab style).
-
-| Function | Description |
-|----------|-------------|
-| `toggle` | Open/close task view |
-| `open` | Show task view |
-| `close` | Hide task view |
 
 ---
 

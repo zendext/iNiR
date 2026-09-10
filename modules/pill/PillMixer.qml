@@ -20,7 +20,7 @@ PillSurface {
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
-    readonly property var appNodes: Audio.outputAppNodes
+    readonly property var appNodes: MprisController.mixerAppNodes
     readonly property int appFaderLimit: Math.max(3, Math.min(8, Config.options?.bar?.pill?.mixerAppRows ?? 5))
     readonly property int visibleAppFaders: Math.max(1, Math.min(appFaderLimit, appNodes.length || 1))
     property string view: "apps"
@@ -717,14 +717,20 @@ PillSurface {
                 }
             }
 
-            Text {
-                anchors.centerIn: parent
-                visible: root.appNodes.length === 0
-                text: Translation.tr("No apps playing audio")
-                color: PillTheme.subtle
-                font.family: PillTheme.font
-                font.pixelSize: 13 * root.s
-            }
+        }
+
+        // Keep the empty state in the viewport's coordinate space. Children of
+        // Flickable are parented to its contentItem; when there are no streams
+        // appRail.width/contentWidth collapse to zero, which used to center this
+        // label against a 0px content item and clip most of the text at the
+        // viewport edge.
+        Text {
+            anchors.centerIn: appFlick
+            visible: root.appNodes.length === 0
+            text: Translation.tr("No apps playing audio")
+            color: PillTheme.subtle
+            font.family: PillTheme.font
+            font.pixelSize: 13 * root.s
         }
     }
 

@@ -9,14 +9,17 @@ structure are always preserved.
 Commands:
   outputs              JSON array of outputs with modes/capabilities
   apply-output NAME    Apply temporary output changes via niri msg
-  persist-output NAME  Write output config to KDL config.d/15-outputs.kdl
+  persist-output NAME  Write one output config to KDL config.d/15-outputs.kdl
+  persist-layout JSON  Persist all connected output positions atomically
   get-input            Read current input config from KDL
+  get-hot-corners      Read effective Niri overview hot corners
   get-layout           Read current layout config from KDL
   get-animations       Read current animation config from KDL (with per-type springs)
   get-window-rules     Read window-rule globals from KDL
   list-cursor-themes   List available cursor themes from icon dirs
   validate             Validate current Niri config via niri validate
   detect-customizations Report Niri files that differ from shipped iNiR defaults
+  sync-backdrop-overview-shadow on|off  Manage the backdrop-only overview shadow override
   set SECTION KEY VAL  Surgical edit of a single config value
   get-binds            JSON of all keybinds from 70-binds.kdl with categories/metadata
   set-bind KEY ACTION  Add or update a keybind in 70-binds.kdl (surgical edit)
@@ -24,6 +27,7 @@ Commands:
 """
 
 from difflib import unified_diff
+import glob
 import json
 import os
 import re
@@ -44,6 +48,9 @@ DEFAULT_NIRI_FILES = [
     "config.d/80-layer-rules.kdl",
     "config.d/90-user-extra.kdl",
 ]
+
+BACKDROP_SHADOW_OVERRIDE_START = "// >>> inir-backdrop-only >>>"
+BACKDROP_SHADOW_OVERRIDE_END = "// <<< inir-backdrop-only <<<"
 
 
 def get_niri_config_dir():
@@ -371,6 +378,67 @@ def cmd_persist_output(args):
 
         if existing.strip():
             result = existing.rstrip() + "\n\n" + new_block + "\n"
+        else:
+            result = new_block + "\n"
+
+    return _write_validated(outputs_file, result)
+
+
+def cmd_persist_layout(args):
+    """Persist a complete connected-output layout in one validated write.
+
+    The Settings drag surface sends every connected output position, not only the
+    monitor that moved. Niri re-runs automatic placement whenever the output
+    configuration changes, so a durable multi-monitor layout must make every
+    connected position explicit together.
+    """
+    if len(args) != 1:
+        print(json.dumps({"error": "Usage: persist-layout <json-object>"}))
+        return 1
+
+    try:
+        layout = json.loads(args[0])
+    except Exception as e:
+        print(json.dumps({"error": f"Invalid layout JSON: {e}"}))
+        return 1
+
+    if not isinstance(layout, dict) or not layout:
+        print(json.dumps({"error": "Layout must be a non-empty object."}))
+        return 1
+
+    normalized = {}
+    for output_name, position in layout.items():
+        if not isinstance(output_name, str) or not output_name:
+            print(json.dumps({"error": "Every output must have a non-empty name."}))
+            return 1
+        if not isinstance(position, dict) or "x" not in position or "y" not in position:
+            print(json.dumps({"error": f"Missing x/y position for {output_name}."}))
+            return 1
+        try:
+            x = int(position["x"])
+            y = int(position["y"])
+        except (TypeError, ValueError):
+            print(json.dumps({"error": f"Invalid x/y position for {output_name}."}))
+            return 1
+        normalized[output_name] = (x, y)
+
+    outputs_file = resolve_niri_section_file("config.d/15-outputs.kdl")
+    outputs_file.parent.mkdir(parents=True, exist_ok=True)
+    result = outputs_file.read_text() if outputs_file.exists() else ""
+
+    for output_name, (x, y) in normalized.items():
+        bounds = _find_output_block_bounds(result, output_name)
+        if bounds:
+            _, inner_start, inner_end, _ = bounds
+            block_content = _set_in_block(
+                result[inner_start:inner_end], "position", f"x={x} y={y}"
+            )
+            result = result[:inner_start] + block_content + result[inner_end:]
+            continue
+
+        new_block = f'output "{output_name}" {{\n    position x={x} y={y}\n}}'
+        if result.strip():
+            result = result.rstrip() + "\n\n" + new_block + "\n"
         else:
             result = new_block + "\n"
 
@@ -737,6 +805,186 @@ def _has_top_level_flag(block_content, flag_name):
             return True
         depth += raw_line.count("{") - raw_line.count("}")
     return False
+
+
+def _strip_kdl_line_comments(content):
+    """Remove // comments while preserving quoted strings and line structure."""
+    cleaned = []
+    for line in content.splitlines(keepends=True):
+        in_string = False
+        escaped = False
+        cut = None
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if escaped:
+                escaped = False
+            elif ch == "\\" and in_string:
+                escaped = True
+            elif ch == '"':
+                in_string = not in_string
+            elif ch == "/" and not in_string and i + 1 < len(line) and line[i + 1] == "/":
+                cut = i
+                break
+            i += 1
+        if cut is None:
+            cleaned.append(line)
+        else:
+            cleaned.append(line[:cut] + ("\n" if line.endswith("\n") else ""))
+    return "".join(cleaned)
+
+
+def _flatten_niri_config(path, seen=None):
+    """Expand active include directives in-place for read-only config inspection."""
+    if seen is None:
+        seen = set()
+
+    try:
+        resolved = path.expanduser().resolve()
+    except Exception:
+        resolved = path.expanduser()
+    if resolved in seen or not resolved.exists():
+        return ""
+    seen.add(resolved)
+
+    try:
+        content = resolved.read_text()
+    except Exception:
+        return ""
+
+    chunks = []
+    include_re = re.compile(r'^\s*include\s+"([^"]+)"\s*$')
+    for line in content.splitlines(keepends=True):
+        stripped = _strip_kdl_line_comments(line).strip()
+        match = include_re.match(stripped)
+        if not match:
+            chunks.append(line)
+            continue
+
+        include_pattern = os.path.expandvars(os.path.expanduser(match.group(1)))
+        if not os.path.isabs(include_pattern):
+            include_pattern = str(resolved.parent / include_pattern)
+        for included in sorted(glob.glob(include_pattern)):
+            nested = _flatten_niri_config(Path(included), seen)
+            chunks.append(nested)
+            if nested and not nested.endswith("\n"):
+                chunks.append("\n")
+    return "".join(chunks)
+
+
+def _iter_output_blocks(content):
+    pattern = re.compile(r'(?:^|\n)\s*output\s+"([^"]+)"\s*\{')
+    for match in pattern.finditer(content):
+        if _brace_depth_before(content, match.start()) != 0:
+            continue
+        inner_start = match.end()
+        depth = 1
+        i = inner_start
+        while i < len(content) and depth > 0:
+            if content[i] == "{":
+                depth += 1
+            elif content[i] == "}":
+                depth -= 1
+            i += 1
+        if depth == 0:
+            yield match.group(1), content[inner_start:i - 1]
+
+
+def _find_output_block_bounds(content, output_name):
+    """Return (block_start, inner_start, inner_end, block_end) for a top-level output.
+
+    Unlike the legacy regex-only output writer this keeps nested per-output blocks
+    (hot-corners, layout, etc.) intact while changing the outer position.
+    """
+    pattern = re.compile(
+        rf'(?m)^[ \t]*output\s+"{re.escape(output_name)}"\s*\{{'
+    )
+    for match in pattern.finditer(content):
+        if _brace_depth_before(content, match.start()) != 0:
+            continue
+        inner_start = match.end()
+        depth = 1
+        i = inner_start
+        while i < len(content) and depth > 0:
+            if content[i] == "{":
+                depth += 1
+            elif content[i] == "}":
+                depth -= 1
+            i += 1
+        if depth == 0:
+            return match.start(), inner_start, i - 1, i
+    return None
+
+
+def _parse_hot_corner_block(block):
+    if block is None:
+        return None
+
+    entries = []
+    for raw in block.splitlines():
+        token = raw.strip()
+        if token in {"off", "top-left", "top-right", "bottom-left", "bottom-right"}:
+            entries.append(token)
+    if "off" in entries:
+        return []
+
+    mapping = {
+        "top-left": "topLeft",
+        "top-right": "topRight",
+        "bottom-left": "bottomLeft",
+        "bottom-right": "bottomRight",
+    }
+    corners = [mapping[token] for token in entries if token in mapping]
+    return corners if corners else ["topLeft"]
+
+
+def cmd_get_hot_corners():
+    """Read effective Niri overview hot corners without mutating compositor config."""
+    flattened = _strip_kdl_line_comments(_flatten_niri_config(get_niri_config_path()))
+
+    gestures = _extract_block(flattened, "gestures", top_level=True)
+    global_block = _extract_block(gestures, "hot-corners", top_level=True) if gestures is not None else None
+    global_corners = _parse_hot_corner_block(global_block)
+    if global_corners is None:
+        global_corners = ["topLeft"]
+
+    configured_overrides = {}
+    for output_name, output_block in _iter_output_blocks(flattened):
+        override = _parse_hot_corner_block(
+            _extract_block(output_block, "hot-corners", top_level=True)
+        )
+        if override is not None:
+            configured_overrides[output_name] = override
+
+    effective = {}
+    raw_outputs, rc = run_niri("-j", "outputs")
+    if rc == 0:
+        try:
+            output_data = json.loads(raw_outputs)
+        except Exception:
+            output_data = {}
+        for connector, data in output_data.items():
+            aliases = {connector}
+            identity = " ".join(
+                str(data.get(key, "")).strip()
+                for key in ("make", "model", "serial")
+                if str(data.get(key, "")).strip()
+            ).strip()
+            if identity:
+                aliases.add(identity)
+
+            override = None
+            for alias in aliases:
+                if alias in configured_overrides:
+                    override = configured_overrides[alias]
+            effective[connector] = list(global_corners if override is None else override)
+
+    print(json.dumps({
+        "global": global_corners,
+        "overrides": configured_overrides,
+        "effective": effective,
+    }))
+    return 0
 
 
 # ─── Layout ───────────────────────────────────────────────────────────
@@ -1364,6 +1612,41 @@ def cmd_set(args):
     else:
         print(json.dumps({"error": f"Unknown section: {section}"}))
         return 1
+
+
+def cmd_sync_backdrop_overview_shadow(args):
+    if len(args) != 1 or args[0] not in ("on", "off"):
+        print(json.dumps({"error": "Usage: sync-backdrop-overview-shadow on|off"}))
+        return 1
+
+    target_file = resolve_niri_section_file("config.d/90-user-extra.kdl")
+    content = target_file.read_text() if target_file.exists() else ""
+    managed_pattern = re.compile(
+        rf"\n?{re.escape(BACKDROP_SHADOW_OVERRIDE_START)}.*?"
+        rf"{re.escape(BACKDROP_SHADOW_OVERRIDE_END)}\n?",
+        re.DOTALL,
+    )
+    next_content = managed_pattern.sub("\n", content).rstrip()
+
+    if args[0] == "on":
+        managed_block = (
+            f"{BACKDROP_SHADOW_OVERRIDE_START}\n"
+            "overview {\n"
+            "    workspace-shadow {\n"
+            "        off\n"
+            "    }\n"
+            "}\n"
+            f"{BACKDROP_SHADOW_OVERRIDE_END}"
+        )
+        next_content = f"{next_content}\n\n{managed_block}\n" if next_content else f"{managed_block}\n"
+    elif next_content:
+        next_content += "\n"
+
+    if next_content == content:
+        print(json.dumps({"success": True, "file": str(target_file), "changed": False}))
+        return 0
+
+    return _write_validated(target_file, next_content)
 
 
 def _sync_cursor_env(theme=None, size=None):
@@ -2762,7 +3045,7 @@ def main():
         print(
             json.dumps(
                 {
-                    "error": "No command. Use: outputs, apply-output, persist-output, get-input, get-layout, get-animations, get-window-rules, list-cursor-themes, sync-cursor, validate, detect-customizations, set, get-binds, set-bind, remove-bind"
+                    "error": "No command. Use: outputs, apply-output, persist-output, persist-layout, get-input, get-hot-corners, get-layout, get-animations, get-window-rules, list-cursor-themes, sync-cursor, validate, detect-customizations, set, get-binds, set-bind, remove-bind"
                 }
             )
         )
@@ -2775,7 +3058,9 @@ def main():
         "outputs": lambda: cmd_outputs(),
         "apply-output": lambda: cmd_apply_output(args),
         "persist-output": lambda: cmd_persist_output(args),
+        "persist-layout": lambda: cmd_persist_layout(args),
         "get-input": lambda: cmd_get_input(),
+        "get-hot-corners": lambda: cmd_get_hot_corners(),
         "get-layout": lambda: cmd_get_layout(),
         "get-animations": lambda: cmd_get_animations(),
         "get-window-rules": lambda: cmd_get_window_rules(),
@@ -2783,6 +3068,7 @@ def main():
         "sync-cursor": lambda: cmd_sync_cursor(),
         "validate": lambda: cmd_validate(),
         "detect-customizations": lambda: cmd_detect_customizations(),
+        "sync-backdrop-overview-shadow": lambda: cmd_sync_backdrop_overview_shadow(args),
         "set": lambda: cmd_set(args),
         "get-binds": lambda: cmd_get_binds(),
         "set-bind": lambda: cmd_set_bind(args),

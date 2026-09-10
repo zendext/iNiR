@@ -42,17 +42,22 @@ Variants {
 
         readonly property int backdropBlurRadius: iiBackdrop.blurRadius ?? 32
 
-        // The backdrop is a blurred wallpaper, so decoding the source at native
-        // screen resolution buys detail the blur immediately destroys — and the
-        // crossfader holds two of them. Halve the decoded size whenever a blur is
-        // actually applied; fall back to full resolution when the user turned the
-        // blur off, because then the backdrop IS the sharp image.
-        readonly property real backdropSourceScale: backdropBlurRadius > 0 ? 0.5 : 1.0
+        // Backdrop still needs a full-quality source before blur is applied. A
+        // half-resolution decode was noticeably soft on low-resolution images and
+        // HiDPI outputs because the result was enlarged again to cover the screen.
+        // Include the blur-overflow margin so the source is never upscaled merely
+        // to feed the edge-compensation area.
+        readonly property int backdropDecodeOverflow: 64
+        readonly property real backdropDecodeScale: Math.max(1, backdropWindow.devicePixelRatio ?? 1)
         readonly property size backdropSourceSize: Qt.size(
-            Math.round((screen?.width ?? 1920) * backdropSourceScale),
-            Math.round((screen?.height ?? 1080) * backdropSourceScale))
+            Math.ceil(((screen?.width ?? 1920) + backdropDecodeOverflow * 2) * backdropDecodeScale),
+            Math.ceil(((screen?.height ?? 1080) + backdropDecodeOverflow * 2) * backdropDecodeScale))
         readonly property int thumbnailBlurStrength: Config.options?.background?.effects?.thumbnailBlurStrength ?? 50
         readonly property bool enableAnimatedBlur: iiBackdrop.enableAnimatedBlur ?? false
+        // Niri's backdrop is a full-screen visual layer, not a photo viewer. It
+        // must always cover the output; persisted legacy `fit` values are ignored.
+        readonly property int imageFillMode: Image.PreserveAspectCrop
+        readonly property int videoFillMode: VideoOutput.PreserveAspectCrop
         readonly property int backdropDim: iiBackdrop.dim ?? 35
         readonly property real backdropSaturation: iiBackdrop.saturation ?? 0
         readonly property real backdropContrast: iiBackdrop.contrast ?? 0
@@ -161,23 +166,25 @@ Variants {
             // Gaussian kernel has no pixels beyond the item edge. To fix this, all
             // wallpaper source items are oversized by blurMax (64px) on every side,
             // and this parent clips the result to exact screen bounds.
-            readonly property int blurOverflow: 64
+            readonly property int blurOverflow: backdropWindow.backdropDecodeOverflow
+            readonly property int mediaMargin: -blurOverflow
 
-            // Static wallpaper with crossfade transitions (shares workspace transition settings)
+            // Overview/backdrop is a settled resource, not a second transition
+            // owner. It follows the configured path without replaying the desktop
+            // animation, so the hidden Overview resource can settle independently.
             WallpaperCrossfader {
                 id: wallpaper
                 anchors.fill: parent
-                anchors.margins: -parent.blurOverflow
-                fillMode: Image.PreserveAspectCrop
+                anchors.margins: parent.mediaMargin
+                fillMode: backdropWindow.imageFillMode
                 source: backdropWindow.effectiveWallpaperPath && !backdropWindow.wallpaperIsGif && !backdropWindow.wallpaperIsVideo
                     ? (backdropWindow.effectiveWallpaperPath.startsWith("file://")
                         ? backdropWindow.effectiveWallpaperPath
                         : "file://" + backdropWindow.effectiveWallpaperPath)
                     : ""
                 visible: !backdropWindow.useAuroraStyle && !backdropWindow.wallpaperIsGif && !backdropWindow.wallpaperIsVideo
-                // Constrain decoded size — no need for native resolution since the
-                // backdrop is always screen-sized, and halved again while blurred.
                 sourceSize: backdropWindow.backdropSourceSize
+                enableTransitions: false
             }
 
             MultiEffect {
@@ -196,8 +203,8 @@ Variants {
             AnimatedImage {
                 id: gifWallpaper
                 anchors.fill: parent
-                anchors.margins: -parent.blurOverflow
-                fillMode: Image.PreserveAspectCrop
+                anchors.margins: parent.mediaMargin
+                fillMode: backdropWindow.imageFillMode
                 source: backdropWindow.wallpaperIsGif && backdropWindow.wallpaperPathRaw
                     ? (backdropWindow.wallpaperPathRaw.startsWith("file://")
                         ? backdropWindow.wallpaperPathRaw
@@ -228,10 +235,10 @@ Variants {
             Image {
                 id: frozenVideoWallpaper
                 anchors.fill: parent
-                anchors.margins: -parent.blurOverflow
+                anchors.margins: parent.mediaMargin
                 visible: !backdropWindow.useAuroraStyle && backdropWindow.useFrozenVideoFrame
                 source: visible ? backdropWindow.frozenVideoFramePath : ""
-                fillMode: Image.PreserveAspectCrop
+                fillMode: backdropWindow.imageFillMode
                 asynchronous: true
                 cache: false
                 smooth: true
@@ -254,7 +261,7 @@ Variants {
             Video {
                 id: videoWallpaper
                 anchors.fill: parent
-                anchors.margins: -parent.blurOverflow
+                anchors.margins: parent.mediaMargin
                 visible: !backdropWindow.useAuroraStyle && backdropWindow.wallpaperIsVideo
                     && !backdropWindow.useFrozenVideoFrame
                 source: {
@@ -265,7 +272,7 @@ Variants {
                     if (!path) return "";
                     return path.startsWith("file://") ? path : ("file://" + path);
                 }
-                fillMode: VideoOutput.PreserveAspectCrop
+                fillMode: backdropWindow.videoFillMode
                 loops: MediaPlayer.Infinite
                 muted: true
                 autoPlay: true
@@ -318,8 +325,8 @@ Variants {
             Image {
                 id: auroraWallpaper
                 anchors.fill: parent
-                anchors.margins: -parent.blurOverflow
-                fillMode: Image.PreserveAspectCrop
+                anchors.margins: parent.mediaMargin
+                fillMode: backdropWindow.imageFillMode
                 source: backdropWindow.wallpaperIsGif ? gifWallpaper.source : wallpaper.source
                 asynchronous: true
                 cache: false
@@ -352,8 +359,8 @@ Variants {
             AnimatedImage {
                 id: auroraGifWallpaper
                 anchors.fill: parent
-                anchors.margins: -parent.blurOverflow
-                fillMode: Image.PreserveAspectCrop
+                anchors.margins: parent.mediaMargin
+                fillMode: backdropWindow.imageFillMode
                 source: backdropWindow.wallpaperIsGif ? gifWallpaper.source : ""
                 asynchronous: true
                 cache: false
@@ -379,10 +386,10 @@ Variants {
             Image {
                 id: auroraFrozenVideoWallpaper
                 anchors.fill: parent
-                anchors.margins: -parent.blurOverflow
+                anchors.margins: parent.mediaMargin
                 visible: backdropWindow.useAuroraStyle && backdropWindow.useFrozenVideoFrame
                 source: visible ? backdropWindow.frozenVideoFramePath : ""
-                fillMode: Image.PreserveAspectCrop
+                fillMode: backdropWindow.imageFillMode
                 asynchronous: true
                 cache: false
                 smooth: true
@@ -408,7 +415,7 @@ Variants {
             Video {
                 id: auroraVideoWallpaper
                 anchors.fill: parent
-                anchors.margins: -parent.blurOverflow
+                anchors.margins: parent.mediaMargin
                 visible: backdropWindow.useAuroraStyle && backdropWindow.wallpaperIsVideo
                     && !backdropWindow.useFrozenVideoFrame
                 source: {
@@ -419,7 +426,7 @@ Variants {
                     if (!path) return "";
                     return path.startsWith("file://") ? path : ("file://" + path);
                 }
-                fillMode: VideoOutput.PreserveAspectCrop
+                fillMode: backdropWindow.videoFillMode
                 loops: MediaPlayer.Infinite
                 muted: true
                 autoPlay: true

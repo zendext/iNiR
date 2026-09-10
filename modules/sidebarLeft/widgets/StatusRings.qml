@@ -60,7 +60,7 @@ Item {
             ringColor: ResourceUsage.maxTemp >= 80 ? (Appearance.zzzEverywhere ? Appearance.zzz.signal : Appearance.colors.colError) :
                    ResourceUsage.maxTemp >= 60 ? (Appearance.zzzEverywhere ? Appearance.zzz.tertiary : Appearance.colors.colTertiary) :
                    Appearance.zzzEverywhere ? Appearance.zzz.accent : Appearance.angelEverywhere ? Appearance.angel.colPrimary : Appearance.colors.colPrimary
-            visible: ResourceUsage.cpuTemp > 0 && (Config.options?.sidebar?.widgets?.statusRings?.showTemp ?? true)
+            visible: ResourceUsage.maxTemp > 0 && (Config.options?.sidebar?.widgets?.statusRings?.showTemp ?? true)
             tip: Translation.tr("Temperature")
         }
 

@@ -57,7 +57,22 @@ Singleton {
 
         root.internalPreviewMonitor = String(monitorName ?? "")
         root.internalPreviewPath = normalizedPath
-        // No-op for videos, GIFs, and when awww is not running.
+        // Internal shader previews are owned completely by the in-shell
+        // crossfader. Do not ask awww to repaint underneath while browsing:
+        // Qt.callLater only waits for another event-loop turn, not for the QML
+        // overlay to reach the compositor. On a busy/large decode that allowed
+        // the target awww frame to appear for a few refreshes before the
+        // outgoing shader overlay was actually presented (target -> old ->
+        // shader), which is the visible "flash" users report.
+        //
+        // Keep awww on the configured wallpaper until Apply. The QML shader
+        // already owns both outgoing/incoming textures, so this also makes
+        // preview timing independent of image resolution and GPU scheduling.
+        if (AwwwBackend.internalShaderTransitionActive)
+            return
+
+        // Native awww transitions still preview through the backend that owns
+        // the visible desktop so browsing and applying remain identical.
         AwwwBackend.previewImage(normalizedPath, monitorName)
     }
 
@@ -68,7 +83,9 @@ Singleton {
         AwwwBackend.cancelPreview()
     }
 
-    // The caller is about to apply for real; that apply repaints on its own.
+    // The caller has committed the preview. Visible static targets may already
+    // have been adopted by AwwwBackend, so releasing transient state here must
+    // not imply another repaint.
     function clearWallpaperPreview(): void {
         root._clearInternalPreview()
         AwwwBackend.clearPreview()
@@ -77,6 +94,19 @@ Singleton {
     function _clearInternalPreview(): void {
         root.internalPreviewPath = ""
         root.internalPreviewMonitor = ""
+    }
+
+    function _previewMatches(path: string, monitorName = ""): bool {
+        const normalizedPath = FileUtils.trimFileProtocol(String(path ?? ""))
+        return root.internalPreviewActive
+            && root.internalPreviewPath === normalizedPath
+            && root.internalPreviewMonitor === String(monitorName ?? "")
+    }
+
+    function _adoptVisiblePreview(path: string, monitorName = ""): bool {
+        if (!root._previewMatches(path, monitorName))
+            return false
+        return AwwwBackend.adoptPreview(path, monitorName)
     }
 
     function internalPreviewFor(monitorName: string, fallbackPath: string): string {
@@ -93,6 +123,55 @@ Singleton {
     readonly property bool useBackdropWallpaper: isWaffleFamily
         ? ((Config.options?.waffles?.background?.backdrop?.enable ?? false) && (Config.options?.waffles?.background?.backdrop?.hideWallpaper ?? false))
         : ((Config.options?.background?.backdrop?.enable ?? false) && (Config.options?.background?.backdrop?.hideWallpaper ?? false))
+    readonly property bool backdropOnlyShadowOverrideWanted: Config.ready && CompositorService.isNiri && useBackdropWallpaper
+    property bool _backdropShadowSyncQueued: false
+
+    function _scheduleBackdropShadowSync(): void {
+        if (!Config.ready || !CompositorService.isNiri)
+            return
+        backdropShadowSyncTimer.restart()
+    }
+
+    onBackdropOnlyShadowOverrideWantedChanged: root._scheduleBackdropShadowSync()
+
+    Connections {
+        target: Config
+        function onReadyChanged(): void {
+            if (Config.ready)
+                root._scheduleBackdropShadowSync()
+        }
+    }
+
+    Timer {
+        id: backdropShadowSyncTimer
+        interval: 80
+        repeat: false
+        onTriggered: {
+            if (backdropShadowSyncProcess.running) {
+                root._backdropShadowSyncQueued = true
+                return
+            }
+            backdropShadowSyncProcess.command = [
+                "/usr/bin/python3",
+                Quickshell.shellPath("scripts/niri-config.py"),
+                "sync-backdrop-overview-shadow",
+                root.backdropOnlyShadowOverrideWanted ? "on" : "off"
+            ]
+            backdropShadowSyncProcess.running = true
+        }
+    }
+
+    Process {
+        id: backdropShadowSyncProcess
+        onExited: (exitCode) => {
+            if (exitCode !== 0)
+                console.warn("Wallpapers: failed to sync Niri backdrop overview shadow")
+            if (root._backdropShadowSyncQueued) {
+                root._backdropShadowSyncQueued = false
+                backdropShadowSyncTimer.restart()
+            }
+        }
+    }
 
     // Resolve the "main" wallpaper path — multi-monitor aware
     // When multi-monitor is enabled, uses the focused monitor's wallpaper
@@ -584,11 +663,17 @@ Singleton {
             root.changed()
             return
         case "waffle":
-            if ((Config.options?.panelFamily ?? "ii") === "waffle")
+            const waffleVisible = (Config.options?.panelFamily ?? "ii") === "waffle"
+            const adoptedWafflePreview = waffleVisible
+                ? root._adoptVisiblePreview(normalizedPath, monitorName)
+                : false
+            if (waffleVisible && !adoptedWafflePreview)
                 root.requestWallpaperBlurTransition("")
             Config.setNestedValue("waffles.background.useMainWallpaper", false)
             Config.setNestedValue("waffles.background.wallpaperPath", normalizedPath)
             Config.setNestedValue("waffles.background.thumbnailPath", thumbnailPath)
+            if (adoptedWafflePreview)
+                root._clearInternalPreview()
             if (needsThumbnail)
                 root.ensureThumbnailForPath(normalizedPath, "large")
             // Regen colors from this wallpaper when waffle is active
@@ -623,12 +708,16 @@ Singleton {
         const normalizedPath = FileUtils.trimFileProtocol(String(path ?? ""))
         if (!normalizedPath || normalizedPath.length === 0) return
 
-        root.requestWallpaperBlurTransition(monitorName)
+        const adoptedPreview = root._adoptVisiblePreview(normalizedPath, monitorName)
+        if (!adoptedPreview)
+            root.requestWallpaperBlurTransition(monitorName)
 
         if (monitorName !== "") {
             // Per-monitor: update config directly in QML to avoid race condition
             // (switchwall.sh and QML both write config.json — the 50ms write timer causes data loss)
             updatePerMonitorConfig(normalizedPath, monitorName)
+            if (adoptedPreview)
+                root._clearInternalPreview()
             root.changed()
             return
         }
@@ -640,6 +729,8 @@ Singleton {
         if (root.awwwBackendEnabled && AwwwBackend.supportsMainWallpaper(normalizedPath)) {
             Config.setNestedValue("background.wallpaperPath", normalizedPath)
             Config.setNestedValue("background.thumbnailPath", "")
+            if (adoptedPreview)
+                root._clearInternalPreview()
             root._queueWallpaperScript(normalizedPath, darkMode, false)
             root.changed()
             return
@@ -648,6 +739,8 @@ Singleton {
         // Always set wallpaper path from QML to avoid race condition with Config write timer
         Config.setNestedValue("background.wallpaperPath", normalizedPath)
         Config.setNestedValue("background.thumbnailPath", "")
+        if (adoptedPreview)
+            root._clearInternalPreview()
         root._queueWallpaperScript(normalizedPath, darkMode, false)
         root.changed()
     }

@@ -47,6 +47,7 @@ ContentPage {
             "appearance.cava.framerate": 60,
             "appearance.cava.stereo": true,
             "appearance.cava.waveOpacity": 30,
+            "appearance.cava.blockedApps": [],
         })
         colorRegenTimer.restart()
     }
@@ -224,7 +225,7 @@ ContentPage {
                     colorRegenTimer.restart();
                 }
                 StyledToolTip {
-                    text: Translation.tr("Generate aether.nvim theme plugin for Neovim/LazyVim from wallpaper colors (writes to ~/.config/nvim/lua/plugins/neovim.lua)")
+                    text: Translation.tr("Generate inir.nvim theme plugin for Neovim/LazyVim from wallpaper colors (writes to ~/.config/nvim/lua/plugins/neovim.lua)")
                 }
             }
             SettingsSwitch {

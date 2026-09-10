@@ -28,6 +28,8 @@ Item {
     // ── Screen & wallpaper for blur (angel/aurora) ──
     property int screenWidth: root.QsWindow?.window?.screen?.width ?? 1920
     property int screenHeight: root.QsWindow?.window?.screen?.height ?? 1080
+    property real availableWidth: root.screenWidth
+    property real availableHeight: root.screenHeight
     readonly property string wallpaperUrl: Wallpapers.effectiveWallpaperUrl
 
     // ── Config shortcuts ──
@@ -125,7 +127,7 @@ Item {
     readonly property int dashboardMaxWidth: 560
     readonly property int dashboardHorizontalPadding: 12
     readonly property int dashboardVerticalPadding: 12
-    readonly property real dashboardSafeHeight: Math.max(260, (root.parent?.height ?? root.screenHeight) - (dashboardVerticalPadding * 2))
+    readonly property real dashboardSafeHeight: Math.max(260, root.availableHeight - (dashboardVerticalPadding * 2))
 
     // ── Media-adaptive colors ──
     readonly property color mediaBg: {
@@ -234,7 +236,7 @@ Item {
     GlassBackground {
         id: dashContainer
         anchors.centerIn: parent
-        width: Math.min(root.dashboardMaxWidth, (root.parent?.width ?? root.screenWidth) - (root.dashboardHorizontalPadding * 2))
+        width: Math.min(root.dashboardMaxWidth, root.availableWidth - (root.dashboardHorizontalPadding * 2))
         implicitWidth: width
         implicitHeight: Math.min(mainCol.implicitHeight + 24, root.dashboardSafeHeight)
         height: implicitHeight
@@ -385,19 +387,46 @@ Item {
                     }
 
                     ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                         spacing: 2
 
                         StyledText {
-                            Layout.alignment: Qt.AlignRight
-                            text: Qt.formatDate(DateTime.clock.date, "dddd, MMMM d")
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            horizontalAlignment: Text.AlignRight
+                            text: Qt.formatDate(DateTime.clock.date, "dddd, MMMM")
+                            elide: Text.ElideRight
                             font.pixelSize: Appearance.font.pixelSize.small
                             color: root.colSubtext
                         }
 
                         RowLayout {
                             Layout.alignment: Qt.AlignRight
-                            spacing: 8
+                            spacing: 6
+
+                            Rectangle {
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 26
+                                radius: Appearance.rounding.small
+                                color: root.inirStyle ? Appearance.inir.colPrimary
+                                    : root.angelStyle ? ColorUtils.applyAlpha(root.colPrimary, 0.18)
+                                    : Appearance.colors.colPrimaryContainer
+
+                                StyledText {
+                                    anchors.centerIn: parent
+                                    text: Qt.formatDate(DateTime.clock.date, "d")
+                                    font {
+                                        family: Appearance.font.family.numbers
+                                        pixelSize: Appearance.font.pixelSize.normal
+                                        weight: Font.DemiBold
+                                    }
+                                    color: root.inirStyle ? Appearance.inir.colOnPrimary
+                                        : root.angelStyle ? root.colPrimary
+                                        : Appearance.colors.colOnPrimaryContainer
+                                }
+                            }
 
                             Revealer {
                                 reveal: Notifications.list.length > 0
@@ -441,8 +470,9 @@ Item {
                     }
 
                     RippleButton {
-                        implicitWidth: 32
-                        implicitHeight: 32
+                        Layout.preferredWidth: 32
+                        Layout.preferredHeight: 32
+                        Layout.alignment: Qt.AlignVCenter
                         buttonRadius: root.angelStyle ? Appearance.angel.roundingSmall : 16
                         colBackground: "transparent"
                         colBackgroundHover: root.colCardHover

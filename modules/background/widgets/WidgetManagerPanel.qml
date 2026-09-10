@@ -32,6 +32,9 @@ Item {
         { key: "battery", icon: "battery_full", label: "Battery", defaultEnabled: false },
         { key: "notes", icon: "sticky_note_2", label: "Notes", defaultEnabled: false },
         { key: "calendarUpcoming", icon: "event", label: "Upcoming Events", defaultEnabled: false },
+        { key: "monthCalendar", icon: "calendar_month", label: "Month Calendar", defaultEnabled: false },
+        { key: "todo", icon: "checklist", label: "Todo", defaultEnabled: false },
+        { key: "timers", icon: "timer", label: "Timers", defaultEnabled: false },
         { key: "uptime", icon: "avg_pace", label: "System uptime", defaultEnabled: false },
         { key: "newsTicker", icon: "newspaper", label: "News Ticker", defaultEnabled: false },
         { key: "mascot", icon: "pets", label: "Mascot", defaultEnabled: false },
@@ -790,7 +793,7 @@ Item {
                 || (card.widgetKey === "weather"
                     && Config.getNestedValue(card._cfgPrefix + ".style", "pill") === "card")
                 || ["imageConverter", "visualizer", "systemMonitor", "battery", "notes",
-                    "calendarUpcoming", "uptime", "newsTicker", "mascot",
+                    "calendarUpcoming", "monthCalendar", "todo", "uptime", "newsTicker", "mascot",
                     "japaneseTypography", "worldClock", "userCard"].indexOf(card.widgetKey) !== -1
             ))
         readonly property bool _expanded: card._enabled && _expandToggle
@@ -960,6 +963,33 @@ Item {
                         StyledToolTip { text: Translation.tr("Remove this mascot") }
                     }
 
+                    // Organic is a first-class visualizer mode. Keep one widget
+                    // ownership/config entry, while making the requested mode
+                    // directly reachable from the catalog card.
+                    RippleButton {
+                        visible: card.widgetKey === "visualizer"
+                        width: 30; height: 30
+                        buttonRadius: Appearance.rounding.full
+                        toggled: Config.getNestedValue(
+                            "background.widgets.visualizer.vizType", "bars") === "organic"
+                        colBackground: "transparent"
+                        colBackgroundHover: ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.08)
+                        colRipple: ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.12)
+                        releaseAction: () => {
+                            Config.setNestedValue("background.widgets.visualizer.vizType", "organic")
+                            DesktopWidgetLayout.setGloballyEnabled(card._layoutKey, true)
+                        }
+                        cancelAction: () => {}
+                        contentItem: MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "bubble_chart"
+                            iconSize: 16
+                            color: parent.toggled ? Appearance.colors.colPrimary
+                                : ColorUtils.applyAlpha(Appearance.colors.colOnLayer1, 0.62)
+                        }
+                        StyledToolTip { text: Translation.tr("Use Organic visualizer") }
+                    }
+
                     // Expand button
                     RippleButton {
                         visible: card._enabled
@@ -983,10 +1013,10 @@ Item {
                     StyledSwitch {
                         anchors.verticalCenter: parent.verticalCenter
                         checked: card._enabled
-                        onCheckedChanged: {
-                            if (checked !== card._enabled)
-                                DesktopWidgetLayout.setEnabled(
-                                    root.outputName, card._layoutKey, checked)
+                        onClicked: {
+                            DesktopWidgetLayout.setGloballyEnabled(
+                                card._layoutKey, !card._enabled)
+                            checked = Qt.binding(() => card._enabled)
                         }
                     }
                 }

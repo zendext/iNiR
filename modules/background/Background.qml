@@ -25,6 +25,8 @@ import qs.modules.background.widgets.systemMonitor
 import qs.modules.background.widgets.battery
 import qs.modules.background.widgets.notes
 import qs.modules.background.widgets.calendar
+import qs.modules.background.widgets.todo
+import qs.modules.background.widgets.timers
 import qs.modules.background.widgets.uptime
 import qs.modules.background.widgets.worldClock
 import qs.modules.background.widgets.userCard
@@ -118,7 +120,8 @@ Scope {
                 weather: false, clock: true, customImage: false,
                 imageConverter: false, mediaControls: false,
                 visualizer: false, systemMonitor: false, battery: false,
-                notes: false, calendarUpcoming: false, uptime: false,
+                notes: false, calendarUpcoming: false, monthCalendar: false,
+                todo: false, timers: false, uptime: false,
                 newsTicker: false, mascot: false, japaneseTypography: false,
                 worldClock: false, userCard: false
             })
@@ -185,11 +188,12 @@ Scope {
         function setWidgetEnabled(widgetName: string, enabled: bool): string {
             const knownWidgets = ["weather", "clock", "customImage", "imageConverter",
                 "mediaControls", "visualizer", "systemMonitor", "battery", "notes",
-                "calendarUpcoming", "uptime", "newsTicker", "mascot", "japaneseTypography",
+                "calendarUpcoming", "monthCalendar", "todo", "timers", "uptime",
+                "newsTicker", "mascot", "japaneseTypography",
                 "worldClock", "userCard"];
             if (!knownWidgets.includes(widgetName))
                 return "unknown widget: " + widgetName;
-            Config.setNestedValue("background.widgets." + widgetName + ".enable", enabled);
+            DesktopWidgetLayout.setGloballyEnabled(widgetName, enabled);
             return widgetName + (enabled ? " enabled" : " disabled");
         }
 
@@ -357,6 +361,7 @@ Scope {
         readonly property var backgroundOptions: Config.options?.background ?? {}
         readonly property var parallaxOptions: backgroundOptions.parallax ?? {}
         readonly property var effectsOptions: backgroundOptions.effects ?? {}
+        readonly property bool webWallpaperActive: WebWallpaper.active
         readonly property var workSafetyOptions: Config.options?.workSafety ?? {}
         readonly property var workSafetyEnableOptions: workSafetyOptions.enable ?? {}
         readonly property var workSafetyTriggerOptions: workSafetyOptions.triggerCondition ?? {}
@@ -491,6 +496,7 @@ Scope {
         // owned by the background surface; do not make a stale global selection
         // turn the Bottom layer keyboard-focusable during reload.
         readonly property bool _needsKeyboardFocus: bgRoot._widgetEnabled("notes", false)
+            || bgRoot._widgetEnabled("todo", false)
 
         // Zone occupancy: map zone name → array of widget names
         readonly property var _builtinWidgets: [
@@ -504,6 +510,9 @@ Scope {
             { key: "battery",            defaultOn: false, icon: "battery_full" },
             { key: "notes",              defaultOn: false, icon: "sticky_note_2" },
             { key: "calendarUpcoming",   defaultOn: false, icon: "event" },
+            { key: "monthCalendar",      defaultOn: false, icon: "calendar_month" },
+            { key: "todo",               defaultOn: false, icon: "checklist" },
+            { key: "timers",             defaultOn: false, icon: "timer" },
             { key: "uptime",             defaultOn: false, icon: "avg_pace" },
             { key: "newsTicker",         defaultOn: false, icon: "newspaper" },
             { key: "mascot",             defaultOn: false, icon: "pets" },
@@ -621,6 +630,7 @@ Scope {
         readonly property bool pauseParallaxDuringTransitions: bgRoot.parallaxOptions.pauseDuringTransitions ?? true
         readonly property int parallaxTransitionSettleMs: ParallaxMath.resolveTransitionSettle(bgRoot.parallaxOptions, 220)
         readonly property bool externalMainWallpaperEligible: !wallpaperSafetyTriggered
+            && !bgRoot.webWallpaperActive
             && !((bgRoot.backgroundOptions.backdrop?.enable ?? false) && (bgRoot.backgroundOptions.backdrop?.hideWallpaper ?? false))
             && AwwwBackend.supportsVisibleMainWallpaper(
                 bgRoot.wallpaperPathRaw,
@@ -630,8 +640,14 @@ Scope {
             )
         readonly property bool effectiveHasPan: bgRoot.hasPan
             && (!bgRoot.externalMainWallpaperEligible || bgRoot._panReadyWallpaperPath === bgRoot.wallpaperPath)
+        // Internal shader transitions are rendered by the QML background. Keep
+        // that renderer as the visible owner for the whole static-wallpaper
+        // lifecycle instead of handing ownership AWWW -> QML -> AWWW around
+        // every transition. A transient ownership handoff can expose the AWWW
+        // wallpaper underneath for one or more compositor frames.
         readonly property bool externalMainWallpaperActive: bgRoot.externalMainWallpaperEligible
             && !bgRoot.effectiveHasPan
+            && !bgRoot.internalShaderTransitionRequested
         property real preferredWallpaperScale: ParallaxMath.resolveZoom(bgRoot.parallaxOptions, 1.0)
         property real _manualWallpaperScaleOverride: 0
         property int wallpaperWidth: modelData.width
@@ -664,10 +680,26 @@ Scope {
         // Backdrop mode
         readonly property bool backdropActive: (bgRoot.backgroundOptions.backdrop?.enable ?? false) && (bgRoot.backgroundOptions.backdrop?.hideWallpaper ?? false)
 
+        readonly property bool internalShaderTransitionRequested:
+            (Config.options?.background?.transition?.enable ?? true)
+            && Appearance.animationsEnabled
+            && !bgRoot.webWallpaperActive
+            && AwwwBackend.isInternalShaderTransitionType(
+                Config.options?.background?.transition?.type ?? "crossfade")
+            && !bgRoot.wallpaperIsGif
+            && !bgRoot.wallpaperIsVideo
+            && !bgRoot.wallpaperSafetyTriggered
+            && !bgRoot.backdropActive
+        readonly property bool internalShaderPreviewActive: bgRoot.internalShaderTransitionRequested
+            && Wallpapers.internalPreviewActive
+            && (!Wallpapers.internalPreviewMonitor
+                || Wallpapers.internalPreviewMonitor === bgRoot.monitorName)
+
         // awww reveal: when parallax is active and awww handles wallpaper,
         // instantly hide crossfader, let awww transition play, then fade back in.
         property real _awwwRevealOpacity: 1
         readonly property bool _awwwParallaxRevealNeeded: AwwwBackend.active
+            && !bgRoot.internalShaderTransitionRequested
             && bgRoot.dynamicParallaxRequested
             && !bgRoot.wallpaperIsGif
             && !bgRoot.wallpaperIsVideo
@@ -708,10 +740,17 @@ Scope {
             bgRoot._parallaxTransitionReason = String(reason ?? "")
             parallaxResumeAnimation.stop()
             parallaxTransitionPauseTimer.stop()
+            parallaxTransitionWatchdog.stop()
 
             if (!waitForCrossfader) {
                 parallaxTransitionPauseTimer.interval = bgRoot._wallpaperTransitionDurationMs + bgRoot.parallaxTransitionSettleMs
                 parallaxTransitionPauseTimer.restart()
+            } else {
+                parallaxTransitionWatchdog.interval = Math.max(
+                    1000,
+                    bgRoot._wallpaperTransitionDurationMs + bgRoot.parallaxTransitionSettleMs + 500
+                )
+                parallaxTransitionWatchdog.restart()
             }
         }
 
@@ -719,6 +758,7 @@ Scope {
             if (!bgRoot.parallaxTransitionActive)
                 return
             bgRoot._parallaxWaitingCrossfader = false
+            parallaxTransitionWatchdog.stop()
             parallaxTransitionPauseTimer.interval = bgRoot.parallaxTransitionSettleMs
             parallaxTransitionPauseTimer.restart()
         }
@@ -729,7 +769,8 @@ Scope {
             if (bgRoot.wallpaperIsGif || bgRoot.wallpaperIsVideo)
                 return
 
-            const crossfaderTransitionsEnabled = !AwwwBackend.active
+            const crossfaderTransitionsEnabled = (!AwwwBackend.active
+                    || bgRoot.internalShaderTransitionRequested)
                 && (Config.options?.background?.transition?.enable ?? true)
 
             if (!crossfaderTransitionsEnabled && bgRoot._wallpaperTransitionDurationMs <= 0)
@@ -967,10 +1008,31 @@ Scope {
             interval: bgRoot._wallpaperTransitionDurationMs + bgRoot.parallaxTransitionSettleMs
             repeat: false
             onTriggered: {
+                parallaxTransitionWatchdog.stop()
                 bgRoot._parallaxWaitingCrossfader = false
                 bgRoot._parallaxTransitionReason = ""
                 bgRoot.parallaxTransitionActive = false
                 parallaxResumeAnimation.restart()
+            }
+        }
+
+        Timer {
+            id: parallaxTransitionWatchdog
+            repeat: false
+            onTriggered: {
+                if (!bgRoot.parallaxTransitionActive || !bgRoot._parallaxWaitingCrossfader)
+                    return
+                bgRoot.settleParallaxAfterTransition()
+            }
+        }
+
+        Connections {
+            target: AwwwBackend
+            function onActiveChanged(): void {
+                if (!AwwwBackend.active)
+                    return
+                if (bgRoot._parallaxWaitingCrossfader && bgRoot._parallaxTransitionReason === "wallpaper")
+                    bgRoot.settleParallaxAfterTransition()
             }
         }
 
@@ -1153,7 +1215,12 @@ Scope {
                 property real effectiveValueX: Math.max(0, Math.min(1, valueX))
                 property real effectiveValueY: Math.max(0, Math.min(1, valueY))
                 
-                readonly property bool useParallax: bgRoot.fillMode === "fill"
+                // Internal rendering and parallax geometry are separate concerns.
+                // Shader transitions temporarily move static wallpaper ownership into
+                // QML, but that must not make the wallpaper container adopt source-
+                // sized parallax geometry when parallax itself is disabled.
+                readonly property bool useParallax: bgRoot.dynamicParallaxRequested
+                    && bgRoot.fillMode === "fill"
                     && !bgRoot.wallpaperIsGif
                     && !bgRoot.wallpaperIsVideo
                     && !bgRoot.externalMainWallpaperActive
@@ -1168,7 +1235,8 @@ Scope {
                 readonly property bool needsStaticTexture: !bgRoot.backdropActive
                     && !bgRoot.wallpaperIsGif && !bgRoot.wallpaperIsVideo
                     && (showInternalStaticWallpaper || localBlurNeedsStaticTexture
-                        || lockBlurNeedsStaticTexture)
+                        || lockBlurNeedsStaticTexture
+                        || bgRoot.internalShaderTransitionRequested)
                 readonly property real panOffsetX: bgRoot.effectiveHasPan ? (bgRoot.panX * (bgRoot.parallaxTotalX / 2)) : 0
                 readonly property real panOffsetY: bgRoot.effectiveHasPan ? (bgRoot.panY * (bgRoot.parallaxTotalY / 2)) : 0
                 readonly property real targetX: useParallax
@@ -1258,9 +1326,14 @@ Scope {
                 // renderer and uses the user's transition settings.
                 WallpaperCrossfader {
                     id: wallpaper
+                    readonly property bool shaderOverlayHeld: bgRoot.internalShaderTransitionRequested
+                        && (wallpaper.shaderTransitionBusy
+                            || bgRoot.internalShaderPreviewActive
+                            || AwwwBackend.shaderHandoffPending)
                     anchors.fill: parent
-                    visible: !blurLoader.active && !bgRoot.backdropActive && !bgRoot.wallpaperIsGif && !bgRoot.wallpaperIsVideo
-                    opacity: (wallpaperContainer.showInternalStaticWallpaper ? 1 : 0) * bgRoot._awwwRevealOpacity
+                    visible: !bgRoot.webWallpaperActive && !blurLoader.active && !bgRoot.backdropActive && !bgRoot.wallpaperIsGif && !bgRoot.wallpaperIsVideo
+                    opacity: (wallpaperContainer.showInternalStaticWallpaper
+                        || wallpaper.shaderOverlayHeld ? 1 : 0) * bgRoot._awwwRevealOpacity
                     // The backdrop replaces the desktop wallpaper outright: this
                     // crossfader is hidden, blurAlwaysLoader is off, and the lock
                     // blur cannot see it either (an invisible child never reaches
@@ -1269,11 +1342,13 @@ Scope {
                     // an Image with a source decodes whether or not it is visible.
                     layer.enabled: wallpaperContainer.needsStaticTexture
                         && !wallpaperContainer.showInternalStaticWallpaper
-                    source: (bgRoot.wallpaperSafetyTriggered || !wallpaperContainer.needsStaticTexture)
+                        && !wallpaper.shaderOverlayHeld
+                    source: (bgRoot.webWallpaperActive || bgRoot.wallpaperSafetyTriggered || !wallpaperContainer.needsStaticTexture)
                         ? "" : bgRoot.wallpaperPath
                     // NEVER use crossfader transitions when awww is active — awww handles all transitions.
                     // When parallax is on, the crossfader fades out to reveal awww's native transition.
-                    enableTransitions: !AwwwBackend.active
+                    enableTransitions: (!AwwwBackend.active
+                            || bgRoot.internalShaderTransitionRequested)
                         && (Config.options?.background?.transition?.enable ?? true)
                     transitionType: Config.options?.background?.transition?.type ?? "crossfade"
                     transitionDirection: Config.options?.background?.transition?.direction ?? "right"
@@ -1282,16 +1357,9 @@ Scope {
                             : bgRoot.fillMode === "tile" ? Image.Tile
                             : bgRoot.fillMode === "center" ? Image.Pad
                             : Image.PreserveAspectCrop
-                    sourceSize {
-                        // Decode at screen resolution × monitor DPI scale. Do NOT multiply by
-                        // parallax effectiveWallpaperScale — that causes CPU upscaling which
-                        // produces pixelation. GPU scaling handles the parallax zoom cleanly.
-                        width: Math.max(1, Math.round(bgRoot.screen.width * (bgRoot.monitor?.scale ?? 1)))
-                        height: Math.max(1, Math.round(bgRoot.screen.height * (bgRoot.monitor?.scale ?? 1)))
-                    }
 
                     onTransitionStarted: {
-                        if (!bgRoot.dynamicParallaxRequested || !bgRoot.pauseParallaxDuringTransitions || AwwwBackend.active)
+                        if (!bgRoot.dynamicParallaxRequested || !bgRoot.pauseParallaxDuringTransitions)
                             return
                         bgRoot.beginParallaxTransition(true, "wallpaper")
                     }
@@ -1316,7 +1384,7 @@ Scope {
                     cache: false
                     playing: visible && bgRoot.enableAnimation && !GlobalStates.screenLocked && !Appearance._gameModeActive && !Wallpapers.batteryPauseActive
                     asynchronous: true
-                    source: (bgRoot.wallpaperSafetyTriggered || !bgRoot.wallpaperIsGif || bgRoot.backdropActive) ? "" : bgRoot.wallpaperPathRaw
+                    source: (bgRoot.webWallpaperActive || bgRoot.wallpaperSafetyTriggered || !bgRoot.wallpaperIsGif || bgRoot.backdropActive) ? "" : bgRoot.wallpaperPathRaw
                     fillMode: Image.PreserveAspectCrop
                     // No sourceSize for GIFs - let Qt handle native size for performance
 
@@ -1352,7 +1420,7 @@ Scope {
                     // the source releases the decoder outright instead of only
                     // pausing it; the transition overlay covers the swap.
                     source: {
-                        if (bgRoot.wallpaperSafetyTriggered || !bgRoot.wallpaperIsVideo || bgRoot.backdropActive) return "";
+                        if (bgRoot.webWallpaperActive || bgRoot.wallpaperSafetyTriggered || !bgRoot.wallpaperIsVideo || bgRoot.backdropActive) return "";
                         if (!bgRoot._familyOwnsScreen) return "";
                         return bgRoot.wallpaperPathRaw;
                     }
@@ -1380,6 +1448,7 @@ Scope {
                 id: blurAlwaysLoader
                 z: 1
                 active: Appearance.effectsEnabled
+                        && !bgRoot.webWallpaperActive
                         && (bgRoot.blurProgress > 0)
                         && (bgRoot.effectsOptions.enableBlur ?? false)
                         && !Config.options?.performance?.lowPower
@@ -2434,6 +2503,9 @@ Scope {
                                     { key: "battery", icon: "battery_full", label: "Battery", defaultOn: false },
                                     { key: "notes", icon: "sticky_note_2", label: "Notes", defaultOn: false },
                                     { key: "calendarUpcoming", icon: "event", label: "Upcoming Events", defaultOn: false },
+                                    { key: "monthCalendar", icon: "calendar_month", label: "Month Calendar", defaultOn: false },
+                                    { key: "todo", icon: "checklist", label: "Todo", defaultOn: false },
+                                    { key: "timers", icon: "timer", label: "Timers", defaultOn: false },
                                     { key: "uptime", icon: "avg_pace", label: "System Uptime", defaultOn: false },
                                     { key: "mascot", icon: "pets", label: "Mascot", defaultOn: false },
                                     { key: "newsTicker", icon: "newspaper", label: "News Ticker", defaultOn: false },
@@ -2452,8 +2524,8 @@ Scope {
                                     colBackgroundToggled: CF.ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.16)
                                     colBackgroundToggledHover: CF.ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.24)
                                     colRipple: CF.ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.12)
-                                    releaseAction: () => DesktopWidgetLayout.setEnabled(
-                                        bgRoot.screenName, quickWidgetButton.modelData.key,
+                                    releaseAction: () => DesktopWidgetLayout.setGloballyEnabled(
+                                        quickWidgetButton.modelData.key,
                                         !quickWidgetButton.widgetEnabled)
                                     cancelAction: () => {}
                                     contentItem: MaterialSymbol {
@@ -2483,8 +2555,8 @@ Scope {
                                     colBackgroundToggled: CF.ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.16)
                                     colBackgroundToggledHover: CF.ColorUtils.applyAlpha(Appearance.colors.colPrimary, 0.24)
                                     colRipple: CF.ColorUtils.applyAlpha(Appearance.colors.colOnLayer2, 0.12)
-                                    releaseAction: () => DesktopWidgetLayout.setEnabled(
-                                        bgRoot.screenName, "custom." + customWidgetButton.modelData.id,
+                                    releaseAction: () => DesktopWidgetLayout.setGloballyEnabled(
+                                        "custom." + customWidgetButton.modelData.id,
                                         !customWidgetButton.widgetEnabled)
                                     cancelAction: () => {}
                                     contentItem: MaterialSymbol {
@@ -2826,6 +2898,54 @@ Scope {
                     Item { id: _hitMask8; x: parent?.item?.editInputX ?? -8; y: parent?.item?.editInputY ?? -8; width: parent?.item?.editInputWidth ?? ((parent?.width ?? 0) + 16); height: parent?.item?.editInputHeight ?? ((parent?.height ?? 0) + 16) }
                     sourceComponent: CalendarUpcomingWidget {
                         widgetIndex: 7
+                        outputName: bgRoot.screen?.name ?? ""
+                        screenWidth: bgRoot.screen.width
+                        screenHeight: bgRoot.screen.height
+                        scaledScreenWidth: bgRoot.screen.width
+                        scaledScreenHeight: bgRoot.screen.height
+                        wallpaperScale: 1
+                    }
+                }
+
+                FadeLoader {
+                    shown: bgRoot._widgetEnabled("monthCalendar", false)
+                    z: item?.desktopStackZ ?? 0
+                    containmentMask: GlobalStates.widgetEditMode ? _hitMaskMonthCalendar : null
+                    Item { id: _hitMaskMonthCalendar; x: parent?.item?.editInputX ?? -8; y: parent?.item?.editInputY ?? -8; width: parent?.item?.editInputWidth ?? ((parent?.width ?? 0) + 16); height: parent?.item?.editInputHeight ?? ((parent?.height ?? 0) + 16) }
+                    sourceComponent: MonthCalendarWidget {
+                        widgetIndex: 8
+                        outputName: bgRoot.screen?.name ?? ""
+                        screenWidth: bgRoot.screen.width
+                        screenHeight: bgRoot.screen.height
+                        scaledScreenWidth: bgRoot.screen.width
+                        scaledScreenHeight: bgRoot.screen.height
+                        wallpaperScale: 1
+                    }
+                }
+
+                FadeLoader {
+                    shown: bgRoot._widgetEnabled("todo", false)
+                    z: item?.desktopStackZ ?? 0
+                    containmentMask: GlobalStates.widgetEditMode ? _hitMaskTodo : null
+                    Item { id: _hitMaskTodo; x: parent?.item?.editInputX ?? -8; y: parent?.item?.editInputY ?? -8; width: parent?.item?.editInputWidth ?? ((parent?.width ?? 0) + 16); height: parent?.item?.editInputHeight ?? ((parent?.height ?? 0) + 16) }
+                    sourceComponent: TodoWidget {
+                        widgetIndex: 10
+                        outputName: bgRoot.screen?.name ?? ""
+                        screenWidth: bgRoot.screen.width
+                        screenHeight: bgRoot.screen.height
+                        scaledScreenWidth: bgRoot.screen.width
+                        scaledScreenHeight: bgRoot.screen.height
+                        wallpaperScale: 1
+                    }
+                }
+
+                FadeLoader {
+                    shown: bgRoot._widgetEnabled("timers", false)
+                    z: item?.desktopStackZ ?? 0
+                    containmentMask: GlobalStates.widgetEditMode ? _hitMaskTimers : null
+                    Item { id: _hitMaskTimers; x: parent?.item?.editInputX ?? -8; y: parent?.item?.editInputY ?? -8; width: parent?.item?.editInputWidth ?? ((parent?.width ?? 0) + 16); height: parent?.item?.editInputHeight ?? ((parent?.height ?? 0) + 16) }
+                    sourceComponent: TimerWidget {
+                        widgetIndex: 18
                         outputName: bgRoot.screen?.name ?? ""
                         screenWidth: bgRoot.screen.width
                         screenHeight: bgRoot.screen.height

@@ -314,6 +314,25 @@ Item {
                                 font.weight: Font.Medium
                                 color: upcomingArea._colText
                             }
+                            RippleButton {
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                buttonRadius: Appearance.rounding.full
+                                colBackground: "transparent"
+                                colBackgroundHover: Appearance.colors.colLayer2Hover
+                                colRipple: Appearance.colors.colLayer2Active
+                                onClicked: {
+                                    const eventsIdx = root.sections.findIndex(s => s.id === "events")
+                                    if (eventsIdx !== -1) root.activeSection = eventsIdx
+                                }
+                                contentItem: MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    text: "open_in_full"
+                                    iconSize: 15
+                                    color: upcomingArea._colPrimary
+                                }
+                                StyledToolTip { text: Translation.tr("Open all events") }
+                            }
                         }
 
                         // Event list or empty hint
@@ -1810,7 +1829,7 @@ Item {
             const wins = NiriService.windows || []
             for (let i = 0; i < wins.length; i++) {
                 const w = wins[i]
-                if (w.title === "illogical-impulse Settings" && w.app_id === "org.quickshell") {
+                if (w.title === "Settings — iNiR" && w.app_id === "org.quickshell") {
                     GlobalStates.sidebarRightOpen = false
                     Qt.callLater(() => NiriService.focusWindow(w.id))
                     return
