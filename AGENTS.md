@@ -40,6 +40,8 @@
   - `1e7aa202`: freeze primary-screen routing for the lifetime of the Quickshell process.
 - Screen-local popup bindings from `9405fc22` remain where they still match the upstream architecture. The shared `ContextMenu` keeps explicit target-window and target-screen bindings while using upstream's single-active-menu lifecycle.
 - `sidebar.screenList: []` means sidebars are instantiated on all connected screens.
+- `ScreenCorners.CornerPanelWindow` must use the inherited `PanelWindow.screen` property. Redeclaring it as a QML `var` shadows the native property, so the per-output bindings only update the shadow while the actual windows all open on the default output.
+- `python3 scripts/test-orbit-hot-corners.py HDMI-A-1 eDP-1` checks live corner-surface coverage when Orbit hot corners are enabled and the selected outputs are not fullscreen or blocked by Niri overview corners. The 2026-09-10 regression changed from zero external/two internal corner surfaces to one on each output after removing the shadowing declaration; the user also confirmed Orbit opens from the external screen's hot corner.
 
 ### Known crash risk
 
