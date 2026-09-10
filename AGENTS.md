@@ -23,10 +23,13 @@
 
 ### Current baseline
 
-- The upstream synchronization merge is `3f01d4b17f21ba047f01416418c375d824b1b1f4`.
-- Its parents are the previous local `main` (`3738723338a1549914f45a61f7e04d88ff5d300c`) and `upstream/main` (`0f252bbf40875e43ac9c242705e777f3706b1164`).
+- The upstream synchronization merge is `d7d611a627dcba822537c0a1a69cc56f7a01444d`.
+- Its parents are the previous local `main` (`421be5ec9f8336636b767a0daf46afa12feb1371`) and `upstream/main` (`dcba34ee124acb5a191c88b2e1952006fa5afb2f`).
 - The merge preserves the local Open-Meteo, selectable resource temperature source, dual-threshold battery protection, Chinese calendar, compact-screen bar behavior, one-percent audio steps, focused-monitor wallpaper, folder-name display, and Dolphin-default changes.
 - The pre-merge local commit is the recovery baseline if the synchronized version develops a regression.
+- Conflict resolution adopts upstream's 2.30.0 package versions and schema-based Wallpapers assertion, while retaining both the Settings overlay screen binding and upstream search page access, plus the local battery-toggle registration check.
+- The 2026-09-10 synchronization passed `bash scripts/test-local-distribution.sh` (including 10 payload tests), all 6 sensor fixture tests in `scripts/test-detect-sensors.py`, the Qt 6 `tests/tst_bar_breakpoints.qml` run (8 passed, including setup and cleanup), and parsing of `SettingsOverlay.qml` with Qt 6 `qmlformat`.
+- This was a source synchronization. The running shell was stopped before fast-forwarding the live checkout and restarted afterward; the installed launcher/service and Niri configuration migrations were not updated by an installer.
 
 ### Multi-monitor resolution
 
@@ -42,7 +45,7 @@
 
 - Do not treat the new multi-monitor path as proven crash-free.
 - Historical crashes on 2026-07-24 used Qt 6.11.1 and Quickshell revision `4df562dfb2475a9057f0f33a8db75808efad8670`. The stack reached `QWaylandWindow::handleScreensChanged`, `QWindowPrivate::updateDevicePixelRatio`, `QQuickWindow::physicalDpiChanged`, and then `__cxa_pure_virtual`.
-- The current synchronization was smoke-tested with two Niri outputs: it reached first frame, loaded both outputs, initialized the sidebar modules, and produced no new coredump. This covers stable output topology only; primary-monitor changes and output hotplug remain unverified.
+- The 2026-09-10 startup smoke test used Qt 6.11.2 and Quickshell 0.3.1 revision `2d3b3e9c70ef380dff751b61d334dc88df016c29`. It reached first frame in 1127 ms, loaded `HDMI-A-1` and `eDP-1`, updated weather through Open-Meteo, and answered the `shellUpdate.diagnose`, `sidebarLeft.status`, and `orbit.status` IPC calls. No new QML load errors, reference/type errors, binding loops, or automatic service restarts were observed. This covers stable output topology only; primary-monitor changes, output hotplug, and suspend/resume remain unverified.
 - `GlobalStates.primaryScreen` is reactive in upstream. The retained bindings in `ControlPanel.qml`, `OnScreenKeyboard.qml`, `SettingsOverlay.qml`, and `ShellUpdateOverlay.qml` can therefore reassign a live `PanelWindow.screen` after a primary-monitor setting change or output hotplug. Treat that path as unverified.
 
 ### Rules for future multi-monitor work
@@ -51,4 +54,4 @@
 - Reproduce and verify primary-monitor changes, output hotplug/removal, suspend/resume, and rapid sidebar open/close before declaring a screen-routing change safe.
 - On a crash, preserve the trigger sequence and collect `journalctl --user -u inir.service`, `coredumpctl`, and `~/.cache/quickshell/crashes/` evidence before changing code.
 - Perform upstream conflict resolution in an isolated worktree. Do not merge into the checkout currently loaded by Quickshell.
-- To compare a regression with the pre-sync behavior, use `3738723338a1549914f45a61f7e04d88ff5d300c` as the recovery reference; do not discard newer history while testing.
+- To compare a regression with the pre-sync behavior, use `421be5ec9f8336636b767a0daf46afa12feb1371` as the recovery reference; do not discard newer history while testing.
