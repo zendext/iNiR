@@ -6,4 +6,6 @@ function moduleAllowedAtWidth(moduleId, screenWidth) {
     if (!(screenWidth > 0 && screenWidth <= compactScreenWidth))
         return true
     return moduleId !== "media" && moduleId !== "weather"
+        && moduleId !== "clock" && moduleId !== "utilButtons"
+        && moduleId !== "battery"
 }
