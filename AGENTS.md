@@ -21,6 +21,10 @@
 
 ## Upstream Merge and Multi-Monitor Safety
 
+The maintained local customization inventory is [docs/LOCAL_CHANGES.md](docs/LOCAL_CHANGES.md).
+Keep it and the relevant behavior documentation aligned when local changes are
+added, removed, or superseded by upstream.
+
 ### Current baseline
 
 - The upstream synchronization merge is `d7d611a627dcba822537c0a1a69cc56f7a01444d`.

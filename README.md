@@ -251,7 +251,8 @@ Full list: [Keybinds](https://github.com/snowarch/inir/wiki/KEYBINDS)
 
 ## Documentation
 
-Everything user-facing lives in the [Wiki](https://github.com/snowarch/inir/wiki).
+General documentation lives in the [Wiki](https://github.com/snowarch/inir/wiki).
+Fork-specific behavior and validation notes are listed in [Local changes](docs/LOCAL_CHANGES.md).
 
 | Page | What's in it |
 |---|---|

@@ -279,6 +279,41 @@ Item {
 
                     Item { Layout.fillWidth: true }
 
+                    RippleButton {
+                        id: shuffleButton
+                        implicitWidth: 32; implicitHeight: 32
+                        visible: !!(root.player?.canControl && root.player.shuffleSupported)
+                        toggled: root.player?.shuffle ?? false
+                        buttonText: Translation.tr(root.player?.shuffle ? "Shuffle On" : "Shuffle Off")
+                        Accessible.name: buttonText
+                        Accessible.checkable: true
+                        Accessible.checked: toggled
+                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
+                            : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.full
+                        colBackground: "transparent"
+                        colBackgroundToggled: "transparent"
+                        colBackgroundHover: Appearance.zzzEverywhere ? Appearance.zzz.paperAlt
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
+                            : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
+                            : Appearance.colors.colLayer1Hover
+                        colBackgroundToggledHover: colBackgroundHover
+                        colRipple: Appearance.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.28)
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Active : Appearance.colors.colLayer1Active
+                        colRippleToggled: colRipple
+                        onClicked: {
+                            if (!root.player?.canControl || !root.player.shuffleSupported) return;
+                            root.player.shuffle = !root.player.shuffle;
+                        }
+                        contentItem: MaterialSymbol {
+                            text: "shuffle"; iconSize: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            color: playPauseIcon.color
+                            opacity: shuffleButton.toggled ? 1 : 0.45
+                        }
+                        StyledToolTip { text: shuffleButton.buttonText }
+                    }
+
                     // Controls
                     RippleButton {
                         implicitWidth: 32
@@ -318,39 +353,15 @@ Item {
                             : Appearance.inirEverywhere 
                             ? Appearance.inir.roundingSmall 
                             : (root.effectiveIsPlaying ? Appearance.rounding.normal : Appearance.rounding.full)
-                        colBackground: Appearance.zzzEverywhere
-                            ? (root.effectiveIsPlaying ? Appearance.zzz.sticker : Appearance.colors.colLayer1)
-                            : Appearance.angelEverywhere
-                            ? "transparent"
-                            : Appearance.inirEverywhere
-                            ? "transparent"
-                            : Appearance.auroraEverywhere
-                                ? "transparent"
-                                : (root.effectiveIsPlaying 
-                                    ? (blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
-                                    : (blendedColors?.colSecondaryContainer ?? Appearance.colors.colSecondaryContainer))
-                        colBackgroundHover: Appearance.zzzEverywhere
-                            ? (root.effectiveIsPlaying ? Appearance.colors.colPrimaryHover : Appearance.colors.colLayer1Hover)
-                            : Appearance.angelEverywhere
-                            ? Appearance.angel.colGlassCardHover
-                            : Appearance.inirEverywhere
-                            ? Appearance.inir.colLayer2Hover
-                            : Appearance.auroraEverywhere
-                                ? ColorUtils.transparentize(blendedColors?.colLayer1 ?? Appearance.colors.colLayer1, 0.5)
-                                : (root.effectiveIsPlaying 
-                                    ? (blendedColors?.colPrimaryHover ?? Appearance.colors.colPrimaryHover)
-                                    : (blendedColors?.colSecondaryContainerHover ?? Appearance.colors.colSecondaryContainerHover))
-                        colRipple: Appearance.zzzEverywhere
-                            ? (root.effectiveIsPlaying ? Appearance.colors.colPrimaryActive : Appearance.colors.colLayer1Active)
-                            : Appearance.angelEverywhere
-                            ? Appearance.angel.colGlassCardActive
-                            : Appearance.inirEverywhere
-                            ? Appearance.inir.colLayer2Active
-                            : Appearance.auroraEverywhere
-                                ? (blendedColors?.colLayer1Active ?? Appearance.colors.colLayer1Active)
-                                : (root.effectiveIsPlaying 
-                                    ? (blendedColors?.colPrimaryActive ?? Appearance.colors.colPrimaryActive)
-                                    : (blendedColors?.colSecondaryContainerActive ?? Appearance.colors.colSecondaryContainerActive))
+                        colBackground: "transparent"
+                        colBackgroundHover: Appearance.zzzEverywhere ? Appearance.zzz.paperAlt
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
+                            : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
+                            : Appearance.colors.colLayer1Hover
+                        colRipple: Appearance.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.28)
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Active
+                            : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive
+                            : Appearance.colors.colLayer1Active
                         onClicked: MprisController.togglePlaying()
 
                         Behavior on buttonRadius {
@@ -360,21 +371,15 @@ Item {
 
                         contentItem: Item {
                             MaterialSymbol {
+                                id: playPauseIcon
                                 anchors.centerIn: parent
                                 text: root.effectiveIsPlaying ? "pause" : "play_arrow"
                                 iconSize: 24
                                 fill: 1
-                                color: Appearance.zzzEverywhere
-                                    ? (root.effectiveIsPlaying ? Appearance.zzz.onSticker : Appearance.colors.colOnLayer1)
-                                    : Appearance.angelEverywhere
-                                    ? Appearance.angel.colPrimary
-                                    : Appearance.inirEverywhere
-                                    ? root.jiraColPrimary
-                                    : Appearance.auroraEverywhere
-                                        ? (blendedColors?.colOnLayer0 ?? Appearance.colors.colOnLayer0)
-                                        : (root.effectiveIsPlaying 
-                                            ? (blendedColors?.colOnPrimary ?? Appearance.colors.colOnPrimary)
-                                            : (blendedColors?.colOnSecondaryContainer ?? Appearance.colors.colOnSecondaryContainer))
+                                color: Appearance.zzzEverywhere ? Appearance.zzz.accent
+                                    : Appearance.inirEverywhere ? root.jiraColPrimary
+                                    : Appearance.auroraEverywhere ? Appearance.colors.colOnLayer0
+                                    : Appearance.colors.colOnLayer1
 
                                 Behavior on color {
                                     enabled: Appearance.animationsEnabled
@@ -414,6 +419,43 @@ Item {
                         }
 
                         StyledToolTip { text: Translation.tr("Next") }
+                    }
+
+                    RippleButton {
+                        id: loopButton
+                        implicitWidth: 32; implicitHeight: 32
+                        visible: !!(root.player?.canControl && root.player.loopSupported)
+                        toggled: (root.player?.loopState ?? MprisLoopState.None) !== MprisLoopState.None
+                        property string iconName: root.player?.loopState === MprisLoopState.Track ? "repeat_one" : "repeat"
+                        buttonText: Translation.tr(root.player?.loopState === MprisLoopState.Track ? "Repeat One" : root.player?.loopState === MprisLoopState.Playlist ? "Repeat All" : "Repeat Off")
+                        Accessible.name: buttonText
+                        Accessible.checkable: true
+                        Accessible.checked: toggled
+                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
+                            : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.full
+                        colBackground: "transparent"
+                        colBackgroundToggled: "transparent"
+                        colBackgroundHover: Appearance.zzzEverywhere ? Appearance.zzz.paperAlt
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
+                            : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
+                            : Appearance.colors.colLayer1Hover
+                        colBackgroundToggledHover: colBackgroundHover
+                        colRipple: Appearance.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.28)
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Active : Appearance.colors.colLayer1Active
+                        colRippleToggled: colRipple
+                        onClicked: {
+                            if (!root.player?.canControl || !root.player.loopSupported) return;
+                            root.player.loopState = root.player.loopState === MprisLoopState.None ? MprisLoopState.Playlist
+                                : root.player.loopState === MprisLoopState.Playlist ? MprisLoopState.Track : MprisLoopState.None;
+                        }
+                        contentItem: MaterialSymbol {
+                            text: loopButton.iconName; iconSize: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            color: playPauseIcon.color
+                            opacity: loopButton.toggled ? 1 : 0.45
+                        }
+                        StyledToolTip { text: loopButton.buttonText }
                     }
 
                     Item { Layout.fillWidth: true }

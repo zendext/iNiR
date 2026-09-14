@@ -59,6 +59,17 @@ The media player widget appears in:
 - Right sidebar
 - Waffle action center
 
+The bar media popup and the left sidebar's media widget include shuffle and repeat
+buttons when the corresponding player supports them and allows control. Repeat
+cycles through off, playlist repeat, and single-track repeat. Active icons match
+the play/pause icon's color and brightness; inactive icons use 45% opacity.
+Both surfaces use a transparent play/pause button with a bright icon.
+Single-track repeat uses the repeat-one icon. The buttons follow the player's
+reported state and control the player shown in their own card. The bar popup puts
+elapsed and total time beside the progress slider to keep the controls compact.
+Shuffle uses the standard MPRIS on/off property; Spotify Smart Shuffle is not
+exposed as a separate mode by this interface.
+
 ### Player prioritization
 
 When multiple players are active, iNiR picks the most relevant one:

@@ -400,56 +400,7 @@ Item {
 
                 Item { Layout.fillHeight: true }
 
-                // Progress bar
-                Item {
-                    Layout.fillWidth: true
-                    implicitHeight: 16
-
-                    Loader {
-                        anchors.fill: parent
-                        active: root.player?.canSeek ?? false
-                        sourceComponent: StyledSlider {
-                            configuration: StyledSlider.Configuration.Wavy
-                            wavy: root.player?.isPlaying ?? false
-                            animateWave: root.player?.isPlaying ?? false
-                            highlightColor: Appearance.zzzEverywhere ? Appearance.zzz.metricFill
-                                : Appearance.inirEverywhere ? root.inirPrimary
-                                : Appearance.auroraEverywhere ? Appearance.colors.colPrimary
-                                : (blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
-                            trackColor: Appearance.zzzEverywhere ? Appearance.zzz.metricTrack
-                                : Appearance.inirEverywhere ? root.inirLayer2
-                                : Appearance.auroraEverywhere ? Appearance.aurora.colElevatedSurface
-                                : (blendedColors?.colSecondaryContainer ?? Appearance.colors.colSecondaryContainer)
-                            handleColor: Appearance.zzzEverywhere ? Appearance.zzz.metricFill
-                                : Appearance.inirEverywhere ? root.inirPrimary
-                                : Appearance.auroraEverywhere ? Appearance.colors.colPrimary
-                                : (blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
-                            value: root.player?.length > 0 ? root.player.position / root.player.length : 0
-                            onMoved: root.player.position = value * root.player.length
-                            scrollable: true
-                        }
-                    }
-
-                    Loader {
-                        anchors.fill: parent
-                        active: !(root.player?.canSeek ?? false)
-                        sourceComponent: StyledProgressBar {
-                            wavy: root.player?.isPlaying ?? false
-                            animateWave: root.player?.isPlaying ?? false
-                            highlightColor: Appearance.zzzEverywhere ? Appearance.zzz.metricFill
-                                : Appearance.inirEverywhere ? root.inirPrimary
-                                : Appearance.auroraEverywhere ? Appearance.colors.colPrimary
-                                : (blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
-                            trackColor: Appearance.zzzEverywhere ? Appearance.zzz.metricTrack
-                                : Appearance.inirEverywhere ? root.inirLayer2
-                                : Appearance.auroraEverywhere ? Appearance.aurora.colElevatedSurface
-                                : (blendedColors?.colSecondaryContainer ?? Appearance.colors.colSecondaryContainer)
-                            value: root.player?.length > 0 ? root.player.position / root.player.length : 0
-                        }
-                    }
-                }
-
-                // Time + controls
+                // Time and progress share a row so the transport controls stay compact.
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 4
@@ -466,7 +417,108 @@ Item {
                         }
                     }
 
+                    Item {
+                        Layout.fillWidth: true
+                        implicitHeight: 16
+
+                        Loader {
+                            anchors.fill: parent
+                            active: root.player?.canSeek ?? false
+                            sourceComponent: StyledSlider {
+                                configuration: StyledSlider.Configuration.Wavy
+                                wavy: root.player?.isPlaying ?? false
+                                animateWave: root.player?.isPlaying ?? false
+                                highlightColor: Appearance.zzzEverywhere ? Appearance.zzz.metricFill
+                                    : Appearance.inirEverywhere ? root.inirPrimary
+                                    : Appearance.auroraEverywhere ? Appearance.colors.colPrimary
+                                    : (blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
+                                trackColor: Appearance.zzzEverywhere ? Appearance.zzz.metricTrack
+                                    : Appearance.inirEverywhere ? root.inirLayer2
+                                    : Appearance.auroraEverywhere ? Appearance.aurora.colElevatedSurface
+                                    : (blendedColors?.colSecondaryContainer ?? Appearance.colors.colSecondaryContainer)
+                                handleColor: Appearance.zzzEverywhere ? Appearance.zzz.metricFill
+                                    : Appearance.inirEverywhere ? root.inirPrimary
+                                    : Appearance.auroraEverywhere ? Appearance.colors.colPrimary
+                                    : (blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
+                                value: root.player?.length > 0 ? root.player.position / root.player.length : 0
+                                onMoved: root.player.position = value * root.player.length
+                                scrollable: true
+                            }
+                        }
+
+                        Loader {
+                            anchors.fill: parent
+                            active: !(root.player?.canSeek ?? false)
+                            sourceComponent: StyledProgressBar {
+                                wavy: root.player?.isPlaying ?? false
+                                animateWave: root.player?.isPlaying ?? false
+                                highlightColor: Appearance.zzzEverywhere ? Appearance.zzz.metricFill
+                                    : Appearance.inirEverywhere ? root.inirPrimary
+                                    : Appearance.auroraEverywhere ? Appearance.colors.colPrimary
+                                    : (blendedColors?.colPrimary ?? Appearance.colors.colPrimary)
+                                trackColor: Appearance.zzzEverywhere ? Appearance.zzz.metricTrack
+                                    : Appearance.inirEverywhere ? root.inirLayer2
+                                    : Appearance.auroraEverywhere ? Appearance.aurora.colElevatedSurface
+                                    : (blendedColors?.colSecondaryContainer ?? Appearance.colors.colSecondaryContainer)
+                                value: root.player?.length > 0 ? root.player.position / root.player.length : 0
+                            }
+                        }
+                    }
+
+                    StyledText {
+                        text: StringUtils.friendlyTimeForSeconds(root.player?.length ?? 0)
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        font.family: Appearance.font.family.numbers
+                        color: Appearance.zzzEverywhere ? Appearance.zzz.ink
+                            : Appearance.inirEverywhere ? root.inirText : (blendedColors?.colOnLayer0 ?? Appearance.colors.colOnLayer0)
+                        Behavior on color {
+                            enabled: Appearance.animationsEnabled
+                            ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                        }
+                    }
+                }
+
+                // Playback controls
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
                     Item { Layout.fillWidth: true }
+
+                    RippleButton {
+                        id: shuffleButton
+                        implicitWidth: 32; implicitHeight: 32
+                        visible: !!(root.player?.canControl && root.player.shuffleSupported)
+                        toggled: root.player?.shuffle ?? false
+                        buttonText: Translation.tr(root.player?.shuffle ? "Shuffle On" : "Shuffle Off")
+                        Accessible.name: buttonText
+                        Accessible.checkable: true
+                        Accessible.checked: toggled
+                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
+                            : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.full
+                        colBackground: "transparent"
+                        colBackgroundToggled: "transparent"
+                        colBackgroundHover: Appearance.zzzEverywhere ? Appearance.zzz.paperAlt
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
+                            : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
+                            : Appearance.colors.colLayer1Hover
+                        colBackgroundToggledHover: colBackgroundHover
+                        colRipple: Appearance.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.28)
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Active : Appearance.colors.colLayer1Active
+                        colRippleToggled: colRipple
+                        onClicked: {
+                            if (!root.player?.canControl || !root.player.shuffleSupported) return;
+                            root.player.shuffle = !root.player.shuffle;
+                        }
+                        contentItem: MaterialSymbol {
+                            text: "shuffle"; iconSize: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            color: playPauseIcon.color
+                            opacity: shuffleButton.toggled ? 1 : 0.45
+                        }
+                        StyledToolTip { text: shuffleButton.buttonText }
+                    }
 
                     RippleButton {
                         implicitWidth: 32; implicitHeight: 32
@@ -518,6 +570,7 @@ Item {
 
                         contentItem: Item {
                             MaterialSymbol {
+                                id: playPauseIcon
                                 anchors.centerIn: parent
                                 text: root.player?.isPlaying ? "pause" : "play_arrow"
                                 iconSize: 24; fill: 1
@@ -566,19 +619,44 @@ Item {
                         StyledToolTip { text: Translation.tr("Next") }
                     }
 
-                    Item { Layout.fillWidth: true }
-
-                    StyledText {
-                        text: StringUtils.friendlyTimeForSeconds(root.player?.length ?? 0)
-                        font.pixelSize: Appearance.font.pixelSize.smallest
-                        font.family: Appearance.font.family.numbers
-                        color: Appearance.zzzEverywhere ? Appearance.zzz.ink
-                            : Appearance.inirEverywhere ? root.inirText : (blendedColors?.colOnLayer0 ?? Appearance.colors.colOnLayer0)
-                        Behavior on color {
-                            enabled: Appearance.animationsEnabled
-                            ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                    RippleButton {
+                        id: loopButton
+                        implicitWidth: 32; implicitHeight: 32
+                        visible: !!(root.player?.canControl && root.player.loopSupported)
+                        toggled: (root.player?.loopState ?? MprisLoopState.None) !== MprisLoopState.None
+                        property string iconName: root.player?.loopState === MprisLoopState.Track ? "repeat_one" : "repeat"
+                        buttonText: Translation.tr(root.player?.loopState === MprisLoopState.Track ? "Repeat One" : root.player?.loopState === MprisLoopState.Playlist ? "Repeat All" : "Repeat Off")
+                        Accessible.name: buttonText
+                        Accessible.checkable: true
+                        Accessible.checked: toggled
+                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
+                            : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.full
+                        colBackground: "transparent"
+                        colBackgroundToggled: "transparent"
+                        colBackgroundHover: Appearance.zzzEverywhere ? Appearance.zzz.paperAlt
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
+                            : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
+                            : Appearance.colors.colLayer1Hover
+                        colBackgroundToggledHover: colBackgroundHover
+                        colRipple: Appearance.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.28)
+                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Active : Appearance.colors.colLayer1Active
+                        colRippleToggled: colRipple
+                        onClicked: {
+                            if (!root.player?.canControl || !root.player.loopSupported) return;
+                            root.player.loopState = root.player.loopState === MprisLoopState.None ? MprisLoopState.Playlist
+                                : root.player.loopState === MprisLoopState.Playlist ? MprisLoopState.Track : MprisLoopState.None;
                         }
+                        contentItem: MaterialSymbol {
+                            text: loopButton.iconName; iconSize: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            color: playPauseIcon.color
+                            opacity: loopButton.toggled ? 1 : 0.45
+                        }
+                        StyledToolTip { text: loopButton.buttonText }
                     }
+
+                    Item { Layout.fillWidth: true }
                 }
             }
         }
