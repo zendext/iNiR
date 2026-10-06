@@ -35,6 +35,14 @@ color: Appearance.zzzEverywhere ? Appearance.colors.colLayer1
 - **Overview**: workspace overview with app launcher and search (`Super+Space`)
 - **Settings**: overlay panel rendered on top of the current desktop
 
+On multiple monitors, the standard bar's sidebar button, margin areas, and right
+center pill address the sidebar on the clicked monitor, even when keyboard focus
+is on another monitor. Clicking again closes that monitor's sidebar. The right
+button's selected state follows its own monitor. These controls still address the
+role assigned to the physical edge when the sidebar roles are swapped.
+Run `node scripts/test-bar-sidebar-routing.mjs` to check the routing and selected
+state; native window presentation also needs a live two-monitor click check.
+
 ### Visual tokens
 
 All ii components use `Appearance.*`:

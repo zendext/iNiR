@@ -24,7 +24,7 @@ not all retested as part of the media-controls change.
 | Keyboard volume | Change the default output volume in one-percent steps. | [Audio.qml](../services/Audio.qml) |
 | Wallpaper selection | Prefer the focused monitor in wallpaper settings and display folder names in selection controls. | [BackgroundConfig.qml](../modules/settings/BackgroundConfig.qml), [QuickWallpaperItem.qml](../modules/settings/QuickWallpaperItem.qml) |
 | File manager | Use Dolphin in shipped defaults, shortcuts, and fallback launch actions. | [config.json](../defaults/config.json), [70-binds.kdl](../defaults/niri/config.d/70-binds.kdl), [QuickLaunch.qml](../modules/sidebarLeft/widgets/QuickLaunch.qml) |
-| Screen routing | Retain screen-local popup bindings and bind Orbit hot corners to the native per-output window screen. | [ContextMenu.qml](../modules/common/widgets/ContextMenu.qml), [ScreenCorners.qml](../modules/screenCorners/ScreenCorners.qml), [AGENTS.md](../AGENTS.md) |
+| Screen routing | Retain screen-local popup bindings, bind Orbit hot corners to the native per-output window screen, and route standard-bar sidebar controls and their selected state to the clicked output. | [ContextMenu.qml](../modules/common/widgets/ContextMenu.qml), [ScreenCorners.qml](../modules/screenCorners/ScreenCorners.qml), [BarContent.qml](../modules/bar/BarContent.qml), [AGENTS.md](../AGENTS.md) |
 | Playback modes | Add repeat and shuffle controls to the bar popup and left sidebar media widget. | [PlayerControl.qml](../modules/mediaControls/PlayerControl.qml), [MediaPlayerWidget.qml](../modules/sidebarLeft/widgets/MediaPlayerWidget.qml) |
 
 ## Playback modes
