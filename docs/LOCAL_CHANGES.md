@@ -47,6 +47,26 @@ The local media-popup layout uses upstream `PlayerProgress`, `positionOf()`,
 The Chinese calendar retains its lunar/work-status labels alongside upstream's
 date font rules. Neither feature is replaced by the upstream styling changes.
 
+## iRiS adoption notes
+
+Recorded on 2026-10-14; the calendar adaptation below is pending and has not
+been implemented.
+
+- Battery protection: use iRiS Settings > Battery > Charge limit instead of
+  adding a separate iRiS quick toggle. Its enable switch and stop threshold use
+  the existing `battery.chargeLimit` settings and shared
+  [Battery service](../services/Battery.qml), which must remain. The local start
+  threshold is retained in configuration; iRiS currently has no start-threshold
+  field. The existing ii quick toggles are unchanged.
+- Chinese calendar: the iRiS
+  [sidebar/calendar card](../modules/iris/sidebar/IrisSidebarSection.qml) and
+  [calendar widget face](../modules/iris/widgets/IrisCalendarFace.qml) do not
+  display lunar labels, Chinese holiday names, or off-day/make-up-workday
+  markers (`休` / `班`). Record these missing displays for future adaptation,
+  reusing [CalendarCn](../services/CalendarCn.qml), the existing yearly holiday
+  data, and `calendar.china` settings. No new holiday provider or service is
+  needed.
+
 ## Playback modes
 
 The behavior and visual states are described in [Audio and Media](AUDIO_MEDIA.md#media-players).
