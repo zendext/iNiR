@@ -99,6 +99,32 @@ External events in the Events tab show:
 
 ---
 
+## Chinese calendar (local customization)
+
+The local fork shares `CalendarCn` across the ii calendar and iRiS calendar
+card/desktop widget. It uses the existing yearly holiday cache, including
+off-days and make-up workdays, together with the local lunar-date converter.
+
+The existing `calendar.china` settings control the display:
+
+- `enable`: enable Chinese-calendar information (off by default).
+- `showLunar`: show lunar-date labels.
+- `showWorkStatus`: show `休` for an off-day and `班` for a make-up workday.
+
+In iRiS, open the Today panel with `inir iris today open` and expand its month
+heading. Add a direct calendar-card entry with `inir iris barPiece calendar on`.
+The month grid shows holiday names in preference to lunar labels; selecting a
+date shows both labels and its work status below the grid. The collapsed week
+strip also shows Chinese date information.
+
+The large desktop widget shows labels below each date. Small and medium grids
+keep the dates compact with work-status markers; hovering a date shows its
+lunar label, holiday name and work status. The medium widget also shows today's
+Chinese date beside its month grid. Missing yearly holiday data leaves holiday
+names and work-status markers empty while lunar conversion remains available.
+
+---
+
 ## Privacy
 
 The ICS URL is stored in your local `config.json` and nowhere else. Fetches go directly from your machine to the calendar provider. There's no intermediary server.

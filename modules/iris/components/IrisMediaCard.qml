@@ -174,6 +174,12 @@ Item {
                 controlHeight: Math.round(34 * IrisStyle.density)
                 RowLayout {
                     spacing: Math.round(4 * IrisStyle.density)
+                    IrisPlaybackModeButton {
+                        player: root.player
+                        mode: "shuffle"
+                        foreground: root.ink
+                        buttonRadius: transport.framed ? transport.controlRadius : IrisStyle.radiusSmall
+                    }
                     // On the plate each takes its concentric radius, bare the row radius.
                     Repeater {
                         model: ["previous", "toggle", "next"]
@@ -190,6 +196,12 @@ Item {
                             enabled: toggle ? root.hasPlayer : modelData === "previous" ? media.effectiveCanGoPrevious : media.effectiveCanGoNext
                             onClicked: toggle ? media.togglePlaying() : modelData === "previous" ? media.previous() : media.next()
                         }
+                    }
+                    IrisPlaybackModeButton {
+                        player: root.player
+                        mode: "repeat"
+                        foreground: root.ink
+                        buttonRadius: transport.framed ? transport.controlRadius : IrisStyle.radiusSmall
                     }
                 }
             }

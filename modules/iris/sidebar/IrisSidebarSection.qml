@@ -618,6 +618,7 @@ Loader {
             }
             readonly property var entries: calendar.eventsOn(calendar.selectedDate)
             readonly property var todayEntries: calendar.eventsOn(DateTime.clock.date)
+            readonly property var china: CalendarCn.getDayDisplay(calendar.selectedDate)
             function moveMonth(delta: int): void {
                 calendar.selectedDate = new Date(calendar.month.getFullYear(), calendar.month.getMonth() + delta, 1)
             }
@@ -649,6 +650,7 @@ Loader {
                             required property int index
                             readonly property date date: new Date(weekStrip.start.getFullYear(), weekStrip.start.getMonth(), weekStrip.start.getDate() + stripDay.index)
                             readonly property bool today: stripDay.date.toDateString() === DateTime.clock.date.toDateString()
+                            readonly property var china: CalendarCn.getDayDisplay(stripDay.date)
                             width: weekStrip.width / 7
                             spacing: 3 * root.d
                             IrisText {
@@ -679,6 +681,15 @@ Loader {
                                 height: width
                                 radius: width / 2
                                 color: calendar.eventsOn(stripDay.date).length > 0 ? IrisStyle.secondaryAccent : "transparent"
+                            }
+                            IrisText {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                visible: text.length > 0
+                                text: [stripDay.china.holidayName || stripDay.china.lunarLabel, stripDay.china.workStatus].filter(Boolean).join(" ")
+                                color: stripDay.china.workStatus === "休" ? IrisStyle.identity.red : IrisStyle.muted
+                                font.pixelSize: Math.round(9 * root.d)
+                                elide: Text.ElideRight
                             }
                         }
                     }
@@ -726,16 +737,18 @@ Loader {
                         readonly property bool chosen: day.date.toDateString() === calendar.selectedDate.toDateString()
                         readonly property bool inMonth: day.date.getMonth() === calendar.month.getMonth()
                         readonly property bool hasEvents: day.inMonth && calendar.eventsOn(day.date).length > 0
+                        readonly property var china: CalendarCn.getDayDisplay(day.date)
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1
-                        Layout.preferredHeight: Math.round(34 * root.d)
+                        Layout.preferredHeight: Math.round((CalendarCn.enabled ? 50 : 34) * root.d)
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         Accessible.role: Accessible.Button
-                        Accessible.name: Qt.formatDate(day.date, "dddd, d MMMM yyyy")
+                        Accessible.name: [Qt.formatDate(day.date, "dddd, d MMMM yyyy"), day.china.lunarLabel, day.china.holidayName, day.china.workStatus].filter(Boolean).join(" · ")
                         onClicked: calendar.selectedDate = day.date
                         Rectangle {
                             anchors.centerIn: parent
+                            anchors.verticalCenterOffset: CalendarCn.enabled ? -8 * root.d : 0
                             width: Math.round(30 * root.d)
                             height: width
                             radius: width / 2
@@ -746,12 +759,35 @@ Loader {
                         }
                         IrisText {
                             anchors.centerIn: parent
+                            anchors.verticalCenterOffset: CalendarCn.enabled ? -8 * root.d : 0
                             text: String(day.date.getDate())
                             color: day.today ? IrisStyle.onTint : day.chosen ? IrisStyle.accent : IrisStyle.text
                             opacity: day.inMonth ? 1 : 0.32
                             font.family: IrisStyle.fontNumbers
                             font.pixelSize: IrisStyle.typeLabel
                             font.weight: day.today || day.chosen ? Font.Bold : Font.Medium
+                        }
+                        IrisText {
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.rightMargin: 2 * root.d
+                            visible: day.inMonth && text.length > 0
+                            text: day.china.workStatus
+                            color: text === "休" ? IrisStyle.identity.red : IrisStyle.muted
+                            font.pixelSize: Math.round(9 * root.d)
+                            font.weight: Font.DemiBold
+                        }
+                        IrisText {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 5 * root.d
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: day.china.holidayName || day.china.lunarLabel
+                            color: day.china.holidayName.length > 0 ? IrisStyle.identity.red : IrisStyle.muted
+                            opacity: day.inMonth ? 1 : 0.32
+                            font.pixelSize: Math.round(9 * root.d)
+                            elide: Text.ElideRight
                         }
                         Rectangle {
                             visible: day.hasEvents && !day.today
@@ -790,6 +826,14 @@ Loader {
                     buttonRadiusPressed: height / 2
                     onClicked: { calendar.composing = true; eventTitle.forceActiveFocus() }
                 }
+            }
+            IrisText {
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: [calendar.china.lunarLabel, calendar.china.holidayName, calendar.china.workStatus].filter(Boolean).join(" · ")
+                color: calendar.china.workStatus === "休" ? IrisStyle.identity.red : IrisStyle.subtext
+                font.pixelSize: IrisStyle.typeMeta
+                wrapMode: Text.WordWrap
             }
             EmptyLabel { visible: calendar.entries.length === 0 && !calendar.composing; text: Translation.tr("Nothing scheduled for this day.") }
             Repeater {

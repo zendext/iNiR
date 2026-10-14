@@ -56,6 +56,16 @@ IrisWidgetFace {
         id: transport
         property real disc: root.dp(34)
         spacing: root.dp(6)
+        IrisPlaybackModeButton {
+            player: root.player
+            mode: "shuffle"
+            foreground: root.ink
+            implicitWidth: Math.round(transport.disc * 0.7)
+            implicitHeight: transport.disc
+            iconSize: root.px(17)
+            buttonRadius: height / 2
+            buttonRadiusPressed: buttonRadius
+        }
         FaceAction {
             face: root
             implicitWidth: transport.disc
@@ -82,6 +92,16 @@ IrisWidgetFace {
             enabled: media.effectiveCanGoNext
             opacity: enabled ? 1 : 0.4
             onActivated: media.next()
+        }
+        IrisPlaybackModeButton {
+            player: root.player
+            mode: "repeat"
+            foreground: root.ink
+            implicitWidth: Math.round(transport.disc * 0.7)
+            implicitHeight: transport.disc
+            iconSize: root.px(17)
+            buttonRadius: height / 2
+            buttonRadiusPressed: buttonRadius
         }
     }
 

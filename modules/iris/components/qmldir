@@ -4,6 +4,7 @@ IrisSurface 1.0 IrisSurface.qml
 IrisActionRow 1.0 IrisActionRow.qml
 IrisButton 1.0 IrisButton.qml
 IrisIconButton 1.0 IrisIconButton.qml
+IrisPlaybackModeButton 1.0 IrisPlaybackModeButton.qml
 IrisMark 1.0 IrisMark.qml
 IrisSlider 1.0 IrisSlider.qml
 IrisField 1.0 IrisField.qml

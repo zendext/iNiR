@@ -113,6 +113,17 @@ Singleton {
         return ""
     }
 
+    function getDayDisplay(date: var): var {
+        const display = { lunarLabel: "", holidayName: "", workStatus: "" }
+        if (!enabled || !date) return display
+        const holiday = getHolidayInfo(date)
+        display.lunarLabel = getLunarLabel(getLunarInfo(date))
+        display.holidayName = holiday?.name ?? ""
+        if (Config.options?.calendar?.china?.showWorkStatus ?? true)
+            display.workStatus = getWorkStatusType(holiday)
+        return display
+    }
+
     function getLunarLabel(info: var): string {
         if (!info) return ""
         const monthNames = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"]

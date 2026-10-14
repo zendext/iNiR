@@ -60,7 +60,7 @@ The media player widget appears in:
 - Right sidebar
 - Waffle action center
 
-The bar media popup and the left sidebar's media widget include shuffle and repeat
+The ii bar media popup and left sidebar's media widget include shuffle and repeat
 buttons when the corresponding player supports them and allows control. Repeat
 cycles through off, playlist repeat, and single-track repeat. Active icons match
 the play/pause icon's color and brightness; inactive icons use 45% opacity.
@@ -73,6 +73,17 @@ controls compact. Labels and slider read the controller's corrected position and
 remembered track length; seeking clears the old position correction.
 Shuffle uses the standard MPRIS on/off property; Spotify Smart Shuffle is not
 exposed as a separate mode by this interface.
+
+iRiS exposes the same shuffle toggle and repeat cycle in the full media card
+(including the sidebar and media popup), Island's media page, the control center's
+now-playing module, and medium/large desktop music widgets. Compact cards and
+small desktop widgets retain their compact controls. Buttons appear only when
+the displayed player allows control and supports the corresponding mode, and
+follow changes made in the player. Mode icons match the previous/next icon size
+in each surface. Active icons use the same foreground color
+as the other transport controls; inactive icons use 45% opacity. On/off states
+share the same background and have no hover text. Single-track repeat uses
+`repeat_one`; accessible names still describe the current mode.
 
 ### Player prioritization
 

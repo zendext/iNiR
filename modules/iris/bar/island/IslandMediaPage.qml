@@ -156,6 +156,14 @@ GridLayout {
                 controlHeight: 52 * IrisStyle.density
                 RowLayout {
                 spacing: transport.framed ? 6 * IrisStyle.density : 18 * IrisStyle.density
+            IrisPlaybackModeButton {
+                Layout.alignment: Qt.AlignVCenter
+                player: page.island.player
+                mode: "shuffle"
+                iconSize: 26 * IrisStyle.density
+                buttonRadius: height / 2
+                buttonRadiusPressed: buttonRadius
+            }
             GlyphButton {
                 Layout.alignment: Qt.AlignVCenter
                 buttonRadius: transport.framed ? IrisStyle.pieceRadius(height) : height / 2
@@ -187,6 +195,14 @@ GridLayout {
                 enabled: page.anime || media.effectiveCanGoNext
                 Accessible.name: page.anime ? Translation.tr("Next episode") : Translation.tr("Next track")
                 onClicked: page.anime ? AnimeWatch.skip("next") : media.next()
+            }
+            IrisPlaybackModeButton {
+                Layout.alignment: Qt.AlignVCenter
+                player: page.island.player
+                mode: "repeat"
+                iconSize: 26 * IrisStyle.density
+                buttonRadius: height / 2
+                buttonRadiusPressed: buttonRadius
             }
                 }
             }

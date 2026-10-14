@@ -17,21 +17,21 @@ AGENTS.md; hotplug and suspend/resume remain unverified.
 ## Retained customizations
 
 These entries describe the differences retained against v2.33.0. UI-specific
-customizations apply to the named Material or Waffle surfaces; selecting iRiS
-does not automatically add equivalent controls to its separate components.
+customizations apply only to the listed surfaces; sharing a service does not
+automatically add equivalent controls to each family's separate components.
 
 | Area | Local behavior | Main implementation |
 |---|---|---|
 | Weather | Use Open-Meteo as the primary forecast provider and for configured-location geocoding. | [Weather.qml](../services/Weather.qml) |
 | Temperature | Select maximum, CPU, or GPU temperature for the bar indicator. | [ResourceUsage.qml](../services/ResourceUsage.qml), [Resources.qml](../modules/bar/Resources.qml) |
 | Battery protection | Support start/stop charge thresholds where the hardware allows them, with registered quick toggles and desktop visibility guards. | [Battery.qml](../services/Battery.qml), [AndroidQuickPanel.qml](../modules/sidebarRight/quickToggles/AndroidQuickPanel.qml), [ClassicQuickPanel.qml](../modules/sidebarRight/quickToggles/ClassicQuickPanel.qml) |
-| Chinese calendar | Add lunar-date and Chinese holiday information to the calendar and week strip. | [CalendarCn.qml](../services/CalendarCn.qml), [LunarUtils.qml](../modules/common/functions/LunarUtils.qml), [WeekStrip.qml](../modules/sidebarLeft/widgets/WeekStrip.qml) |
+| Chinese calendar | Add lunar-date, Chinese holiday and off-day/make-up-workday information to the ii calendar/week strip and iRiS calendar card/widget. | [CalendarCn.qml](../services/CalendarCn.qml), [LunarUtils.qml](../modules/common/functions/LunarUtils.qml), [WeekStrip.qml](../modules/sidebarLeft/widgets/WeekStrip.qml), [IrisSidebarSection.qml](../modules/iris/sidebar/IrisSidebarSection.qml), [IrisCalendarFace.qml](../modules/iris/widgets/IrisCalendarFace.qml) |
 | Compact screens | Hide the standard bar's media, weather, clock/date, utility-button, and battery modules at logical output widths of 1800 or less, leaving the tray policy unchanged. Wider outputs retain these modules according to their settings. | [BarBreakpoints.js](../modules/bar/BarBreakpoints.js), [BarContent.qml](../modules/bar/BarContent.qml) |
 | Keyboard volume | Change the default output volume in one-percent steps. | [Audio.qml](../services/Audio.qml) |
 | Wallpaper selection | Prefer the focused monitor in wallpaper settings and display folder names in selection controls. | [BackgroundConfig.qml](../modules/settings/BackgroundConfig.qml), [QuickWallpaperItem.qml](../modules/settings/QuickWallpaperItem.qml) |
 | File manager | Use Dolphin in shipped defaults, shortcuts, and fallback launch actions. | [config.json](../defaults/config.json), [70-binds.kdl](../defaults/niri/config.d/70-binds.kdl), [QuickLaunch.qml](../modules/sidebarLeft/widgets/QuickLaunch.qml) |
 | Screen routing | Retain screen-local popup bindings and the standard bar's screen-local sidebar-button selected state. Some overlays retain an explicit primary-screen binding with the historical crash boundary in AGENTS.md. | [ContextMenu.qml](../modules/common/widgets/ContextMenu.qml), [BarContent.qml](../modules/bar/BarContent.qml), [AGENTS.md](../AGENTS.md) |
-| Playback modes | Add repeat and shuffle controls to the bar popup and left sidebar media widget. | [PlayerControl.qml](../modules/mediaControls/PlayerControl.qml), [MediaPlayerWidget.qml](../modules/sidebarLeft/widgets/MediaPlayerWidget.qml) |
+| Playback modes | Add repeat and shuffle controls to the ii bar popup/left sidebar and iRiS full media card, Island media page, control center, and medium/large desktop music widgets. | [PlayerControl.qml](../modules/mediaControls/PlayerControl.qml), [MediaPlayerWidget.qml](../modules/sidebarLeft/widgets/MediaPlayerWidget.qml), [IrisPlaybackModeButton.qml](../modules/iris/components/IrisPlaybackModeButton.qml) |
 
 ## Customizations covered by upstream
 
@@ -49,8 +49,7 @@ date font rules. Neither feature is replaced by the upstream styling changes.
 
 ## iRiS adoption notes
 
-Recorded on 2026-10-14; the calendar adaptation below is pending and has not
-been implemented.
+The following adoption choices apply as of 2026-10-14.
 
 - Battery protection: use iRiS Settings > Battery > Charge limit instead of
   adding a separate iRiS quick toggle. Its enable switch and stop threshold use
@@ -60,19 +59,33 @@ been implemented.
   field. The existing ii quick toggles are unchanged.
 - Chinese calendar: the iRiS
   [sidebar/calendar card](../modules/iris/sidebar/IrisSidebarSection.qml) and
-  [calendar widget face](../modules/iris/widgets/IrisCalendarFace.qml) do not
-  display lunar labels, Chinese holiday names, or off-day/make-up-workday
-  markers (`休` / `班`). Record these missing displays for future adaptation,
-  reusing [CalendarCn](../services/CalendarCn.qml), the existing yearly holiday
-  data, and `calendar.china` settings. No new holiday provider or service is
-  needed.
+  [calendar widget face](../modules/iris/widgets/IrisCalendarFace.qml) now reuse
+  [CalendarCn](../services/CalendarCn.qml), the existing yearly holiday data,
+  and `calendar.china` settings. The card, its collapsed week strip, and large
+  desktop month grid show Chinese date labels and `休` / `班` markers. Small
+  and medium grids show the markers, with full date information on hover;
+  the medium widget also shows today's Chinese date. See
+  [Calendar Integration](CALENDAR.md#chinese-calendar-local-customization).
+- Playback modes: iRiS now includes the existing shuffle/repeat customization
+  through a shared [mode button](../modules/iris/components/IrisPlaybackModeButton.qml).
+  It uses normal transport-icon colors when active, 45% opacity when inactive,
+  and the same background in both states, without hover text. The full media card,
+  Island media page, control center, and medium/large desktop music widgets bind
+  controls to their displayed player. Compact cards and small widgets are unchanged.
+
+Run `node scripts/test-iris-calendar.mjs` for lunar, holiday, make-up-workday,
+deferred-data and display-setting regression checks. This executes the shared
+QML presentation functions and actual lunar conversion; it does not render QML.
 
 ## Playback modes
 
 The behavior and visual states are described in [Audio and Media](AUDIO_MEDIA.md#media-players).
-The scope is the bar media popup and the left sidebar's general media widget.
-The existing right sidebar and the dedicated YT Music player are separate
-components and were not changed in this work.
+The ii scope is the bar media popup and the left sidebar's general media widget.
+The ii right sidebar and dedicated YT Music player remain separate components.
+The iRiS scope is the full [media card](../modules/iris/components/IrisMediaCard.qml),
+[Island media page](../modules/iris/bar/island/IslandMediaPage.qml),
+[control center](../modules/iris/control/IrisControlGrid.qml), and medium/large
+[desktop music widgets](../modules/iris/widgets/IrisNowPlayingFace.qml).
 
 Controls use each card's MPRIS player and check `canControl` plus the corresponding
 capability flag. No Spotify credentials, Web API adapter, polling process, or new
@@ -83,6 +96,7 @@ Run the focused regression check from the repository root:
 
 ```bash
 node scripts/test-media-playback-modes.mjs
+node scripts/test-iris-playback-modes.mjs
 ```
 
 The check executes the actual QML button bindings and click handlers against a
@@ -93,6 +107,9 @@ seek methods with remembered browser-track length and a position correction,
 checking that the popup labels and slider share that timeline and that seeking
 clears the correction. It does not instantiate QML controls or test the D-Bus
 transport, so QML parsing and live UI checks remain necessary.
+The iRiS check covers the four displayed-player bindings, shared mode behavior,
+foreground/background states, absent hover text, disabled controls while editing,
+and matching previous/next icon sizes at multiple densities.
 
 On 2026-09-14, both changed QML files passed Qt 6 `qmlformat` parsing. Both surfaces
 were exercised against Spotify: clicking the repeat cycle and shuffle toggle
@@ -100,6 +117,14 @@ changed Spotify's reported state. Externally changed mode state was also checked
 in the media popup. The final brightness and layout were inspected in both
 surfaces after restarting iNiR, with no related QML errors or automatic service
 restarts. Playback modes were restored after the tests.
+
+On 2026-10-14, the five iRiS QML files passed Qt 6 parsing, and an isolated preview
+with a temporary MPRIS player verified all four surfaces, repeat/shuffle writes,
+external state updates, capability loss, and matching transport-icon colors.
+One preview shutdown crashed in Quickshell's `ColorQuantizer` destructor
+(`cancelAsync()` / `QThreadPool::waitForDone()`); the crash report was preserved.
+The main shell remained active with no service restarts. These checks do not
+establish that Quickshell hot reload or shutdown is crash-free.
 
 Other players, every theme/font scale, and screen hotplug were not exhaustively
 tested. Future live checks should verify that the intended panel is open before

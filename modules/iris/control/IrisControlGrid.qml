@@ -863,7 +863,7 @@ Item {
                 }
                 Transport {
                     visible: nowPlaying.strip
-                    Layout.preferredWidth: Math.round(112 * root.d)
+                    Layout.preferredWidth: Math.max(Math.round(112 * root.d), implicitWidth)
                     player: media
                     live: true
                 }
@@ -876,6 +876,17 @@ Item {
         property var player: null
         property bool live: false
         spacing: 0
+        IrisPlaybackModeButton {
+            Layout.fillWidth: true
+            player: transport.player?.player ?? null
+            mode: "shuffle"
+            enabled: supported && transport.live && !root.editing
+            implicitWidth: Math.round(26 * root.d)
+            implicitHeight: Math.round(30 * root.d)
+            iconSize: Math.round(20 * root.d)
+            buttonRadius: height / 2
+            buttonRadiusPressed: buttonRadius
+        }
         Repeater {
             model: [
                 { glyph: "fast_rewind", action: "previous" },
@@ -901,6 +912,17 @@ Item {
                     color: transport.live ? IrisStyle.text : IrisStyle.textTertiary
                 }
             }
+        }
+        IrisPlaybackModeButton {
+            Layout.fillWidth: true
+            player: transport.player?.player ?? null
+            mode: "repeat"
+            enabled: supported && transport.live && !root.editing
+            implicitWidth: Math.round(26 * root.d)
+            implicitHeight: Math.round(30 * root.d)
+            iconSize: Math.round(20 * root.d)
+            buttonRadius: height / 2
+            buttonRadiusPressed: buttonRadius
         }
     }
 }

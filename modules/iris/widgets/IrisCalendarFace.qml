@@ -17,6 +17,7 @@ IrisWidgetFace {
     readonly property var nextEvent: root.upcoming[0] ?? null
     readonly property string weekday: IrisFaceData.capitalized(Translation.locale.toString(root.today, "dddd"))
     readonly property string monthName: IrisFaceData.capitalized(Translation.locale.standaloneMonthName(root.viewing.getMonth()))
+    readonly property var china: CalendarCn.getDayDisplay(root.today)
 
     component MonthGrid: ColumnLayout {
         id: grid
@@ -75,13 +76,27 @@ IrisWidgetFace {
                         + (cell.modelData.currentMonth ? 0 : cell.index < 7 ? -1 : 1), cell.modelData.day)
                     readonly property bool busy: grid.dots && cell.modelData.currentMonth
                         && IrisFaceData.hasEvents(cell.date)
+                    readonly property var china: CalendarCn.getDayDisplay(cell.date)
+                    readonly property bool labelled: root.large && CalendarCn.enabled
+                    readonly property string detail: [cell.china.lunarLabel, cell.china.holidayName, cell.china.workStatus].filter(Boolean).join(" · ")
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 1
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: [Qt.formatDate(cell.date, "yyyy-MM-dd"), cell.detail].filter(Boolean).join(" · ")
+                    HoverHandler { id: cellHover }
+                    StyledToolTip {
+                        extraVisibleCondition: cellHover.hovered && (cell.modelData.currentMonth || root.adjacent)
+                        text: cell.detail
+                        font.family: root.fontMain
+                        font.pixelSize: root.px(12)
+                    }
                     Rectangle {
                         anchors.centerIn: parent
-                        width: Math.min(parent.width, parent.height) * 0.9
+                        anchors.verticalCenterOffset: cell.labelled ? -root.dp(5) : 0
+                        width: (cell.labelled ? Math.min(parent.width, parent.height, root.dp(22))
+                            : Math.min(parent.width, parent.height)) * 0.9
                         height: width
                         radius: width / 2
                         visible: cell.modelData.isToday
@@ -90,6 +105,7 @@ IrisWidgetFace {
                     FaceText {
                         face: root
                         anchors.centerIn: parent
+                        anchors.verticalCenterOffset: cell.labelled ? -root.dp(5) : 0
                         visible: cell.modelData.currentMonth || root.adjacent
                         text: cell.modelData.day
                         color: cell.modelData.isToday ? root.onFill(root.highlight)
@@ -98,6 +114,30 @@ IrisWidgetFace {
                         weight: cell.modelData.isToday ? Font.Bold : Font.Medium
                         font.family: root.fontNumbers
                         font.features: ({ "tnum": 1 })
+                    }
+                    FaceText {
+                        face: root
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        visible: text.length > 0 && (cell.modelData.currentMonth || root.adjacent)
+                        text: cell.china.workStatus
+                        color: text === "休" ? root.highlight : root.inkTertiary
+                        opacity: cell.modelData.currentMonth ? 1 : 0.4
+                        size: root.small ? 6.5 : 8
+                        weight: Font.DemiBold
+                    }
+                    FaceText {
+                        face: root
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: root.dp(3)
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        visible: cell.labelled && (cell.modelData.currentMonth || root.adjacent)
+                        text: cell.china.holidayName || cell.china.lunarLabel
+                        color: cell.china.holidayName.length > 0 ? root.highlight : root.inkTertiary
+                        opacity: cell.modelData.currentMonth ? 1 : 0.4
+                        size: 9
                     }
                     Rectangle {
                         visible: cell.busy && !cell.modelData.isToday
@@ -173,6 +213,16 @@ IrisWidgetFace {
                 Layout.fillWidth: true
                 text: root.today.getDate()
                 size: 46
+            }
+            FaceText {
+                face: root
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: [root.china.lunarLabel, root.china.holidayName, root.china.workStatus].filter(Boolean).join(" · ")
+                color: root.inkSecondary
+                size: 11
+                wrapMode: Text.WordWrap
+                maximumLineCount: 3
             }
             Item { Layout.fillHeight: true }
             EventLine {
