@@ -9,6 +9,11 @@ The integrated upstream baseline is v2.33.0 at
 `644487cf77503bd2e74b213242bc428b10d0703c`. See [AGENTS.md](../AGENTS.md) for the
 recovery reference, validation boundaries, and multi-monitor safety rules.
 
+The synchronization merge is `7bcf54f4`. Distribution, focused regression and
+QML checks passed, followed by a stable two-output live smoke test. The detailed
+runtime scope and inherited documentation/catalog audit failures are recorded in
+AGENTS.md; hotplug and suspend/resume remain unverified.
+
 ## Retained customizations
 
 These entries describe the differences retained against v2.33.0. UI-specific
