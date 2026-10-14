@@ -9,6 +9,7 @@ IrisIconButton {
     id: root
     required property var player
     property string mode: "repeat"
+    property real transportIconSize: 18 * IrisStyle.density
     readonly property bool supported: Boolean(root.player?.canControl
         && (root.mode === "shuffle" ? root.player.shuffleSupported : root.player.loopSupported))
     readonly property string caption: {
@@ -25,6 +26,8 @@ IrisIconButton {
         : (root.player?.loopState ?? MprisLoopState.None) !== MprisLoopState.None
     materialIcon: root.mode === "shuffle" ? "shuffle"
         : root.player?.loopState === MprisLoopState.Track ? "repeat_one" : "repeat"
+    // These glyphs are taller than skip/rewind at the same font size.
+    iconSize: Math.round(root.transportIconSize * (root.mode === "shuffle" ? 0.65 : 0.55))
     foreground: IrisStyle.text
     colBackgroundToggled: root.colBackground
     colBackgroundToggledHover: root.colBackgroundHover

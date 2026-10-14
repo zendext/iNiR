@@ -62,7 +62,7 @@ IrisWidgetFace {
             foreground: root.ink
             implicitWidth: Math.round(transport.disc * 0.7)
             implicitHeight: transport.disc
-            iconSize: root.px(17)
+            transportIconSize: root.px(17)
             buttonRadius: height / 2
             buttonRadiusPressed: buttonRadius
         }
@@ -99,7 +99,7 @@ IrisWidgetFace {
             foreground: root.ink
             implicitWidth: Math.round(transport.disc * 0.7)
             implicitHeight: transport.disc
-            iconSize: root.px(17)
+            transportIconSize: root.px(17)
             buttonRadius: height / 2
             buttonRadiusPressed: buttonRadius
         }

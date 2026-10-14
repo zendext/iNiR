@@ -79,8 +79,9 @@ iRiS exposes the same shuffle toggle and repeat cycle in the full media card
 now-playing module, and medium/large desktop music widgets. Compact cards and
 small desktop widgets retain their compact controls. Buttons appear only when
 the displayed player allows control and supports the corresponding mode, and
-follow changes made in the player. Mode icons match the previous/next icon size
-in each surface. Active icons use the same foreground color
+follow changes made in the player. Mode glyphs use optical size adjustments to
+match the visible height of previous/next, rather than sharing their font size.
+Active icons use the same foreground color
 as the other transport controls; inactive icons use 45% opacity. On/off states
 share the same background and have no hover text. Single-track repeat uses
 `repeat_one`; accessible names still describe the current mode.

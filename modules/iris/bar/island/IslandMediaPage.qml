@@ -160,7 +160,7 @@ GridLayout {
                 Layout.alignment: Qt.AlignVCenter
                 player: page.island.player
                 mode: "shuffle"
-                iconSize: 26 * IrisStyle.density
+                transportIconSize: 26 * IrisStyle.density
                 buttonRadius: height / 2
                 buttonRadiusPressed: buttonRadius
             }
@@ -200,7 +200,7 @@ GridLayout {
                 Layout.alignment: Qt.AlignVCenter
                 player: page.island.player
                 mode: "repeat"
-                iconSize: 26 * IrisStyle.density
+                transportIconSize: 26 * IrisStyle.density
                 buttonRadius: height / 2
                 buttonRadiusPressed: buttonRadius
             }

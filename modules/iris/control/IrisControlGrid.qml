@@ -883,7 +883,7 @@ Item {
             enabled: supported && transport.live && !root.editing
             implicitWidth: Math.round(26 * root.d)
             implicitHeight: Math.round(30 * root.d)
-            iconSize: Math.round(20 * root.d)
+            transportIconSize: Math.round(20 * root.d)
             buttonRadius: height / 2
             buttonRadiusPressed: buttonRadius
         }
@@ -920,7 +920,7 @@ Item {
             enabled: supported && transport.live && !root.editing
             implicitWidth: Math.round(26 * root.d)
             implicitHeight: Math.round(30 * root.d)
-            iconSize: Math.round(20 * root.d)
+            transportIconSize: Math.round(20 * root.d)
             buttonRadius: height / 2
             buttonRadiusPressed: buttonRadius
         }

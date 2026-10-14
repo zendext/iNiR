@@ -28,27 +28,11 @@ for (const path of ['components/IrisMediaCard.qml', 'bar/island/IslandMediaPage.
     const buttons = [...source.matchAll(/IrisPlaybackModeButton\s*\{/g)]
         .map(match => blockAfter(source, 'IrisPlaybackModeButton', match.index));
     assert.equal(buttons.length, 2, `${path}: missing shuffle/repeat controls`);
-    const adjacentSize = path === 'components/IrisMediaCard.qml'
-        ? source.match(/iconSize: (toggle \? .+)/)[1]
-        : path === 'bar/island/IslandMediaPage.qml'
-            ? blockAfter(source, 'GlyphButton').match(/glyphSize: (.+)/)[1]
-        : path === 'widgets/IrisNowPlayingFace.qml'
-            ? read('../modules/iris/widgets/FaceAction.qml').match(/iconSize: (.+)/)[1]
-            : source.match(/iconSize: (Math\.round\(\(transportButton.+)/)[1];
-    const defaultSize = read('../modules/iris/components/IrisIconButton.qml').match(/property int iconSize: (.+)/)[1];
     for (const button of buttons) {
         const binding = button.match(/player: (.+)/)?.[1];
         assert.ok(binding, `${path}: missing displayed-player binding`);
         const shown = vm.runInNewContext(binding, { root: { player }, page: { island: { player } }, transport: { player: { player } } });
         assert.equal(shown, player, `${path}: controls target the displayed player`);
-        for (const density of [1, 1.25, 1.5]) {
-            const px = n => Math.round(n * density);
-            const sizing = { root: { d: density, px, face: { px } }, IrisStyle: { density },
-                toggle: false, transportButton: { modelData: { action: 'previous' } } };
-            const modeSize = button.match(/iconSize: (.+)/)?.[1] ?? defaultSize;
-            assert.equal(vm.runInNewContext(modeSize, sizing), vm.runInNewContext(adjacentSize, sizing),
-                `${path}: mode icons match previous/next at density ${density}`);
-        }
         if (path === 'control/IrisControlGrid.qml') {
             const enabled = button.match(/enabled: (.+)/)?.[1];
             for (const [live, editing] of [[true, false], [false, false], [true, true]]) {
