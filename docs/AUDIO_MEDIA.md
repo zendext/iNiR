@@ -80,7 +80,7 @@ now-playing module, and medium/large desktop music widgets. Compact cards and
 small desktop widgets retain their compact controls. Buttons appear only when
 the displayed player allows control and supports the corresponding mode, and
 follow changes made in the player. Mode glyphs use optical size adjustments to
-match the visible height of previous/next, rather than sharing their font size.
+balance their visible size with previous/next, rather than sharing their font size.
 Active icons use the same foreground color
 as the other transport controls; inactive icons use 45% opacity. On/off states
 share the same background and have no hover text. Single-track repeat uses
