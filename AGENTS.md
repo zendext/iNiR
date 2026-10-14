@@ -27,6 +27,16 @@ added, removed, or superseded by upstream.
 
 ### Current baseline
 
+- The integrated upstream baseline is v2.33.0 at `48cdcecb0f6089cfbb7019054602eab28e154b3b`, synchronized on 2026-10-14. The previous local `main` is `644487cf77503bd2e74b213242bc428b10d0703c`; these are the two synchronization parents.
+- The merge retains the local Open-Meteo primary provider and geocoding, selectable bar temperature source, dual-threshold battery protection and quick toggles, Chinese calendar, compact-screen filtering, one-percent audio steps, focused-monitor wallpaper settings, folder-name labels, Dolphin defaults, screen-local popup bindings, sidebar-button selected state, and media playback-mode controls.
+- Upstream `04a08098` covers the Orbit native-screen fix from local `4c90b7cd`. Upstream `fbdbf4b5` covers the four sidebar click handlers from local `644487cf`; the right button's screen-local selected-state binding remains a local difference.
+- Conflict resolution combines the local compact media time row with upstream `PlayerProgress` and the shared `positionOf()`, `lengthOf()` and `seek()` contract. The left media widget adopts upstream play-button theme colors, and the Chinese calendar keeps its lunar/work-status layout with upstream date font rules.
+- The recovery reference for this synchronization is `644487cf77503bd2e74b213242bc428b10d0703c`. Keep the earlier references below for historical regression comparisons.
+- Focused offline checks pass: media playback modes and corrected/remembered timeline, two-output sidebar routing and selected state, 21 Qt bar-breakpoint checks, all 6 sensor fixtures, the QML component-pitfall scan, and the Qt compatibility scan. Full distribution verification requires a committed HEAD because its Void fixture clones the repository; runtime validation for this baseline is not recorded yet.
+- This is a source synchronization. No full installer or Niri configuration migrations have been run.
+
+### Previous synchronization
+
 - The upstream synchronization merge is `d7d611a627dcba822537c0a1a69cc56f7a01444d`.
 - Its parents are the previous local `main` (`421be5ec9f8336636b767a0daf46afa12feb1371`) and `upstream/main` (`dcba34ee124acb5a191c88b2e1952006fa5afb2f`).
 - The merge preserves the local Open-Meteo, selectable resource temperature source, dual-threshold battery protection, Chinese calendar, compact-screen bar behavior, one-percent audio steps, focused-monitor wallpaper, folder-name display, and Dolphin-default changes.
@@ -60,4 +70,4 @@ added, removed, or superseded by upstream.
 - Reproduce and verify primary-monitor changes, output hotplug/removal, suspend/resume, and rapid sidebar open/close before declaring a screen-routing change safe.
 - On a crash, preserve the trigger sequence and collect `journalctl --user -u inir.service`, `coredumpctl`, and `~/.cache/quickshell/crashes/` evidence before changing code.
 - Perform upstream conflict resolution in an isolated worktree. Do not merge into the checkout currently loaded by Quickshell.
-- To compare a regression with the pre-sync behavior, use `421be5ec9f8336636b767a0daf46afa12feb1371` as the recovery reference; do not discard newer history while testing.
+- To compare a regression with the current pre-sync behavior, use `644487cf77503bd2e74b213242bc428b10d0703c`. The older `421be5ec9f8336636b767a0daf46afa12feb1371` remains the pre-September-sync reference; do not discard newer history while testing.

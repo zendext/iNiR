@@ -29,7 +29,7 @@ Item {
     readonly property color colBgHover: Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
         : Appearance.inirEverywhere ? Appearance.inir.colLayer1Hover
         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
-        : Appearance.colors.colLayer1Hover
+        : Appearance.colLayer1Hover
     readonly property real radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall
         : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.verysmall
 
@@ -315,12 +315,12 @@ Item {
                 ActionButton {
                     btnIcon: "system_update"
                     label: Translation.tr("Check for updates")
-                    onClicked: ShellExec.execDetachedArgs([Config.options?.apps?.terminal ?? "/usr/bin/kitty", "-e", "fish", "-c", "yay -Syu; read -P 'Press Enter to close...'"], "Check for updates")
+                    onClicked: PackageSearch.updateSystem()
                 }
                 ActionButton {
                     btnIcon: "cleaning_services"
                     label: Translation.tr("Clean package cache")
-                    onClicked: ShellExec.execDetachedArgs([Config.options?.apps?.terminal ?? "/usr/bin/kitty", "-e", "fish", "-c", "sudo paccache -rk1; read -P 'Press Enter to close...'"], "Clean package cache")
+                    onClicked: PackageSearch.cleanPackageCache()
                 }
                 ActionButton {
                     btnIcon: "info"

@@ -10,7 +10,8 @@ iNiR controls audio through PipeWire via the Quickshell PipeWire module and `wpc
 
 ### Volume control
 
-Keybinds and OSD handle the basics:
+Keybinds and OSD handle the basics. This fork changes keyboard volume in
+one-percent steps:
 
 | Key | Action |
 |-----|--------|
@@ -26,7 +27,7 @@ The right sidebar (ii) and action center (waffle) include a per-app volume mixer
 
 ### Visualizer source filters
 
-Visualizer app filters are exclusions, not an allowlist. In **Settings → Quick → Filters**, enabling a filter for an audio app prevents that app from feeding Cava/visualizers. With no visualizer filters enabled, iNiR follows the active player automatically. The list is populated from live PipeWire applications, and manual desktop-entry filters can be added when an app is not currently producing audio.
+Visualizer app filters are exclusions, not an allowlist. In **Settings → Quick → Filters**, enabling a filter for an audio app prevents that app from being selected to drive Cava/visualizers. With no visualizer filters enabled, iNiR follows the active player automatically. Cava captures the monitor of the selected playback sink rather than a recording source, so source resolution never falls through to the system microphone. The list is populated from live PipeWire applications, and manual desktop-entry filters can be added when an app is not currently producing audio.
 
 ### Organic visualizer
 
@@ -63,10 +64,13 @@ The bar media popup and the left sidebar's media widget include shuffle and repe
 buttons when the corresponding player supports them and allows control. Repeat
 cycles through off, playlist repeat, and single-track repeat. Active icons match
 the play/pause icon's color and brightness; inactive icons use 45% opacity.
-Both surfaces use a transparent play/pause button with a bright icon.
+The bar popup uses a transparent play/pause button; the left widget follows the
+upstream theme's play-state colors.
 Single-track repeat uses the repeat-one icon. The buttons follow the player's
 reported state and control the player shown in their own card. The bar popup puts
-elapsed and total time beside the progress slider to keep the controls compact.
+elapsed and total time beside the shared `PlayerProgress` slider to keep the
+controls compact. Labels and slider read the controller's corrected position and
+remembered track length; seeking clears the old position correction.
 Shuffle uses the standard MPRIS on/off property; Spotify Smart Shuffle is not
 exposed as a separate mode by this interface.
 

@@ -37,6 +37,7 @@ ContentPage {
     id: root
     settingsPageIndex: 19
     settingsPageName: Translation.tr("Mascot")
+    property bool surfacePosesExpanded: false
 
     SettingsCardSection {
         expanded: true
@@ -44,17 +45,9 @@ ContentPage {
         title: Translation.tr("Mascot")
 
         SettingsGroup {
-            // The art pack is an optional download (setup › Extras); probe one
-            // pack asset and surface install instructions when it's missing
-            Image {
-                id: packProbe
-                visible: false
-                source: Quickshell.shellPath("assets/images/mascot/inir-mascot-edge-peek.png")
-                asynchronous: true
-            }
             Rectangle {
                 Layout.fillWidth: true
-                visible: packProbe.status === Image.Error
+                visible: !MascotCatalog.packAvailable
                 implicitHeight: packMissingText.implicitHeight + 20
                 radius: Appearance.rounding.small
                 color: Appearance.colors.colSecondaryContainer
@@ -72,6 +65,7 @@ ContentPage {
             SettingsSwitch {
                 buttonIcon: "pets"
                 text: Translation.tr("Show mascot illustration")
+                enabled: MascotCatalog.packAvailable
                 checked: Config.options?.mascot?.enable ?? false
                 onCheckedChanged: Config.setNestedValue("mascot.enable", checked)
                 StyledToolTip {
@@ -88,6 +82,47 @@ ContentPage {
                 StyledToolTip {
                     text: Translation.tr("She occasionally peeks from a screen edge and reacts to music, battery and updates. Never over fullscreen apps or games")
                 }
+            }
+
+            ConfigSpinBox {
+                icon: "timelapse"
+                text: Translation.tr("Minimum quiet time")
+                from: 3; to: 60; stepSize: 1
+                value: Config.options?.mascot?.companion?.minQuietMinutes ?? 10
+                property bool _ready: false
+                Component.onCompleted: _ready = true
+                onValueChanged: if (_ready) Config.setNestedValue("mascot.companion.minQuietMinutes", value)
+            }
+
+            ConfigSpinBox {
+                icon: "schedule"
+                text: Translation.tr("Maximum visits per hour")
+                from: 1; to: 6; stepSize: 1
+                value: Config.options?.mascot?.companion?.maxVisitsPerHour ?? 3
+                property bool _ready: false
+                Component.onCompleted: _ready = true
+                onValueChanged: if (_ready) Config.setNestedValue("mascot.companion.maxVisitsPerHour", value)
+            }
+
+            SettingsSwitch {
+                text: Translation.tr("Respect Do Not Disturb and quiet hours")
+                buttonIcon: "chat"
+                checked: Config.options?.mascot?.companion?.respectQuiet ?? true
+                onCheckedChanged: Config.setNestedValue("mascot.companion.respectQuiet", checked)
+            }
+
+            SettingsSwitch {
+                text: Translation.tr("React to opened shell panels")
+                buttonIcon: "chat"
+                checked: Config.options?.mascot?.companion?.shellReactions ?? true
+                onCheckedChanged: Config.setNestedValue("mascot.companion.shellReactions", checked)
+            }
+
+            SettingsSwitch {
+                text: Translation.tr("Speech bubbles")
+                buttonIcon: "chat"
+                checked: Config.options?.mascot?.companion?.dialogue ?? true
+                onCheckedChanged: Config.setNestedValue("mascot.companion.dialogue", checked)
             }
 
             ConfigSpinBox {
@@ -254,10 +289,31 @@ ContentPage {
             }
             StyledText {
                 Layout.fillWidth: true
-                text: Translation.tr("Rarely, instead of a quiet visit, she runs across the desktop and bonks your widgets, hurls them around or rattles the bar")
+                text: Translation.tr("Occasional visits to your widgets and panels, with small pranks that return home. Mouse chase only starts when you ask.")
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 color: Appearance.colors.colSubtext
                 wrapMode: Text.Wrap
+            }
+            ContentSubsection {
+                title: Translation.tr("Character art")
+                ConfigSelectionArray {
+                    currentValue: Config.options?.mascot?.chaos?.artStyle ?? "jrpg"
+                    options: [
+                    { displayName: Translation.tr("JRPG"), value: "jrpg" },
+                    { displayName: Translation.tr("Codex sprites"), value: "codex" },
+                    { displayName: Translation.tr("Classic art"), value: "classic" }
+                ]
+                    onSelected: newValue => Config.setNestedValue("mascot.chaos.artStyle", newValue)
+                }
+            }
+            ConfigSpinBox {
+                icon: "timer"
+                text: Translation.tr("Minimum time between chaos visits") + " (min)"
+                from: 15; to: 180; stepSize: 5
+                value: Config.options?.mascot?.chaos?.intervalMinutes ?? 45
+                property bool _ready: false
+                Component.onCompleted: _ready = true
+                onValueChanged: if (_ready) Config.setNestedValue("mascot.chaos.intervalMinutes", value)
             }
             SettingsSwitch {
                 buttonIcon: "cyclone"
@@ -293,7 +349,17 @@ ContentPage {
                 enabled: Config.options?.mascot?.chaos?.enable ?? false
                 onCheckedChanged: Config.setNestedValue("mascot.chaos.systemEvents", checked)
                 StyledToolTip {
-                    text: Translation.tr("Rare, reason-flavored romps for low battery, a notification pileup, or very late hours")
+                    text: Translation.tr("Occasional reactions to real shell activity, sharing the same quiet time and visit limit")
+                }
+            }
+            SettingsSwitch {
+                buttonIcon: "notifications"
+                text: Translation.tr("Calling-card notifications")
+                checked: Config.options?.mascot?.chaos?.callingCards ?? false
+                enabled: Config.options?.mascot?.chaos?.enable ?? false
+                onCheckedChanged: Config.setNestedValue("mascot.chaos.callingCards", checked)
+                StyledToolTip {
+                    text: Translation.tr("After a destructive prank, Kira may leave a playful desktop notification")
                 }
             }
             Flow {
@@ -309,6 +375,20 @@ ContentPage {
                     materialIcon: "cleaning_services"
                     mainText: Translation.tr("Tidy up")
                     onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "mascot", "tidy"])
+                }
+                RippleButtonWithIcon {
+                    materialIcon: "sports_esports"
+                    mainText: Translation.tr("Play chase")
+                    enabled: Config.options?.mascot?.chaos?.enable ?? false
+                    onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "mascot", "chase"])
+                    StyledToolTip { text: Translation.tr("Explicitly start the mouse chase game; it never starts on its own") }
+                }
+                RippleButtonWithIcon {
+                    materialIcon: "search"
+                    mainText: Translation.tr("Hide and seek")
+                    enabled: Config.options?.mascot?.chaos?.enable ?? false
+                    onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "mascot", "hideSeek"])
+                    StyledToolTip { text: Translation.tr("Explicitly start hide-and-seek; find Kira before the timer expires") }
                 }
             }
         }
@@ -401,10 +481,15 @@ ContentPage {
             property var poseOptions: [{ displayName: Translation.tr("Auto (rotate pool)"), value: "" }]
 
             FileView {
+                id: mascotManifestFile
                 path: Quickshell.shellPath("assets/images/mascot/manifest.json")
                 watchChanges: true
                 onLoadedChanged: {
                     if (!loaded) return
+                    if (!MascotCatalog.packAvailable) {
+                        mascotReactionsGroup.poseOptions = [{ displayName: Translation.tr("Auto (rotate pool)"), value: "", image: "" }]
+                        return
+                    }
                     try {
                         const m = JSON.parse(text())
                         const anim = m.animatedPoses ?? []
@@ -419,6 +504,17 @@ ContentPage {
                     } catch (e) {
                         console.warn("[QuickConfig] mascot manifest load failed:", e)
                     }
+                }
+            }
+
+            Connections {
+                target: MascotCatalog
+                function onPackAvailableChanged() {
+                    if (!MascotCatalog.packAvailable) {
+                        mascotReactionsGroup.poseOptions = [{ displayName: Translation.tr("Auto (rotate pool)"), value: "", image: "" }]
+                        return
+                    }
+                    mascotManifestFile.reload()
                 }
             }
 
@@ -450,6 +546,7 @@ ContentPage {
                 delegate: ColumnLayout {
                     id: eventRow
                     required property var modelData
+                    property bool poseExpanded: false
                     Layout.fillWidth: true
                     spacing: 4
 
@@ -461,14 +558,28 @@ ContentPage {
                         onCheckedChanged: Config.setNestedValue("mascot.companion.events." + eventRow.modelData.key, checked)
                     }
 
-                    MascotPoseGallery {
+                    RippleButtonWithIcon {
                         Layout.fillWidth: true
                         Layout.leftMargin: 12
                         visible: Config.options?.mascot?.companion?.events?.[eventRow.modelData.key] ?? true
-                        label: Translation.tr("Pose for this event")
-                        options: mascotReactionsGroup.poseOptions
-                        currentValue: Config.options?.mascot?.companion?.eventPoses?.[eventRow.modelData.key] ?? ""
-                        onSelected: value => Config.setNestedValue("mascot.companion.eventPoses." + eventRow.modelData.key, value)
+                        materialIcon: eventRow.poseExpanded ? "expand_less" : "image"
+                        mainText: eventRow.poseExpanded
+                            ? Translation.tr("Hide event pose")
+                            : Translation.tr("Configure event pose")
+                        onClicked: eventRow.poseExpanded = !eventRow.poseExpanded
+                    }
+
+                    SettingsTaskLoader {
+                        requested: eventRow.poseExpanded
+                        Layout.leftMargin: 12
+                        sourceComponent: Component {
+                            MascotPoseGallery {
+                                label: Translation.tr("Pose for this event")
+                                options: mascotReactionsGroup.poseOptions
+                                currentValue: Config.options?.mascot?.companion?.eventPoses?.[eventRow.modelData.key] ?? ""
+                                onSelected: value => Config.setNestedValue("mascot.companion.eventPoses." + eventRow.modelData.key, value)
+                            }
+                        }
                     }
                 }
             }
@@ -488,8 +599,15 @@ ContentPage {
                 color: Appearance.colors.colSubtext
                 wrapMode: Text.Wrap
             }
+            RippleButtonWithIcon {
+                materialIcon: root.surfacePosesExpanded ? "expand_less" : "tune"
+                mainText: root.surfacePosesExpanded
+                    ? Translation.tr("Hide surface pose overrides")
+                    : Translation.tr("Configure surface pose overrides")
+                onClicked: root.surfacePosesExpanded = !root.surfacePosesExpanded
+            }
             Repeater {
-                model: [
+                model: root.surfacePosesExpanded ? [
                     { key: "notifications", label: Translation.tr("Notifications") },
                     { key: "clipboard", label: Translation.tr("Clipboard") },
                     { key: "mediaControls", label: Translation.tr("Media controls") },
@@ -507,7 +625,7 @@ ContentPage {
                     { key: "cheatsheet", label: Translation.tr("Cheatsheet") },
                     { key: "updates", label: Translation.tr("Update overlay") },
                     { key: "dialogs", label: Translation.tr("Dialogs") }
-                ]
+                ] : []
                 delegate: MascotPoseGallery {
                     required property var modelData
                     Layout.fillWidth: true
@@ -609,6 +727,7 @@ ContentPage {
     }
 
     SettingsCardSection {
+        id: kiraCollectionSection
         icon: "photo_library"
         title: Translation.tr("Kira collection")
         expanded: false
@@ -622,8 +741,13 @@ ContentPage {
                 wrapMode: Text.Wrap
             }
 
-            MascotCollection {
-                Layout.fillWidth: true
+            SettingsTaskLoader {
+                requested: kiraCollectionSection.expanded
+                sourceComponent: Component {
+                    MascotCollection {
+                        width: parent?.width ?? 0
+                    }
+                }
             }
         }
     }

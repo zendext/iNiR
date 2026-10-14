@@ -40,7 +40,8 @@ Item { // Bar content region
     Connections {
         target: MascotChaos
         enabled: MascotChaos.enabled
-        function onPanelShake(intensity) {
+        function onPanelShake(intensity, output) {
+            if (root.screen?.name !== output || MascotChaos.suppressed) return
             root._quakeScale = Math.max(1, intensity)
             if (Appearance.animationsEnabled) _quakeAnim.restart()
         }
@@ -85,7 +86,7 @@ Item { // Bar content region
                 monochromeIcon: true,
                 text: Translation.tr("Settings"),
                 action: () => {
-                    Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "settings"])
+                    GlobalStates.toggleSettings()
                 },
             },
         ]
@@ -119,18 +120,17 @@ Item { // Bar content region
         + (root.isIslands
             ? root.islandOuterInset + root.islandPad * 2
             : Appearance.rounding.screenRounding * 2)
-    readonly property real leftCenterDemand: leftCenterGroup.empty ? 0 : leftCenterGroup.contentWidth
-    readonly property real rightCenterDemand: rightCenterGroupPill.empty ? 0 : rightCenterGroupPill.contentWidth
-    readonly property real centerDemand: middleCenterGroup.empty ? 0 : middleCenterGroup.contentWidth
+    readonly property real leftCenterDemand: leftCenterGroup.empty ? 0 : leftCenterGroup.minimumContentWidth
+    readonly property real rightCenterDemand: rightCenterGroupPill.empty ? 0 : rightCenterGroupPill.minimumContentWidth
+    readonly property real centerDemand: middleCenterGroup.empty ? 0 : middleCenterGroup.minimumContentWidth
     readonly property real leftSideDemand: root.leftEdgeDemand + root.leftCenterDemand
         + ((root.leftEdgeDemand > 0 && root.leftCenterDemand > 0) ? root.hostGap : 0)
     readonly property real rightSideDemand: root.rightEdgeDemand + root.rightCenterDemand
         + ((root.rightEdgeDemand > 0 && root.rightCenterDemand > 0) ? root.hostGap : 0)
-    readonly property real symmetricSideDemand: Math.max(root.leftSideDemand, root.rightSideDemand)
-    readonly property real centerBoundaryGap: (root.centerDemand > 0 && root.symmetricSideDemand > 0)
-        ? root.hostGap : 0
+    readonly property real centerBoundaryGap: (root.centerDemand > 0
+            && (root.leftSideDemand > 0 || root.rightSideDemand > 0)) ? root.hostGap : 0
     readonly property real naturalHostDemand: root.centerDemand
-        + root.symmetricSideDemand * 2 + root.centerBoundaryGap * 2
+        + root.leftSideDemand + root.rightSideDemand + root.centerBoundaryGap * 2
     readonly property real hostScale: root.naturalHostDemand > 0 && root.width > 0
         ? Math.min(1, root.width / root.naturalHostDemand) : 1
     readonly property bool layoutCompressionActive: root.hostScale < 0.999
@@ -139,32 +139,42 @@ Item { // Bar content region
     readonly property real compressedLeftCenterWidth: root.leftCenterDemand * root.hostScale
     readonly property real compressedRightCenterWidth: root.rightCenterDemand * root.hostScale
     readonly property real compressedCenterWidth: root.centerDemand * root.hostScale
-    // Max width a side pill may take before it would collide with an edge
-    // section. Pure outer geometry (screen width, edge sections, workspaces) so
-    // there is no binding loop with the pills' own content width. A pill takes
-    // its NATURAL content width, clamped to this — its modules elide/clip to fit
-    // instead of inflating the pill or pushing into the edges.
-    readonly property real centerSideMaxWidth: {
+    // Room each side pill has before it would collide with its own edge section, with the
+    // centre cluster on the screen centre. Pure outer geometry (screen width, edge sections,
+    // workspaces) so there is no binding loop with the pills' own content width.
+    function _sideRoom(edgeWidth) {
         const total = root.width
         if (!(total > 0)) return root.baseCenterSideModuleWidth
-        const edge = Math.max(barLeftSideMouseArea.implicitWidth, barRightSideMouseArea.implicitWidth)
-        const wsHalf = middleCenterGroup.width / 2
-        return Math.max(0, total / 2 - edge - wsHalf - 12)
+        const edge = edgeWidth + (root.isIslands ? root.islandPad + root.hostGap : 0)
+        return total / 2 - edge - middleCenterGroup.width / 2 - 12
     }
+    readonly property real leftCenterRoom: root._sideRoom(barLeftSideMouseArea.implicitWidth)
+    readonly property real rightCenterRoom: root._sideRoom(barRightSideMouseArea.implicitWidth)
+    readonly property real centerShift: {
+        if (!(root.width > 0)) return 0
+        if (root.layoutCompressionActive)
+            return (root.leftSideDemand - root.rightSideDemand) * root.hostScale / 2
+        const leftNeed = root.leftCenterDemand - root.leftCenterRoom
+        const rightNeed = root.rightCenterDemand - root.rightCenterRoom
+        if (rightNeed > 0) return -Math.min(rightNeed, Math.max(0, -leftNeed))
+        if (leftNeed > 0) return Math.min(leftNeed, Math.max(0, -rightNeed))
+        return 0
+    }
+    readonly property real leftCenterMaxWidth: Math.max(0, root.leftCenterRoom + root.centerShift)
+    readonly property real rightCenterMaxWidth: Math.max(0, root.rightCenterRoom - root.centerShift)
     // Both centre pills share one width = the larger of the two non-empty
-    // content widths (clamped to centerSideMaxWidth). This keeps the cluster
     // balanced around the workspaces pivot; each BarGroup centres its content,
     // so the narrower side doesn't look stuck to one edge. An empty zone
     // contributes 0 and collapses entirely.
     readonly property real centerPillMirrorSlack: 56 * Appearance.fontSizeScale
-    function _pillWidth(cw) {
+    function _pillWidth(cw, maxWidth) {
         const lw = leftCenterGroup.empty ? 0 : leftCenterGroup.contentWidth
         const rw = rightCenterGroupPill.empty ? 0 : rightCenterGroupPill.contentWidth
         const raw = Math.max(lw, rw)
         if (raw <= 0) return 0
         const own = Math.max(0, cw)
         const mirrored = own > 0 ? Math.min(raw, own + root.centerPillMirrorSlack) : raw
-        return Math.min(mirrored, root.centerSideMaxWidth)
+        return Math.min(mirrored, maxWidth)
     }
     readonly property bool cardStyleEverywhere: (Config.options?.dock?.cardStyle ?? false) && (Config.options?.sidebar?.cardStyle ?? false) && (Config.options?.bar?.cornerStyle === 3)
     readonly property bool zzzEverywhere: root.surfaceDialect === "zzz"
@@ -277,12 +287,35 @@ Item { // Bar content region
     readonly property int barSpectrumSmoothing: Math.max(0, Config.options?.bar?.visualizer?.smoothing ?? 2)
     readonly property string barSpectrumWaveMode: Config.options?.bar?.visualizer?.waveMode ?? "fill"
     readonly property real barSpectrumLineWidth: Math.max(1, Config.options?.bar?.visualizer?.lineWidth ?? 2)
-    readonly property real barSpectrumEdgeInset: Math.max(0, Config.options?.bar?.visualizer?.edgeInset ?? 0)
+    readonly property real barSpectrumEdgeInset: Math.max(6, Config.options?.bar?.visualizer?.edgeInset ?? 6)
     readonly property real barSpectrumEdgeSoftness: Math.max(0,
-        Math.min(1, (Config.options?.bar?.visualizer?.edgeSoftness ?? 28) / 100))
+        Math.min(1, (Config.options?.bar?.visualizer?.edgeSoftness ?? 36) / 100))
     readonly property string barSpectrumFrequencyProfile: Config.options?.bar?.visualizer?.frequencyProfile ?? "flat"
     readonly property real barSpectrumAccentStrength: Math.max(0,
         Math.min(1, (Config.options?.bar?.visualizer?.accentStrength ?? 70) / 100))
+    readonly property string barSpectrumOrganicFit: Config.options?.bar?.visualizer?.organicFit ?? "auto"
+    readonly property real barSpectrumOrganicLayoutScale: {
+        if (root.barSpectrumOrganicFit === "aura") return 1
+        if (root.barSpectrumOrganicFit === "contained") return 0.72
+        if (root.isIslands) return 0.78
+        if (root.isFrame) return 0.74
+        if (root.isScenic) return 0.82
+        if (root.barAppearance === "m3") return 0.68
+        return 0.88
+    }
+    readonly property real barSpectrumOrganicSensitivity: Math.max(0, Math.min(1,
+        (Config.options?.bar?.visualizer?.organicSensitivity ?? 42) / 100)) * barSpectrumOrganicLayoutScale
+    readonly property real barSpectrumOrganicPulse: Math.max(0, Math.min(1,
+        (Config.options?.bar?.visualizer?.organicPulse ?? 55) / 100)) * barSpectrumOrganicLayoutScale
+    readonly property real barSpectrumOrganicMotionSpeed: Math.max(0.25, Math.min(1.5,
+        (Config.options?.bar?.visualizer?.organicMotionSpeed ?? 80) / 100))
+    readonly property real barSpectrumOrganicIdleMotion: Math.max(0, Math.min(1,
+        (Config.options?.bar?.visualizer?.organicIdleMotion ?? 0) / 100))
+    readonly property real barSpectrumOrganicGlow: Math.max(0, Math.min(1,
+        (Config.options?.bar?.visualizer?.organicGlow ?? 25) / 100)) * barSpectrumOrganicLayoutScale
+    readonly property real barSpectrumOrganicBaseRadius: Math.max(0, Math.min(1,
+        (Config.options?.bar?.visualizer?.organicBaseRadius ?? 36) / 100))
+    readonly property bool barSpectrumOrganicEdgeAura: root.barSpectrumOrganicFit === "aura"
     readonly property color barSpectrumColor: root.inirEverywhere ? Appearance.inir.colPrimary
         : root.zzzEverywhere ? Appearance.zzz.accent
         : root.regaliaEverywhere ? Appearance.regalia.hardwarePrimary
@@ -382,14 +415,14 @@ Item { // Bar content region
             edgeSoftness: root.barSpectrumEdgeSoftness
             frequencyProfile: root.barSpectrumFrequencyProfile
             accentStrength: root.barSpectrumAccentStrength
-            organicSensitivity: 0.62
-            organicPulse: 0.72
-            organicMotionSpeed: 0.9
-            organicIdleMotion: 0.18
-            organicGlow: 0.38
+            organicSensitivity: root.barSpectrumOrganicSensitivity
+            organicPulse: root.barSpectrumOrganicPulse
+            organicMotionSpeed: root.barSpectrumOrganicMotionSpeed
+            organicIdleMotion: root.barSpectrumOrganicIdleMotion
+            organicGlow: root.barSpectrumOrganicGlow
             organicOpacity: root.barSpectrumOpacity
-            organicEdgeAura: true
-            organicBaseRadius: 0.42
+            organicEdgeAura: root.barSpectrumOrganicEdgeAura
+            organicBaseRadius: root.barSpectrumOrganicBaseRadius
             topLeftRadius: edgeIsland.radius
             topRightRadius: edgeIsland.radius
             bottomLeftRadius: edgeIsland.radius
@@ -407,6 +440,8 @@ Item { // Bar content region
         property string zone: "left"
         Layout.alignment: Qt.AlignVCenter
         Layout.fillWidth: root._fillWidth(modelData, zone)
+        Layout.maximumWidth: root._maxWidth(modelData, item)
+        Layout.minimumWidth: root._minWidth(modelData, item)
         Layout.fillHeight: root._fillHeight(modelData)
         active: root._moduleShown(modelData, zone)
         visible: active
@@ -518,8 +553,8 @@ Item { // Bar content region
 
     // Which ids stretch along the bar axis. `spacer` is a pure gap;
     // activeWindow/taskbar fill the edge section; resources fills only on the
-    // tightest screens. Centre pills size tightly to content, so clock/media do
-    // NOT fill — they sit at natural width with no leftover space.
+    // tightest screens. Centre pills size tightly to content, so clock does NOT
+    // fill; media fills only up to its natural width, which lets it shrink first.
     readonly property string _spacerMode: Config.options?.bar?.layout?.spacerMode ?? "auto"
     function _fillWidth(id, zone) {
         if (id === "spacer") {
@@ -542,7 +577,15 @@ Item { // Bar content region
         // activeWindow adopts its clamped intrinsic width instead of filling.
         if (id === "activeWindow") return root._fillSlot(zone) && !root.isIslands
         if (id === "resources") return root.useShortenedForm === 2
+        // Media fills up to its own width only (see _maxWidth), so it can yield in a crowded group.
+        if (id === "media") return true
         return false
+    }
+    function _maxWidth(id, item) {
+        return id === "media" && item ? item.implicitWidth : Number.POSITIVE_INFINITY
+    }
+    function _minWidth(id, item) {
+        return id === "media" && item ? item.minimumWidth : 0
     }
     function _fillHeight(id) {
         // Islands: filling the row's height means filling the BAR's height, which is
@@ -623,7 +666,6 @@ Item { // Bar content region
     // exclusive: taskbar replaces the active window title).
     // The wrapper deliberately reports implicitWidth: 0 so neither a long title
     // nor extra taskbar items inflate the edge section (which would shrink
-    // centerSideMaxWidth and shuffle the centre pills on every change). The
     // Loader's Layout.fillWidth (see root._fillWidth) gives this item the
     // leftover horizontal space inside the section, and the inner content
     // elides / clips to fit instead of pushing the bar around.
@@ -695,6 +737,15 @@ Item { // Bar content region
         id: barBackground
         readonly property bool auroraEverywhere: root.surfaceDialect === "aurora" || root.angelEverywhere
         readonly property bool gameModeMinimal: Appearance.gameModeMinimal
+        readonly property bool editorialGlassActive: Appearance.editorialEverywhere
+            && Appearance.editorial.glassActive
+            && !gameModeMinimal && root.barAppearance === "classic"
+        readonly property bool editorialPaperStackActive: Appearance.editorialEverywhere
+            && Appearance.editorial.paperStack
+            && root.barAppearance === "classic"
+            && !root.isFrame && !root.isScenic
+        readonly property bool editorialBackdropReady: editorialGlassActive
+            && (root.nativeBlurActive || blurredWallpaper.status === Image.Ready)
         readonly property int cornerStyle: Config.options?.bar?.cornerStyle ?? 0
         readonly property bool zzzGlassActive: root.zzzEverywhere
             && root.barAppearance === "classic"
@@ -767,6 +818,10 @@ Item { // Bar content region
             }
             if (root.regaliaEverywhere) {
                 return "transparent"
+            }
+            if (barBackground.editorialGlassActive) {
+                if (!barBackground.editorialBackdropReady) return Appearance.editorial.paper
+                return root.nativeBlurActive ? Appearance.editorial.glassPaper : "transparent"
             }
             if (root.angelEverywhere) {
                 const base = blendedColors?.colLayer0 ?? Appearance.colors.colLayer0
@@ -884,6 +939,7 @@ Item { // Bar content region
             if (root.isScenic) return 0
             if (root.zzzEverywhere) return 1
             if (root.regaliaEverywhere) return 0
+            if (barBackground.editorialPaperStackActive) return 0
             if (root.isFrame) return root.angelEverywhere ? Appearance.angel.panelBorderWidth : 1
             if (root.angelEverywhere) return Appearance.angel.panelBorderWidth
             if (root.inirEverywhere) {
@@ -947,7 +1003,9 @@ Item { // Bar content region
             z: -1
         }
 
-        layer.enabled: auroraEverywhere && !root.inirEverywhere && !root.zzzEverywhere && !gameModeMinimal && root.barAppearance === "classic"
+        layer.enabled: (auroraEverywhere || barBackground.editorialGlassActive)
+            && !root.inirEverywhere && !root.zzzEverywhere && !gameModeMinimal
+            && !root.nativeBlurActive && root.barAppearance === "classic"
         layer.effect: GE.OpacityMask {
             maskSource: Rectangle {
                 width: barBackground.width
@@ -958,15 +1016,19 @@ Item { // Bar content region
 
         Image {
             id: blurredWallpaper
+            readonly property bool requested: (barBackground.auroraEverywhere || barBackground.editorialGlassActive)
+                && !root.inirEverywhere && !root.zzzEverywhere
+                && !barBackground.gameModeMinimal && !root.nativeBlurActive
+                && root.barAppearance === "classic"
             x: -barBackground.barMargin
             y: barBackground.isBottom ? -(root.screen?.height ?? 1080) + barBackground.height + barBackground.barMargin : -barBackground.barMargin
             width: root.screen?.width ?? 1920
             height: root.screen?.height ?? 1080
-            visible: barBackground.auroraEverywhere && !root.inirEverywhere && !root.zzzEverywhere && !barBackground.gameModeMinimal && !root.nativeBlurActive && root.barAppearance === "classic"
+            visible: requested && status === Image.Ready
             // An invisible Image still downloads and decodes its source, so gating
             // only `visible` on the style left a screen-sized wallpaper bitmap
             // resident for every user NOT on aurora. Gate the source too.
-            source: visible ? root.wallpaperUrl : ""
+            source: requested ? root.wallpaperUrl : ""
             fillMode: Image.PreserveAspectCrop
             cache: true
             sourceSize.width: root.screen?.width ?? 1920
@@ -975,17 +1037,21 @@ Item { // Bar content region
 
             // Skip QML blur when the compositor is already blurring this layer
             // (avoids double-blur and the FBO cost). See #159.
-            layer.enabled: Appearance.effectsEnabled && barBackground.auroraEverywhere && !root.inirEverywhere && !root.nativeBlurActive
+            layer.enabled: Appearance.effectsEnabled
+                && (barBackground.auroraEverywhere || barBackground.editorialGlassActive)
+                && !root.inirEverywhere && !root.nativeBlurActive
             layer.effect: MultiEffect {
                 source: blurredWallpaper
                 anchors.fill: source
                 saturation: root.angelEverywhere
                     ? (Appearance.angel.blurSaturation * Appearance.angel.colorStrength)
+                    : barBackground.editorialGlassActive ? 0.04
                     : (Appearance.effectsEnabled ? 0.2 : 0)
                 blurEnabled: Appearance.effectsEnabled
                 blurMax: 64
                 blur: Appearance.effectsEnabled
-                    ? (root.angelEverywhere ? Appearance.angel.blurIntensity : 1)
+                    ? (root.angelEverywhere ? Appearance.angel.blurIntensity
+                        : barBackground.editorialGlassActive ? Appearance.editorial.glassBlur : 1)
                     : 0
             }
 
@@ -993,8 +1059,24 @@ Item { // Bar content region
                 anchors.fill: parent
                 color: root.angelEverywhere
                     ? ColorUtils.transparentize((barBackground.blendedColors?.colLayer0 ?? Appearance.colors.colLayer0Base), Appearance.angel.overlayOpacity * Appearance.angel.panelTransparentize)
+                    : barBackground.editorialGlassActive ? Appearance.editorial.glassPaper
                     : ColorUtils.transparentize((barBackground.blendedColors?.colLayer0 ?? Appearance.colors.colLayer0Base), Appearance.aurora.overlayTransparentize)
             }
+        }
+
+        EditorialPaperStack {
+            anchors.fill: parent
+            visible: barBackground.editorialPaperStackActive
+            faceColor: Appearance.editorial.paper
+            radius: barBackground.radius
+            topLeftRadius: barBackground.topLeftRadius
+            topRightRadius: barBackground.topRightRadius
+            bottomLeftRadius: barBackground.bottomLeftRadius
+            bottomRightRadius: barBackground.bottomRightRadius
+            materialOpacity: barBackground.editorialBackdropReady
+                ? Appearance.editorial.glassOpacity : 1
+            backingOpacity: barBackground.editorialBackdropReady
+                ? Appearance.editorial.glassBackingOpacity : 1
         }
 
         // Angel inset glow — top edge
@@ -1041,14 +1123,14 @@ Item { // Bar content region
             edgeSoftness: root.barSpectrumEdgeSoftness
             frequencyProfile: root.barSpectrumFrequencyProfile
             accentStrength: root.barSpectrumAccentStrength
-            organicSensitivity: 0.62
-            organicPulse: 0.72
-            organicMotionSpeed: 0.9
-            organicIdleMotion: 0.18
-            organicGlow: 0.38
+            organicSensitivity: root.barSpectrumOrganicSensitivity
+            organicPulse: root.barSpectrumOrganicPulse
+            organicMotionSpeed: root.barSpectrumOrganicMotionSpeed
+            organicIdleMotion: root.barSpectrumOrganicIdleMotion
+            organicGlow: root.barSpectrumOrganicGlow
             organicOpacity: root.barSpectrumOpacity
-            organicEdgeAura: true
-            organicBaseRadius: 0.42
+            organicEdgeAura: root.barSpectrumOrganicEdgeAura
+            organicBaseRadius: root.barSpectrumOrganicBaseRadius
             topLeftRadius: barBackground.topLeftRadius
             topRightRadius: barBackground.topRightRadius
             bottomLeftRadius: barBackground.bottomLeftRadius
@@ -1173,9 +1255,17 @@ Item { // Bar content region
             spectrumEdgeSoftness: root.barSpectrumEdgeSoftness
             spectrumFrequencyProfile: root.barSpectrumFrequencyProfile
             spectrumAccentStrength: root.barSpectrumAccentStrength
+            spectrumOrganicSensitivity: root.barSpectrumOrganicSensitivity
+            spectrumOrganicPulse: root.barSpectrumOrganicPulse
+            spectrumOrganicMotionSpeed: root.barSpectrumOrganicMotionSpeed
+            spectrumOrganicIdleMotion: root.barSpectrumOrganicIdleMotion
+            spectrumOrganicGlow: root.barSpectrumOrganicGlow
+            spectrumOrganicEdgeAura: root.barSpectrumOrganicEdgeAura
+            spectrumOrganicBaseRadius: root.barSpectrumOrganicBaseRadius
             spectrumDomain: root
             anchors.verticalCenter: parent.verticalCenter
             anchors.horizontalCenter: parent.horizontalCenter
+            anchors.horizontalCenterOffset: root.centerShift
             padding: 4
             implicitWidth: empty ? 0 : (root.layoutCompressionActive
                 ? root.compressedCenterWidth : contentWidth)
@@ -1192,6 +1282,8 @@ Item { // Bar content region
                     required property string modelData
                     Layout.alignment: Qt.AlignVCenter
                     Layout.fillWidth: root._fillWidth(modelData, "center")
+                    Layout.maximumWidth: root._maxWidth(modelData, item)
+                    Layout.minimumWidth: root._minWidth(modelData, item)
                     Layout.fillHeight: root._fillHeight(modelData)
                     // Hidden modules must leave the layout entirely, or their
                     // implicit width lingers as a ghost gap inside the pill.
@@ -1232,6 +1324,13 @@ Item { // Bar content region
             spectrumEdgeSoftness: root.barSpectrumEdgeSoftness
             spectrumFrequencyProfile: root.barSpectrumFrequencyProfile
             spectrumAccentStrength: root.barSpectrumAccentStrength
+            spectrumOrganicSensitivity: root.barSpectrumOrganicSensitivity
+            spectrumOrganicPulse: root.barSpectrumOrganicPulse
+            spectrumOrganicMotionSpeed: root.barSpectrumOrganicMotionSpeed
+            spectrumOrganicIdleMotion: root.barSpectrumOrganicIdleMotion
+            spectrumOrganicGlow: root.barSpectrumOrganicGlow
+            spectrumOrganicEdgeAura: root.barSpectrumOrganicEdgeAura
+            spectrumOrganicBaseRadius: root.barSpectrumOrganicBaseRadius
             spectrumDomain: root
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: (Config.options?.bar.borderless ?? false) ? leftSeparator.left : middleCenterGroup.left
@@ -1243,7 +1342,7 @@ Item { // Bar content region
             // mirrored width so the two side pills stay visually balanced.
             implicitWidth: empty ? 0 : (root.layoutCompressionActive
                 ? root.compressedLeftCenterWidth
-                : (root.isIslands ? Math.min(contentWidth, root.centerSideMaxWidth) : root._pillWidth(contentWidth)))
+                : (root.isIslands ? Math.min(contentWidth, root.leftCenterMaxWidth) : root._pillWidth(contentWidth, root.leftCenterMaxWidth)))
             clipContent: true
 
             Repeater {
@@ -1252,6 +1351,8 @@ Item { // Bar content region
                     required property string modelData
                     Layout.alignment: Qt.AlignVCenter
                     Layout.fillWidth: root._fillWidth(modelData, "centerLeft")
+                    Layout.maximumWidth: root._maxWidth(modelData, item)
+                    Layout.minimumWidth: root._minWidth(modelData, item)
                     Layout.fillHeight: root._fillHeight(modelData)
                     active: root._moduleShown(modelData, "centerLeft")
                     visible: active
@@ -1307,6 +1408,13 @@ Item { // Bar content region
                 spectrumEdgeSoftness: root.barSpectrumEdgeSoftness
                 spectrumFrequencyProfile: root.barSpectrumFrequencyProfile
                 spectrumAccentStrength: root.barSpectrumAccentStrength
+                spectrumOrganicSensitivity: root.barSpectrumOrganicSensitivity
+                spectrumOrganicPulse: root.barSpectrumOrganicPulse
+                spectrumOrganicMotionSpeed: root.barSpectrumOrganicMotionSpeed
+                spectrumOrganicIdleMotion: root.barSpectrumOrganicIdleMotion
+                spectrumOrganicGlow: root.barSpectrumOrganicGlow
+                spectrumOrganicEdgeAura: root.barSpectrumOrganicEdgeAura
+                spectrumOrganicBaseRadius: root.barSpectrumOrganicBaseRadius
                 spectrumDomain: root
                 anchors.verticalCenter: parent.verticalCenter
                 // Islands: each capsule hugs its own content (no symmetric mirroring,
@@ -1314,7 +1422,7 @@ Item { // Bar content region
                 // mirrored width so the two side pills stay visually balanced.
                 implicitWidth: empty ? 0 : (root.layoutCompressionActive
                     ? root.compressedRightCenterWidth
-                    : (root.isIslands ? Math.min(contentWidth, root.centerSideMaxWidth) : root._pillWidth(contentWidth)))
+                    : (root.isIslands ? Math.min(contentWidth, root.rightCenterMaxWidth) : root._pillWidth(contentWidth, root.rightCenterMaxWidth)))
                 clipContent: true
 
                 Repeater {
@@ -1323,6 +1431,8 @@ Item { // Bar content region
                         required property string modelData
                         Layout.alignment: Qt.AlignVCenter
                         Layout.fillWidth: root._fillWidth(modelData, "centerRight")
+                        Layout.maximumWidth: root._maxWidth(modelData, item)
+                        Layout.minimumWidth: root._minWidth(modelData, item)
                         Layout.fillHeight: root._fillHeight(modelData)
                         active: root._moduleShown(modelData, "centerRight")
                         visible: active

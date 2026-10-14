@@ -32,7 +32,8 @@ doctor_fix() {
 }
 
 doctor_detect_compositor_service() {
-    if ! command -v systemctl >/dev/null 2>&1; then
+    if ! declare -F has_usable_systemd_user_manager >/dev/null 2>&1 \
+            || ! has_usable_systemd_user_manager; then
         return 1
     fi
 
@@ -71,7 +72,6 @@ check_dependencies() {
         "cliphist:cliphist"
         "wl-copy:wl-clipboard"
         "wl-paste:wl-clipboard"
-        "fuzzel:fuzzel"
         "awww:awww"
         "awww-daemon:awww"
         "hyprpicker:hyprpicker"
@@ -111,6 +111,14 @@ check_dependencies() {
     if [[ "${OS_GROUP_ID:-unknown}" == "arch" ]]; then
         cmds+=("checkupdates:pacman-contrib")
     fi
+    if [[ "${OS_GROUP_ID:-unknown}" == "void" ]]; then
+        cmds+=(
+            "ydotool:ydotool"
+            "secret-tool:libsecret"
+            "gnome-keyring-daemon:gnome-keyring"
+            "powerprofilesctl:power-profiles-daemon"
+        )
+    fi
 
     # Check required commands
     for item in "${cmds[@]}"; do
@@ -121,6 +129,55 @@ check_dependencies() {
             missing_cmds+=("$cmd")
         fi
     done
+
+    # Void's source provider is version-pinned, so an old binary is also a
+    # repairable dependency rather than merely an available command.
+    if [[ "${OS_GROUP_ID:-unknown}" == "void" ]]; then
+        local qml_root webengine_qml_found=false layershell_qml_found=false
+        for qml_root in /usr/lib/qt6/qml /usr/lib64/qt6/qml /usr/local/lib/qt6/qml /usr/local/lib64/qt6/qml; do
+            [[ -f "$qml_root/QtWebEngine/qmldir" ]] && webengine_qml_found=true
+            [[ -f "$qml_root/org/kde/layershell/qmldir" ]] && layershell_qml_found=true
+        done
+        if [[ "$webengine_qml_found" != true ]]; then
+            missing+=("Qt WebEngine QML")
+            missing_cmds+=("qt-webengine")
+        fi
+        if [[ "$layershell_qml_found" != true ]]; then
+            missing+=("LayerShellQt QML")
+            missing_cmds+=("layer-shell-qt")
+        fi
+
+        # Older Void Darkly provider builds disabled KDecoration support. The
+        # style itself still loaded, but darkly-settings6 then failed when it
+        # tried to load the decoration settings KCM. Treat that partial install
+        # as repairable so normal updates can rebuild the complete provider.
+        local darkly_kcm_found=false darkly_plugin_root
+        for darkly_plugin_root in \
+            "$(qtpaths6 --plugin-dir 2>/dev/null || true)" \
+            /usr/lib64/qt6/plugins \
+            /usr/lib/qt6/plugins \
+            /usr/lib/x86_64-linux-gnu/qt6/plugins; do
+            [[ -n "$darkly_plugin_root" ]] || continue
+            if [[ -f "$darkly_plugin_root/org.kde.kdecoration3.kcm/kcm_darklydecoration.so" ]]; then
+                darkly_kcm_found=true
+                break
+            fi
+        done
+        if [[ "$darkly_kcm_found" != true ]]; then
+            missing+=("Darkly settings KCM")
+            missing_cmds+=("darkly")
+        fi
+
+        local doctor_repo_root void_ydotool_version installed_ydotool_version
+        doctor_repo_root="${REPO_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}"
+        void_ydotool_version="$(sed -n 's/^YDOTOOL_VERSION="\([^"]*\)"/\1/p' "$doctor_repo_root/sdata/dist-void/install-deps.sh")"
+        installed_ydotool_version="$(ydotoold --version 2>/dev/null || true)"
+        if [[ -n "$void_ydotool_version" && "$installed_ydotool_version" != "v${void_ydotool_version}" ]] \
+                && [[ " ${missing_cmds[*]} " != *" ydotool "* ]]; then
+            missing+=("ydotool v${void_ydotool_version}")
+            missing_cmds+=("ydotool")
+        fi
+    fi
 
     # EasyEffects can expose Equalizer settings through its local server even
     # when the actual LSP LV2 DSP backend is absent. Check the bundle itself so
@@ -193,7 +250,7 @@ check_dependencies() {
         # Provide distro-specific install hints
         case "${OS_GROUP_ID:-unknown}" in
             arch)
-                echo -e "    ${STY_FAINT}Run: yay -S ${missing_cmds[*]}${STY_RST}"
+                echo -e "    ${STY_FAINT}Run: ./setup install (installs the matching Arch packages)${STY_RST}"
                 ;;
             fedora)
                 echo -e "    ${STY_FAINT}Run: sudo dnf install ... (see ./setup install)${STY_RST}"
@@ -201,11 +258,43 @@ check_dependencies() {
             debian|ubuntu)
                 echo -e "    ${STY_FAINT}Run: sudo apt install ... (see ./setup install)${STY_RST}"
                 ;;
+            void)
+                echo -e "    ${STY_FAINT}Run: ./setup install (repairs the matching XBPS providers)${STY_RST}"
+                ;;
             *)
                 echo -e "    ${STY_FAINT}Install these tools using your package manager${STY_RST}"
                 ;;
         esac
     fi
+}
+
+check_graphics_stack() {
+    if [[ "${OS_GROUP_ID:-unknown}" != "void" ]]; then
+        doctor_pass "Graphics preflight not required for ${OS_GROUP_ID:-this distro}"
+        return 0
+    fi
+
+    local probe="${DOTS_CORE_CONFDIR:-.}/scripts/check-void-graphics.sh"
+    if [[ ! -f "$probe" && -f ./scripts/check-void-graphics.sh ]]; then
+        probe="./scripts/check-void-graphics.sh"
+    fi
+    if [[ ! -f "$probe" ]]; then
+        doctor_fail "Void graphics preflight helper is missing"
+        return 1
+    fi
+
+    local output rc=0
+    output="$(bash "$probe" 2>&1)" || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        doctor_pass "${output%%$'\n'*}"
+        return 0
+    fi
+
+    doctor_fail "${output%%$'\n'*}"
+    if [[ "$output" == *$'\n'* ]]; then
+        printf '%s\n' "${output#*$'\n'}"
+    fi
+    return "$rc"
 }
 
 get_missing_dependencies() {
@@ -317,10 +406,10 @@ check_script_permissions() {
     target="${target}/scripts"
     [[ ! -d "$target" ]] && return 0
     
-    local bad=$(find "$target" \( -name "*.sh" -o -name "*.fish" -o -name "*.py" \) ! -executable 2>/dev/null | wc -l)
+    local bad=$(find "$target" \( -name "*.sh" -o -name "*.fish" -o \( -name "*.py" ! -name "test-*.py" \) \) ! -executable 2>/dev/null | wc -l)
     
     if [[ $bad -gt 0 ]]; then
-        find "$target" \( -name "*.sh" -o -name "*.fish" -o -name "*.py" \) -exec chmod +x {} \;
+        find "$target" \( -name "*.sh" -o -name "*.fish" -o \( -name "*.py" ! -name "test-*.py" \) \) -exec chmod +x {} \;
         doctor_fix "Fixed permissions on $bad script(s)"
     else
         doctor_pass "Script permissions OK"
@@ -336,7 +425,7 @@ check_repo_checkout_state() {
         return 0
     fi
 
-    if [[ ! -d "${REPO_ROOT}/.git" ]]; then
+    if [[ ! -e "${REPO_ROOT}/.git" ]]; then
         doctor_fail "Repo checkout is missing git metadata"
         echo -e "    ${STY_FAINT}Run setup from a real iNiR checkout, not a random copy${STY_RST}"
         return 1
@@ -457,6 +546,17 @@ check_launcher_health() {
         doctor_fail "PATH resolves an outdated launcher: ${launcher_cmd}"
         echo -e "    ${STY_FAINT}Expected launcher content from ${repo_launcher}${STY_RST}"
         return 1
+    fi
+
+    if declare -F sync_user_desktop_integration_from_repo >/dev/null 2>&1; then
+        if sync_user_desktop_integration_from_repo; then
+            if [[ "${INIR_DESKTOP_INTEGRATION_CHANGED:-0}" -gt 0 ]]; then
+                doctor_fix "Refreshed desktop integration"
+            fi
+        else
+            doctor_fail "Could not refresh desktop integration"
+            return 1
+        fi
     fi
 
     doctor_pass "Launcher current"
@@ -827,7 +927,42 @@ _try_install_font_package() {
 }
 
 check_niri_running() {
-    if [[ -n "$NIRI_SOCKET" && -S "$NIRI_SOCKET" ]]; then
+    local current_socket="${NIRI_SOCKET:-}"
+
+    if declare -F has_usable_systemd_user_manager >/dev/null 2>&1 \
+            && has_usable_systemd_user_manager \
+            && systemctl --user is-active --quiet niri.service >/dev/null 2>&1 \
+            && declare -F inir_resolve_niri_service_environment >/dev/null 2>&1; then
+        if ! inir_resolve_niri_service_environment; then
+            doctor_fail "niri.service is running but its session sockets could not be verified"
+            return 0
+        fi
+
+        export NIRI_SOCKET="$INIR_RESOLVED_NIRI_SOCKET"
+        export WAYLAND_DISPLAY="$INIR_RESOLVED_WAYLAND_DISPLAY"
+
+        local manager_env manager_socket manager_wayland
+        manager_env="$(systemctl --user show-environment 2>/dev/null || true)"
+        manager_socket="$(grep '^NIRI_SOCKET=' <<< "$manager_env" | head -1 | cut -d= -f2- || true)"
+        manager_wayland="$(grep '^WAYLAND_DISPLAY=' <<< "$manager_env" | head -1 | cut -d= -f2- || true)"
+
+        if [[ "$manager_socket" != "$INIR_RESOLVED_NIRI_SOCKET" \
+                || "$manager_wayland" != "$INIR_RESOLVED_WAYLAND_DISPLAY" ]]; then
+            if systemctl --user set-environment \
+                    "NIRI_SOCKET=$INIR_RESOLVED_NIRI_SOCKET" \
+                    "WAYLAND_DISPLAY=$INIR_RESOLVED_WAYLAND_DISPLAY" >/dev/null 2>&1; then
+                doctor_fix "Repaired Niri session environment in the user manager"
+            else
+                doctor_fail "Niri session environment is missing from the user manager"
+            fi
+            return 0
+        fi
+
+        doctor_pass "Niri compositor running"
+        return 0
+    fi
+
+    if [[ -n "$current_socket" && -S "$current_socket" ]]; then
         doctor_pass "Niri compositor running"
     else
         doctor_fail "Niri not detected (run inside Niri session)"
@@ -907,8 +1042,19 @@ check_manifest() {
 }
 
 check_service_unit_health() {
-    if ! command -v systemctl >/dev/null 2>&1; then
-        doctor_pass "User service checks skipped (systemctl missing)"
+    if ! declare -F has_usable_systemd_user_manager >/dev/null 2>&1 \
+            || ! has_usable_systemd_user_manager; then
+        if [[ "${OS_GROUP_ID:-unknown}" == void ]]; then
+            if command -v nmcli >/dev/null 2>&1 \
+                    && nmcli -t -f STATE general >/dev/null 2>&1; then
+                doctor_pass "Void NetworkManager provider running"
+            else
+                doctor_fail "NetworkManager is installed but its Void runit service is not running"
+                echo -e "    ${STY_FAINT}Run: ./setup install and accept the NetworkManager migration prompt${STY_RST}"
+            fi
+            return 0
+        fi
+        doctor_pass "User service checks skipped (no usable systemd user manager)"
         return 0
     fi
 
@@ -923,25 +1069,88 @@ check_service_unit_health() {
         return 0
     fi
 
-    if [[ ! -f "$service_path" ]]; then
-        if [[ "$installed_strategy" == "package-manager" ]]; then
-            doctor_pass "User service not installed"
+    if [[ "$installed_strategy" == "package-manager" ]]; then
+        systemctl --user daemon-reload >/dev/null 2>&1 || true
+        service_path="$(systemctl --user show -p FragmentPath --value inir.service 2>/dev/null || true)"
+        if [[ ! -f "$service_path" ]]; then
+            doctor_fail "Packaged inir.service is missing"
+            echo -e "    ${STY_FAINT}Reinstall the iNiR shell package${STY_RST}"
+            return 0
+        fi
+
+        local user_service="${XDG_CONFIG_HOME}/systemd/user/inir.service"
+        if [[ "$service_path" == "$user_service" ]]; then
+            local packaged_asset="${REPO_ROOT}/assets/systemd/inir.service"
+            local packaged_unit=""
+            local candidate
+            for candidate in /usr/lib/systemd/user/inir.service /usr/local/lib/systemd/user/inir.service /lib/systemd/user/inir.service; do
+                if [[ -f "$candidate" ]]; then
+                    packaged_unit="$candidate"
+                    break
+                fi
+            done
+            if [[ -n "$packaged_unit" && -f "$packaged_asset" ]] \
+                    && cmp -s "$user_service" "$packaged_asset" \
+                    && cmp -s "$packaged_unit" "$packaged_asset"; then
+                rm -f "$user_service"
+                systemctl --user daemon-reload >/dev/null 2>&1 || true
+                service_path="$(systemctl --user show -p FragmentPath --value inir.service 2>/dev/null || true)"
+                if [[ "$service_path" == "$packaged_unit" ]]; then
+                    doctor_fix "Removed redundant user service shadowing the package"
+                else
+                    doctor_fail "Packaged inir.service did not become active after removing the duplicate"
+                    return 0
+                fi
+            else
+                doctor_fail "Local inir.service shadows the package-managed unit"
+                echo -e "    ${STY_FAINT}Review ${user_service}, then run: inir service uninstall && inir service enable${STY_RST}"
+                return 0
+            fi
+        fi
+    elif [[ ! -f "$service_path" ]]; then
+        if declare -F sync_user_inir_service_from_repo_if_present >/dev/null 2>&1 \
+                && sync_user_inir_service_from_repo_if_present >/dev/null 2>&1 \
+                && [[ -f "$service_path" ]]; then
+            ensure_user_inir_service_enabled >/dev/null 2>&1 || true
+            doctor_fix "Restored missing user inir.service"
         else
             doctor_fail "User inir.service missing"
             echo -e "    ${STY_FAINT}Run: inir service install${STY_RST}"
+            return 0
         fi
-        return 0
+    fi
+
+    if [[ "$installed_strategy" != "package-manager" ]] && declare -F repair_legacy_niri_shell_startup >/dev/null 2>&1; then
+        if repair_legacy_niri_shell_startup; then
+            [[ "${INIR_LEGACY_NIRI_STARTUP_REPAIRED:-0}" -gt 0 ]] && doctor_fix "Removed legacy Niri shell startup"
+        fi
     fi
 
     if [[ "$installed_strategy" != "package-manager" ]] && declare -F sync_user_inir_service_from_repo_if_present >/dev/null 2>&1; then
         if sync_user_inir_service_from_repo_if_present >/dev/null 2>&1; then
-            doctor_fix "Refreshed user inir.service from repo"
+            [[ "${INIR_SERVICE_SYNC_CHANGED:-0}" -gt 0 ]] && doctor_fix "Refreshed user inir.service from repo"
+        else
+            doctor_fail "Could not refresh user inir.service from repo"
+            return 0
         fi
     fi
 
-    local kill_mode fragment_path
+    if declare -F ensure_user_inir_service_enabled >/dev/null 2>&1 \
+            && ensure_user_inir_service_enabled >/dev/null 2>&1 \
+            && [[ "${INIR_SERVICE_WIRING_CHANGED:-0}" -gt 0 ]]; then
+        doctor_fix "Repaired inir.service Niri wiring"
+    fi
+
+    local active_state service_result kill_mode fragment_path
+    active_state="$(systemctl --user show -p ActiveState --value inir.service 2>/dev/null || true)"
+    service_result="$(systemctl --user show -p Result --value inir.service 2>/dev/null || true)"
     kill_mode="$(systemctl --user show -p KillMode inir.service 2>/dev/null | cut -d= -f2)"
     fragment_path="$(systemctl --user show -p FragmentPath inir.service 2>/dev/null | cut -d= -f2)"
+
+    if [[ "$active_state" == "failed" || "$service_result" == "start-limit-hit" ]]; then
+        doctor_fail "Shell service failed (${service_result:-unknown result})"
+        echo -e "    ${STY_FAINT}Run: inir logs${STY_RST}"
+    fi
 
     if [[ -n "$kill_mode" && "$kill_mode" != "process" ]]; then
         doctor_fail "inir.service KillMode is '${kill_mode}'"
@@ -970,7 +1179,7 @@ check_service_unit_health() {
     done
 
     if [[ -n "$expected_target" && "$has_expected_link" == false ]]; then
-        if [[ "$installed_strategy" != "package-manager" ]] && declare -F ensure_user_inir_service_enabled >/dev/null 2>&1 && ensure_user_inir_service_enabled >/dev/null 2>&1; then
+        if declare -F ensure_user_inir_service_enabled >/dev/null 2>&1 && ensure_user_inir_service_enabled >/dev/null 2>&1; then
             doctor_fix "Enabled inir.service for ${expected_target}"
         else
             doctor_fail "inir.service not wired to ${expected_target}"
@@ -1092,85 +1301,6 @@ _doctor_abi_detect() {
     return 0
 }
 
-# Pure rebuild command computation: echoes the command or nothing.
-_doctor_abi_rebuild_cmd() {
-    local install_kind="unknown" install_pkg="" rebuild_helper=""
-
-    if command -v pacman >/dev/null 2>&1; then
-        if pacman -Qi quickshell-bin &>/dev/null; then
-            install_kind="arch-aur-bin"; install_pkg="quickshell-bin"
-        elif pacman -Qi quickshell-git &>/dev/null; then
-            install_pkg="quickshell-git"
-            if pacman -Qm quickshell-git &>/dev/null; then
-                install_kind="arch-aur-foreign"
-            else
-                install_kind="arch-repo-binary"
-            fi
-        elif pacman -Qi quickshell &>/dev/null; then
-            install_pkg="quickshell"
-            if pacman -Qm quickshell &>/dev/null; then
-                install_kind="arch-aur-foreign"
-            else
-                install_kind="arch-repo-official"
-            fi
-        fi
-    elif command -v rpm >/dev/null 2>&1; then
-        local rpm_q
-        rpm_q="$(rpm -qa 2>/dev/null | grep -E '^quickshell(-git)?-[0-9]' | head -1)"
-        if [[ -n "$rpm_q" ]]; then
-            install_kind="fedora-pkg"
-            install_pkg="${rpm_q%%-[0-9]*}"
-        fi
-    elif [[ -d /etc/nixos ]] || [[ -L /run/current-system ]]; then
-        install_kind="nixos"; install_pkg="quickshell"
-    elif command -v dpkg >/dev/null 2>&1 && dpkg -s quickshell &>/dev/null; then
-        install_kind="debian"; install_pkg="quickshell"
-    elif [[ -x /usr/local/bin/quickshell || -x /usr/local/bin/qs ]]; then
-        install_kind="source"
-    fi
-
-    if [[ "$install_kind" == arch-* ]]; then
-        for h in paru yay; do
-            if command -v "$h" >/dev/null 2>&1; then
-                rebuild_helper="$h"; break
-            fi
-        done
-    fi
-
-    case "$install_kind" in
-        arch-aur-foreign)
-            if [[ -n "$rebuild_helper" ]]; then
-                printf '%s -S --rebuild --noconfirm %s' "$rebuild_helper" "$install_pkg"
-            fi
-            ;;
-        arch-repo-binary)
-            if [[ -n "$rebuild_helper" ]]; then
-                printf '%s -Sa --noconfirm --skipreview %s' "$rebuild_helper" "$install_pkg"
-            fi
-            ;;
-        arch-repo-official)
-            # pacman -Syu only works if the repo already has a fresh rebuild.
-            # Most of the time it doesn't — switch to AUR quickshell-git for immediate fix.
-            if [[ -n "$rebuild_helper" ]]; then
-                printf 'sudo pacman -Rdd --noconfirm quickshell && %s -S --noconfirm quickshell-git' "$rebuild_helper"
-            else
-                printf 'sudo pacman -Syu'
-            fi
-            ;;
-        arch-aur-bin)
-            if [[ -n "$rebuild_helper" ]]; then
-                printf '%s -Rdd --noconfirm quickshell-bin && %s -Sa --noconfirm --skipreview quickshell-git' "$rebuild_helper" "$rebuild_helper"
-            fi
-            ;;
-        fedora-pkg)
-            printf 'sudo dnf upgrade --refresh %s' "$install_pkg"
-            ;;
-        nixos)
-            printf 'sudo nixos-rebuild switch --upgrade'
-            ;;
-    esac
-}
-
 check_quickshell_abi() {
     # Quickshell uses Qt private APIs — any Qt minor version bump (e.g. 6.10→6.11)
     # breaks ABI and requires rebuilding quickshell. This is the #1 cause of
@@ -1187,19 +1317,38 @@ check_quickshell_abi() {
         return 0
     fi
 
-    doctor_fail "Qt/Quickshell ABI mismatch: $_doctor_abi_msg"
-    echo -e "  ${STY_YELLOW}Quickshell uses Qt private APIs that break on every Qt update.${STY_RST}"
-    echo -e "  ${STY_YELLOW}The shell will crash on any UI interaction until quickshell is rebuilt.${STY_RST}"
+    doctor_fail "Quickshell was built for another Qt version: $_doctor_abi_msg"
+    echo -e "  ${STY_YELLOW}Quickshell uses Qt internals and asks to be rebuilt after every Qt update. Until then it can crash.${STY_RST}"
+    echo -e "  ${STY_FAINT}Fix: inir doctor --fix-abi${STY_RST}"
+    return 1
+}
 
-    local _rebuild_cmd
-    _rebuild_cmd="$(_doctor_abi_rebuild_cmd)"
-    if [[ -n "$_rebuild_cmd" ]]; then
-        echo -e "  ${STY_YELLOW}To fix: ${_rebuild_cmd//--noconfirm /}${STY_RST}"
-        echo -e "  ${STY_FAINT}Or run: inir doctor --fix-abi${STY_RST}"
-    else
-        echo -e "  ${STY_YELLOW}No automatic fix available for this install type.${STY_RST}"
-        echo -e "  ${STY_FAINT}See: https://quickshell.org/docs/master/guide/install-setup${STY_RST}"
+check_polkit_agent() {
+    # Nothing else answers polkit: without Quickshell's Polkit module, app password prompts fail silently.
+    local config="${DOTS_CORE_CONFDIR}/config.json" qs_bin own_agent
+    own_agent="$(pidof -s polkit-gnome-authentication-agent-1 lxqt-policykit-agent polkit-kde-authentication-agent-1 \
+        polkit-mate-authentication-agent-1 lxpolkit 2>/dev/null || true)"
+    if [[ -n "$own_agent" ]]; then
+        doctor_pass "Password prompts: your own agent ($(ps -o comm= -p "$own_agent" 2>/dev/null))"
+        return 0
     fi
+    if [[ -f "$config" ]] && [[ "$(jq -r '.modules.polkit == false' "$config" 2>/dev/null)" == "true" ]]; then
+        doctor_pass "Password prompts: the shell's agent is off (modules.polkit)"
+        return 0
+    fi
+
+    qs_bin="$(readlink -f "$(command -v qs 2>/dev/null)" 2>/dev/null || true)"
+    # ldd reads ELF binaries only; a wrapper script (Nix) proves nothing either way.
+    if [[ -z "$qs_bin" ]] || ! ldd "$qs_bin" >/dev/null 2>&1; then
+        return 0
+    fi
+    if ldd "$qs_bin" 2>/dev/null | grep -q 'libpolkit-agent-1'; then
+        doctor_pass "Password prompts: answered by the shell"
+        return 0
+    fi
+
+    doctor_fail "Quickshell was built without Polkit: apps asking for your password get no prompt"
+    echo -e "  ${STY_YELLOW}Install a Quickshell built with Polkit (your distribution's package has it), or run an agent of your own.${STY_RST}"
     return 1
 }
 
@@ -1252,10 +1401,10 @@ check_quickshell_loads() {
             return 1
         fi
         
-        # Check for ABI mismatch in crash output
+        # The Qt warning prints on every start of a mismatched build, so it is a lead, not the cause.
         if echo "$output" | grep -qiE "built against Qt|Qt.*mismatch|incompatible Qt"; then
-            doctor_fail "Quickshell crashed due to Qt ABI mismatch"
-            echo -e "  ${STY_YELLOW}Run: inir doctor  (to auto-rebuild quickshell)${STY_RST}"
+            doctor_fail "Quickshell failed to load, and it was built for another Qt version"
+            echo -e "  ${STY_YELLOW}Rebuild it first (inir doctor --fix-abi), then run inir doctor again.${STY_RST}"
             return 1
         fi
         
@@ -1392,9 +1541,17 @@ check_conflicting_services() {
     if [[ ${#running[@]} -gt 0 ]]; then
         for proc in "${running[@]}"; do
             pkill -x "$proc" 2>/dev/null
-            systemctl --user disable --now "${proc}.service" 2>/dev/null || true
+            if declare -F has_usable_systemd_user_manager >/dev/null 2>&1 \
+                    && has_usable_systemd_user_manager; then
+                systemctl --user disable --now "${proc}.service" 2>/dev/null || true
+            fi
         done
-        doctor_fix "Stopped conflicting: ${running[*]} (iNiR has built-in notifications, re-enable with: systemctl --user enable <service>)"
+        if declare -F has_usable_systemd_user_manager >/dev/null 2>&1 \
+                && has_usable_systemd_user_manager; then
+            doctor_fix "Stopped conflicting: ${running[*]} (iNiR has built-in notifications; re-enable with systemctl --user if desired)"
+        else
+            doctor_fix "Stopped conflicting: ${running[*]} (iNiR has built-in notifications; restart manually if desired)"
+        fi
     else
         doctor_pass "No conflicting notification daemons"
     fi
@@ -1416,14 +1573,18 @@ check_conflicting_shells() {
     )
     local found=()
 
-    if ! command -v pacman &>/dev/null; then
-        doctor_pass "Conflicting shells (not Arch, skipped)"
+    if command -v pacman &>/dev/null; then
+        for pkg in "${shell_pkgs[@]}"; do
+            pacman -Qi "$pkg" &>/dev/null 2>&1 && found+=("$pkg")
+        done
+    elif command -v xbps-query &>/dev/null; then
+        for pkg in "${shell_pkgs[@]}"; do
+            xbps-query -p pkgver "$pkg" &>/dev/null 2>&1 && found+=("$pkg")
+        done
+    else
+        doctor_pass "Conflicting shells (package manager unsupported, skipped)"
         return 0
     fi
-
-    for pkg in "${shell_pkgs[@]}"; do
-        pacman -Qi "$pkg" &>/dev/null 2>&1 && found+=("$pkg")
-    done
 
     if [[ ${#found[@]} -gt 0 ]]; then
         doctor_fail "Conflicting Quickshell shells installed: ${found[*]}"
@@ -1579,6 +1740,7 @@ check_qt_theming() {
             arch) echo -e "    ${STY_FAINT}Run: sudo pacman -S plasma-integration${STY_RST}" ;;
             fedora) echo -e "    ${STY_FAINT}Run: sudo dnf install plasma-integration${STY_RST}" ;;
             debian|ubuntu) echo -e "    ${STY_FAINT}Run: sudo apt install plasma-integration${STY_RST}" ;;
+            void) echo -e "    ${STY_FAINT}Run: ./setup install (repairs the managed Void provider)${STY_RST}" ;;
             *) echo -e "    ${STY_FAINT}Install plasma-integration using your package manager${STY_RST}" ;;
         esac
     else
@@ -1625,6 +1787,7 @@ check_qt_theming() {
         doctor_fail "Darkly Qt style not installed (Qt apps won't have Material You style)"
         case "${OS_GROUP_ID:-unknown}" in
             arch) echo -e "    ${STY_FAINT}Run: yay -S darkly-bin${STY_RST}" ;;
+            void) echo -e "    ${STY_FAINT}Run: ./setup install (repairs the pinned Void Darkly provider)${STY_RST}" ;;
             *) echo -e "    ${STY_FAINT}Install darkly from: https://github.com/AlessioC31/darkly${STY_RST}" ;;
         esac
     else
@@ -1643,6 +1806,7 @@ check_qt_theming() {
                 fedora) echo -e "    ${STY_FAINT}Run: sudo dnf install kde-cli-tools${STY_RST}" ;;
                 debian|ubuntu) echo -e "    ${STY_FAINT}Run: sudo apt install kde-cli-tools${STY_RST}" ;;
                 opensuse) echo -e "    ${STY_FAINT}Run: sudo zypper install kde-cli-tools6${STY_RST}" ;;
+                void) echo -e "    ${STY_FAINT}Run: sudo xbps-install -S kde-cli-tools${STY_RST}" ;;
                 *) echo -e "    ${STY_FAINT}Install kde-cli-tools using your package manager${STY_RST}" ;;
             esac
         fi
@@ -1713,7 +1877,7 @@ _doctor_run_step() {
 }
 
 run_doctor_with_fixes() {
-    local total_steps=23
+    local total_steps=25
     local doctor_started_at=$SECONDS
     doctor_passed=0
     doctor_failed=0
@@ -1725,14 +1889,21 @@ run_doctor_with_fixes() {
     if [[ ${#doctor_missing_deps[@]} -gt 0 ]]; then
         detect_distro
         case "$OS_GROUP_ID" in
-            arch|fedora|debian|ubuntu)
+            arch|fedora|debian|ubuntu|void)
                 if ! $ask || tui_confirm "Install missing dependencies now?"; then
                     SKIP_SYSUPDATE=true
                     ONLY_MISSING_DEPS="${doctor_missing_deps[*]}"
-                    source ./sdata/subcmd-install/1.deps-router.sh
-                    # Re-check after install
-                    doctor_passed=0; doctor_failed=0; doctor_fixed=0
-                    _doctor_run_step 1 $total_steps "Re-checking dependencies" check_dependencies
+                    if ! source ./sdata/subcmd-install/1.deps-router.sh; then
+                        doctor_fail "Dependency installation failed"
+                    elif [[ "$OS_GROUP_ID" == void ]] && ! configure_void_ydotool_uinput; then
+                        doctor_fail "Could not configure the ydotool provider"
+                    elif [[ "$OS_GROUP_ID" == void ]] && ! reconcile_inir_supervisor >/dev/null; then
+                        doctor_fail "Could not activate the ydotool provider"
+                    else
+                        # Re-check after a successful repair.
+                        doctor_passed=0; doctor_failed=0; doctor_fixed=0
+                        _doctor_run_step 1 $total_steps "Re-checking dependencies" check_dependencies
+                    fi
                 fi
                 ;;
             *)
@@ -1755,82 +1926,34 @@ run_doctor_with_fixes() {
     _doctor_run_step 13 $total_steps "Checking Python packages"      check_python_packages
     _doctor_run_step 14 $total_steps "Checking stale local quickshell" check_stale_local_quickshell
 
-    # Step 15 pre-check: detect ABI mismatch and offer a visible rebuild.
-    # We do this OUTSIDE _doctor_run_step so the rebuild gets live TTY feedback
-    # instead of being swallowed by the tempfile capture.
+    # Step 15 pre-check: the CLI owns the rebuild for every install kind (`inir doctor --fix-abi`).
+    # It runs outside _doctor_run_step so the build and its prompts show live in the terminal.
     if ! _doctor_abi_detect; then
         echo ""
-        tui_error "Qt/Quickshell ABI mismatch detected"
-        echo -e "  ${STY_YELLOW}$_doctor_abi_msg${STY_RST}"
-        echo -e "  ${STY_YELLOW}Quickshell will crash on any UI interaction until rebuilt.${STY_RST}"
-
-        local _rebuild_cmd
-        _rebuild_cmd="$(_doctor_abi_rebuild_cmd)"
-        if [[ -n "$_rebuild_cmd" ]] && $ask && [[ -t 0 && -t 1 ]]; then
+        echo -e "  ${STY_YELLOW}Quickshell was built for another Qt version: $_doctor_abi_msg${STY_RST}"
+        echo -e "  ${STY_FAINT}Quickshell uses Qt internals and asks to be rebuilt after every Qt update. Until then it can crash.${STY_RST}"
+        local _inir_cli
+        _inir_cli="$(doctor_repo_root)/scripts/inir"
+        if $ask && [[ -t 0 && -t 1 && -f "$_inir_cli" ]]; then
             echo ""
-            if tui_confirm "Rebuild quickshell to fix the ABI mismatch?"; then
-                echo ""
-                echo -e "  ${STY_FAINT}Rebuilding quickshell against the current Qt version...${STY_RST}"
-                echo -e "  ${STY_FAINT}(This may take 2-5 minutes. timeout: 15 minutes)${STY_RST}"
-                echo ""
-
-                # Cache sudo credentials so the rebuild doesn't hang on a hidden prompt
-                local _sudo_ok=true
-                if [[ "$_rebuild_cmd" == *"sudo"* ]] || [[ "$_rebuild_cmd" == *"pacman"* ]] || [[ "$_rebuild_cmd" == *"dnf"* ]]; then
-                    echo ""
-                    echo -e "  ${STY_YELLOW}The rebuild requires sudo privileges.${STY_RST}"
-                    echo -e "  ${STY_FAINT}If prompted, enter your sudo password below.${STY_RST}"
-                    echo -e "  ${STY_FAINT}(timeout: 60 seconds)${STY_RST}"
-                    echo ""
-                    if ! timeout 60 sudo -v; then
-                        echo -e "  ${STY_RED}Sudo authentication timed out or failed.${STY_RST}"
-                        echo -e "  ${STY_YELLOW}Skipping automatic rebuild.${STY_RST}"
-                        echo -e "  ${STY_FAINT}You can run manually: ${_rebuild_cmd//--noconfirm/}${STY_RST}"
-                        _sudo_ok=false
-                    fi
-                fi
-
-                if $_sudo_ok; then
-                    local _rebuild_rc=0
-                    if command -v timeout >/dev/null 2>&1; then
-                        timeout 15m bash -c "${_rebuild_cmd//--noconfirm/}" || _rebuild_rc=$?
-                    else
-                        eval "${_rebuild_cmd//--noconfirm/}" || _rebuild_rc=$?
-                    fi
-
-                    if [[ $_rebuild_rc -eq 124 ]]; then
-                        echo ""
-                        echo -e "  ${STY_RED}Rebuild timed out after 15 minutes.${STY_RST}"
-                    elif [[ $_rebuild_rc -ne 0 ]]; then
-                        echo ""
-                        echo -e "  ${STY_RED}Rebuild failed (exit $_rebuild_rc).${STY_RST}"
-                    else
-                        rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/inir/abi-check" 2>/dev/null
-                        if _doctor_abi_detect; then
-                            echo ""
-                            echo -e "  ${STY_GREEN}Quickshell rebuilt successfully. ABI mismatch resolved.${STY_RST}"
-                            doctor_fixed=$((doctor_fixed + 1))
-                        else
-                            echo ""
-                            echo -e "  ${STY_YELLOW}Rebuild finished but mismatch persists.${STY_RST}"
-                            echo -e "  ${STY_FAINT}A stale local binary may be shadowing the system package.${STY_RST}"
-                        fi
-                    fi
-                fi
+            if bash "$_inir_cli" doctor --fix-abi && _doctor_abi_detect; then
+                doctor_fixed=$((doctor_fixed + 1))
             fi
         fi
         echo ""
     fi
 
     _doctor_run_step 15 $total_steps "Checking Quickshell/Qt ABI"    check_quickshell_abi
-    _doctor_run_step 16 $total_steps "Checking Quickshell"           check_quickshell_loads
-    _doctor_run_step 17 $total_steps "Checking theme colors"         check_matugen_colors
-    _doctor_run_step 18 $total_steps "Checking Qt theming"           check_qt_theming
-    _doctor_run_step 19 $total_steps "Checking conflicting services" check_conflicting_services
-    _doctor_run_step 20 $total_steps "Checking conflicting shells"   check_conflicting_shells
-    _doctor_run_step 21 $total_steps "Checking wallpaper health"     check_wallpaper_health
-    _doctor_run_step 22 $total_steps "Checking environment variables" check_environment_vars
-    _doctor_run_step 23 $total_steps "Checking Niri config"          check_niri_config
+    _doctor_run_step 16 $total_steps "Checking password prompts"     check_polkit_agent
+    _doctor_run_step 17 $total_steps "Checking Quickshell"           check_quickshell_loads
+    _doctor_run_step 18 $total_steps "Checking theme colors"         check_matugen_colors
+    _doctor_run_step 19 $total_steps "Checking Qt theming"           check_qt_theming
+    _doctor_run_step 20 $total_steps "Checking conflicting services" check_conflicting_services
+    _doctor_run_step 21 $total_steps "Checking conflicting shells"   check_conflicting_shells
+    _doctor_run_step 22 $total_steps "Checking wallpaper health"     check_wallpaper_health
+    _doctor_run_step 23 $total_steps "Checking environment variables" check_environment_vars
+    _doctor_run_step 24 $total_steps "Checking Niri config"          check_niri_config
+    _doctor_run_step 25 $total_steps "Checking graphics renderer"    check_graphics_stack
 
     echo ""
     tui_divider

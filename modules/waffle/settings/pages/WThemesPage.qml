@@ -572,7 +572,9 @@ WSettingsPage {
         WSettingsDropdown {
             label: Translation.tr("Style")
             icon: "eyedropper"
-            description: Translation.tr("Choose the visual language used across the shell")
+            description: globalStyleCard.currentStyle === "editorial"
+                ? Translation.tr("Choose the visual language used across the shell. Editorial composition is refined in ii Settings → Themes → Style.")
+                : Translation.tr("Choose the visual language used across the shell")
             currentValue: globalStyleCard.currentStyle
             options: [
                 {
@@ -606,6 +608,10 @@ WSettingsPage {
                 {
                     value: "cookie",
                     displayName: Translation.tr("Cookie Shapes")
+                },
+                {
+                    value: "editorial",
+                    displayName: Translation.tr("Editorial")
                 }
             ]
             onSelected: newValue => {
@@ -713,8 +719,11 @@ WSettingsPage {
             label: Translation.tr("Use Material colors")
             icon: "dark-theme"
             description: Translation.tr("Apply Material color scheme instead of Windows 11 grey")
-            checked: Config.options?.waffles?.theming?.useMaterialColors ?? false
-            onCheckedChanged: Config.setNestedValue("waffles.theming.useMaterialColors", checked)
+            enabled: !Appearance.editorialEverywhere
+            checked: Appearance.editorialEverywhere || (Config.options?.waffles?.theming?.useMaterialColors ?? false)
+            onCheckedChanged: {
+                if (!Appearance.editorialEverywhere) Config.setNestedValue("waffles.theming.useMaterialColors", checked)
+            }
         }
 
         WSettingsSlider {
@@ -779,7 +788,7 @@ WSettingsPage {
             label: Translation.tr("Spotify theming")
             icon: "music-note-2"
             description: Translation.tr("Generate and apply Spicetify theme from wallpaper colors")
-            checked: Config.options?.appearance?.wallpaperTheming?.enableSpicetify ?? false
+            checked: Config.options?.appearance?.wallpaperTheming?.enableSpicetify ?? true
             onCheckedChanged: {
                 Config.setNestedValue("appearance.wallpaperTheming.enableSpicetify", checked)
                 Quickshell.execDetached([Directories.wallpaperSwitchScriptPath, "--noswitch"])
@@ -787,13 +796,13 @@ WSettingsPage {
         }
 
         WSettingsDropdown {
-            visible: Config.options?.appearance?.wallpaperTheming?.enableSpicetify ?? false
+            visible: Config.options?.appearance?.wallpaperTheming?.enableSpicetify ?? true
             label: Translation.tr("Spotify theme")
             icon: "terminal"
             description: Translation.tr("Choose the Spicetify layout while keeping iNiR wallpaper colors")
             currentValue: Config.options?.appearance?.wallpaperTheming?.spicetifyTheme ?? "Inir"
             options: [
-                { value: "Inir", displayName: Translation.tr("Sleek") },
+                { value: "Inir", displayName: "iNiR" },
                 { value: "InirTUI", displayName: Translation.tr("Text (TUI)") }
             ]
             onSelected: newValue => {
@@ -806,7 +815,7 @@ WSettingsPage {
             label: Translation.tr("Steam theming")
             icon: "gamepad"
             description: Translation.tr("Apply Material You colors to Steam via Millennium Material-Theme")
-            checked: Config.options?.appearance?.wallpaperTheming?.enableSteam ?? false
+            checked: Config.options?.appearance?.wallpaperTheming?.enableSteam ?? true
             onCheckedChanged: Config.setNestedValue("appearance.wallpaperTheming.enableSteam", checked)
         }
 
@@ -816,6 +825,22 @@ WSettingsPage {
             description: Translation.tr("Apply Material You colors to YouTube Music Desktop App")
             checked: Config.options?.appearance?.wallpaperTheming?.enablePearDesktop ?? true
             onCheckedChanged: Config.setNestedValue("appearance.wallpaperTheming.enablePearDesktop", checked)
+        }
+
+        WSettingsSwitch {
+            label: Translation.tr("LiMusic")
+            icon: "music-note-2"
+            description: Translation.tr("LiMusic follows your wallpaper colours, from the next time it opens")
+            checked: Config.options?.appearance?.wallpaperTheming?.enableLimusic ?? false
+            onCheckedChanged: Config.setNestedValue("appearance.wallpaperTheming.enableLimusic", checked)
+        }
+
+        WSettingsSwitch {
+            label: Translation.tr("Claude Code")
+            icon: "terminal"
+            description: Translation.tr("Adds iNiR themes to Claude Code's theme list: two follow your wallpaper, two keep a fixed Monokai palette")
+            checked: Config.options?.appearance?.wallpaperTheming?.enableClaudeCode ?? false
+            onCheckedChanged: Config.setNestedValue("appearance.wallpaperTheming.enableClaudeCode", checked)
         }
 
         WSettingsSwitch {
@@ -843,6 +868,14 @@ WSettingsPage {
         }
 
         WSettingsSwitch {
+            label: Translation.tr("Firefox")
+            icon: "globe-shield"
+            description: Translation.tr("Follows the wallpaper from its next launch; LibreWolf, Floorp, Waterfox and Zen too.")
+            checked: Config.options?.appearance?.wallpaperTheming?.enableFirefox ?? true
+            onCheckedChanged: Config.setNestedValue("appearance.wallpaperTheming.enableFirefox", checked)
+        }
+
+        WSettingsSwitch {
             label: Translation.tr("OpenCode")
             icon: "terminal"
             description: Translation.tr("Apply wallpaper-derived theme to OpenCode AI editor")
@@ -863,7 +896,7 @@ WSettingsPage {
             label: Translation.tr("Theme standalone Cava")
             icon: "music-note-2"
             description: Translation.tr("Manage ~/.config/cava/config; internal visualizers always use the options below")
-            checked: Config.options?.appearance?.wallpaperTheming?.enableCava ?? false
+            checked: Config.options?.appearance?.wallpaperTheming?.enableCava ?? true
             onCheckedChanged: root.setCavaValue(
                 "appearance.wallpaperTheming.enableCava", checked, true)
         }
@@ -1170,6 +1203,14 @@ WSettingsPage {
                 }
             ]
             onSelected: newValue => Config.setNestedValue("waffles.theming.font.family", newValue)
+        }
+
+        WSettingsSwitch {
+            label: Translation.tr("Apps use this font")
+            icon: "apps"
+            description: Translation.tr("Your apps' text follows the font the shell shows.")
+            checked: Config.options?.appearance?.typography?.syncWithSystem ?? true
+            onCheckedChanged: Config.setNestedValue("appearance.typography.syncWithSystem", checked)
         }
 
         WSettingsSpinBox {

@@ -36,12 +36,67 @@ Singleton {
     property var surfacePools: ({})
     property bool ready: true
     property bool manifestAvailable: false
+    property bool packStateValid: false
+    readonly property bool packAvailable: packStateValid && presenceProbe.loaded
     property int revision: 0
     property var _surfaceHistory: ({})
     // Per-pose apparent-size correction, derived from the composition tag
     // logged in PROMPTS.md (extreme close-ups read "bigger" than full-body
     // shots at the same box size). Absent = 1.0, no correction.
     property var frameScale: ({})
+    property var characterProfiles: ({})
+    readonly property string requestedCharacterStyle: Config.options?.mascot?.chaos?.artStyle ?? "jrpg"
+    readonly property string characterStyle: packAvailable && requestedCharacterStyle === "jrpg" && jrpgProbe.loaded ? "jrpg"
+        : packAvailable && requestedCharacterStyle === "codex" && codexProbe.loaded ? "codex" : "classic"
+
+    function characterPose(original, state) {
+        return characterProfiles[characterStyle]?.[state] ?? original
+    }
+    function _refreshPackState(): void {
+        if (!packStateProbe.loaded) {
+            root.packStateValid = false
+            return
+        }
+        try {
+            const state = JSON.parse(packStateProbe.text())
+            const count = Number(state?.asset_count ?? 0)
+            const treeHash = String(state?.asset_tree_sha256 ?? "")
+            root.packStateValid = count > 10 && /^[0-9a-f]{64}$/i.test(treeHash)
+        } catch (e) {
+            root.packStateValid = false
+        }
+    }
+
+    FileView {
+        id: packStateProbe
+        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state"))
+            + "/inir/mascot-pack-state.json"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root._refreshPackState()
+        onLoadFailed: root.packStateValid = false
+        onFileChanged: reload()
+    }
+
+    // Optional art profiles are valid only when their published assets are installed.
+    FileView {
+        id: presenceProbe
+        path: Quickshell.shellPath("assets/images/mascot/inir-mascot-presence-idle-loop.gif")
+        watchChanges: true
+        printErrors: false
+    }
+    FileView {
+        id: jrpgProbe
+        path: Quickshell.shellPath("assets/images/mascot/inir-mascot-jrpg-idle-loop.gif")
+        watchChanges: true
+        printErrors: false
+    }
+    FileView {
+        id: codexProbe
+        path: Quickshell.shellPath("assets/images/mascot/inir-mascot-codex-idle-loop.gif")
+        watchChanges: true
+        printErrors: false
+    }
 
     function _uniquePoses(values) {
         const seen = ({})
@@ -167,6 +222,7 @@ Singleton {
             try {
                 const m = JSON.parse(text())
                 root.animatedPoses = m.animatedPoses ?? []
+                root.characterProfiles = m.characterProfiles ?? ({})
                 root.collectionPoses = m.collectionPoses ?? []
                 root.pickerPoses = m.pickerPoses ?? []
                 root.desktopWidgetPoses = m.desktopWidgetPoses ?? []

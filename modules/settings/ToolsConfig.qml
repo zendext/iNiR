@@ -15,6 +15,23 @@ ContentPage {
     settingsPageName: Translation.tr("Tools")
     property string activeSection: "recording"
 
+    function activateSettingsSearchSection(section: string): bool {
+        const label = String(section || "").toLowerCase().trim()
+        const sections = {
+            "screen recording": "recording",
+            "region selector (screen snipping/google lens)": "snipping",
+            "snipping & ocr": "snipping",
+            "crosshair overlay": "crosshair",
+            "overlay: discord": "discord",
+            "on-screen display": "osd"
+        }
+        const target = sections[label] ?? ""
+        if (!target)
+            return false
+        root.activeSection = target
+        return true
+    }
+
     SettingsTaskNavigator {
         icon: "build"
         title: Translation.tr("Tools")
@@ -406,13 +423,15 @@ ContentPage {
         }
     }
 
-    SettingsCardSection {
-        id: screenRecordSection
-        settingsTaskSection: "recording"
-        visible: root.activeSection === "recording"
-        expanded: true
-        icon: "screen_record"
-        title: Translation.tr("Screen recording")
+    SettingsTaskLoader {
+        requested: root.activeSection === "recording"
+        sourceComponent: Component {
+            SettingsCardSection {
+                id: screenRecordSection
+                settingsTaskSection: "recording"
+                expanded: true
+                icon: "screen_record"
+                title: Translation.tr("Screen recording")
 
         readonly property bool isCustomPreset: (Config.options?.screenRecord?.qualityPreset ?? "balanced") === "custom"
 
@@ -779,15 +798,19 @@ ContentPage {
                     onEditingFinished: Config.setNestedValue("screenRecord.recordingNameFormat", text)
                 }
             }
+            }
         }
     }
+    }
 
-    SettingsCardSection {
-        settingsTaskSection: "snipping"
-        visible: root.activeSection === "snipping"
-        expanded: true
-        icon: "screenshot_frame_2"
-        title: Translation.tr("Snipping & OCR")
+    SettingsTaskLoader {
+        requested: root.activeSection === "snipping"
+        sourceComponent: Component {
+            SettingsCardSection {
+                settingsTaskSection: "snipping"
+                expanded: true
+                icon: "screenshot_frame_2"
+                title: Translation.tr("Snipping & OCR")
 
         SettingsGroup {
             ContentSubsection {
@@ -1013,6 +1036,7 @@ ContentPage {
                         Config.setNestedValue("regionSelector.japaneseLookup.anki.enabled", checked)
                         if (checked) JapaneseDictionary.checkAnki()
                     }
+                    Component.onCompleted: if (checked) JapaneseDictionary.checkAnki()
                 }
 
                 Rectangle {
@@ -1339,15 +1363,19 @@ ContentPage {
                     onEditingFinished: Config.setNestedValue("regionSelector.screenshotNameFormat", text)
                 }
             }
+            }
         }
     }
+    }
 
-    SettingsCardSection {
-        settingsTaskSection: "crosshair"
-        visible: root.activeSection === "crosshair"
-        expanded: true
-        icon: "point_scan"
-        title: Translation.tr("Crosshair overlay")
+    SettingsTaskLoader {
+        requested: root.activeSection === "crosshair"
+        sourceComponent: Component {
+            SettingsCardSection {
+                settingsTaskSection: "crosshair"
+                expanded: true
+                icon: "point_scan"
+                title: Translation.tr("Crosshair overlay")
 
         SettingsGroup {
             MaterialTextArea {
@@ -1383,15 +1411,19 @@ ContentPage {
                     }
                 }
             }
+            }
         }
     }
+    }
 
-    SettingsCardSection {
-        settingsTaskSection: "discord"
-        visible: root.activeSection === "discord"
-        expanded: true
-        icon: "forum"
-        title: Translation.tr("Overlay: Discord")
+    SettingsTaskLoader {
+        requested: root.activeSection === "discord"
+        sourceComponent: Component {
+            SettingsCardSection {
+                settingsTaskSection: "discord"
+                expanded: true
+                icon: "forum"
+                title: Translation.tr("Overlay: Discord")
 
         SettingsGroup {
             MaterialTextArea {
@@ -1403,15 +1435,19 @@ ContentPage {
                     Config.setNestedValue("apps.discord", text);
                 }
             }
+            }
         }
     }
+    }
 
-    SettingsCardSection {
-        settingsTaskSection: "osd"
-        visible: root.activeSection === "osd"
-        expanded: true
-        icon: "voting_chip"
-        title: Translation.tr("On-screen display")
+    SettingsTaskLoader {
+        requested: root.activeSection === "osd"
+        sourceComponent: Component {
+            SettingsCardSection {
+                settingsTaskSection: "osd"
+                expanded: true
+                icon: "voting_chip"
+                title: Translation.tr("On-screen display")
 
         SettingsGroup {
             ConfigSwitch {
@@ -1440,6 +1476,92 @@ ContentPage {
                     text: Translation.tr("How long the volume, brightness and media indicators stay visible")
                 }
             }
+            }
+
+        SettingsGroup {
+            ConfigSwitch {
+                buttonIcon: "cable"
+                text: Translation.tr("Connection notices")
+                checked: Config.options?.osd?.connections?.enable ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.enable", checked)
+                StyledToolTip {
+                    text: Translation.tr("A short notice when something is plugged in, connected, unplugged or lost")
+                }
+            }
+
+            ConfigSwitch {
+                visible: Config.options?.osd?.connections?.enable ?? true
+                buttonIcon: "lan"
+                text: Translation.tr("Network")
+                checked: Config.options?.osd?.connections?.network ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.network", checked)
+                StyledToolTip { text: Translation.tr("Wi-Fi or cable connected and dropped") }
+            }
+
+            ConfigSwitch {
+                visible: Config.options?.osd?.connections?.enable ?? true
+                buttonIcon: "cloud_off"
+                text: Translation.tr("Internet")
+                checked: Config.options?.osd?.connections?.internet ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.internet", checked)
+                StyledToolTip { text: Translation.tr("Lost and back online") }
+            }
+
+            ConfigSwitch {
+                visible: Config.options?.osd?.connections?.enable ?? true
+                buttonIcon: "bluetooth_connected"
+                text: Translation.tr("Bluetooth devices")
+                checked: Config.options?.osd?.connections?.bluetooth ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.bluetooth", checked)
+                StyledToolTip { text: Translation.tr("Headphones, keyboards, controllers") }
+            }
+
+            ConfigSwitch {
+                visible: Config.options?.osd?.connections?.enable ?? true
+                buttonIcon: "mouse"
+                text: Translation.tr("USB devices")
+                checked: Config.options?.osd?.connections?.usb ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.usb", checked)
+                StyledToolTip { text: Translation.tr("Mice, keyboards, controllers, cameras, phones, by name") }
+            }
+
+            ConfigSwitch {
+                visible: Config.options?.osd?.connections?.enable ?? true
+                buttonIcon: "battery_charging_full"
+                text: Translation.tr("Charger")
+                checked: Config.options?.osd?.connections?.power ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.power", checked)
+                StyledToolTip { text: Translation.tr("Plugged in and on battery") }
+            }
+
+            ConfigSwitch {
+                visible: Config.options?.osd?.connections?.enable ?? true
+                buttonIcon: "headphones"
+                text: Translation.tr("Sound output")
+                checked: Config.options?.osd?.connections?.audio ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.audio", checked)
+                StyledToolTip { text: Translation.tr("Headphones or speakers take over") }
+            }
+
+            ConfigSwitch {
+                visible: Config.options?.osd?.connections?.enable ?? true
+                buttonIcon: "desktop_windows"
+                text: Translation.tr("Displays")
+                checked: Config.options?.osd?.connections?.displays ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.displays", checked)
+                StyledToolTip { text: Translation.tr("A monitor plugged in or removed") }
+            }
+
+            ConfigSwitch {
+                visible: Config.options?.osd?.connections?.enable ?? true
+                buttonIcon: "usb"
+                text: Translation.tr("Drives and memory cards")
+                checked: Config.options?.osd?.connections?.drives ?? true
+                onCheckedChanged: Config.setNestedValue("osd.connections.drives", checked)
+                StyledToolTip { text: Translation.tr("Pendrives, external disks and SD cards, with their name and size") }
+            }
+            }
         }
+    }
     }
 }

@@ -7,6 +7,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import qs.modules.common.functions
+import qs.services
 import qs.services.network
 
 /**
@@ -28,6 +29,20 @@ Singleton {
 
     property string networkName: ""
     property int networkStrength
+
+    // NetworkManager's own check: full | limited | portal | none | unknown. Unknown (no check
+    // configured, NM absent, not read yet) counts as online so nothing is hidden on a guess.
+    property string connectivity: "unknown"
+    property string simulatedConnectivity: ""
+    // `inir network simulateLink "wifi 40"` stands in for NetworkManager's link state (wifi strength, searching,
+    // connecting, radio off, cable, no adapter) until `off` or a restart; the probes stop writing while it holds.
+    property string simulatedLink: ""
+    readonly property string effectiveConnectivity: simulatedConnectivity || connectivity
+    readonly property bool online: effectiveConnectivity === "full" || effectiveConnectivity === "unknown"
+    readonly property string offlineReason: online ? ""
+        : effectiveConnectivity === "portal" ? Translation.tr("Sign in to the network to go online")
+        : effectiveConnectivity === "limited" ? Translation.tr("Connected, but no internet")
+        : Translation.tr("No internet connection")
     // Gated on being *connected*, not on the radio being powered. wifiStatus is
     // only ever "connecting"/"disconnected" while the radio is on — i.e. while
     // wifiEnabled is true — so keying the strength icons off wifiEnabled both
@@ -66,6 +81,7 @@ Singleton {
 
     function rescanWifi(): void {
         wifiScanning = true;
+        getNetworks.running = true;
         rescanProcess.running = true;
     }
 
@@ -199,8 +215,13 @@ Singleton {
         _updateDebounce.restart();
     }
 
+    signal networkChanged()
+
     // Actual update logic
     function _doUpdate() {
+        if (root.simulatedLink.length > 0)
+            return;
+        root.networkChanged();
         updateConnectionType.startCheck();
         wifiStatusProcess.running = true
         updateNetworkName.running = true;
@@ -262,13 +283,15 @@ Singleton {
             }
         }
         onExited: (exitCode, exitStatus) => {
+            if (root.simulatedLink.length > 0)
+                return;
             const lines = updateConnectionType.buffer.trim().split('\n');
-            const connectivity = lines.pop() // none, limited, full
+            const connectivity = (lines.pop() ?? "").trim()
             let hasEthernet = false;
             let hasWifi = false;
             let wifiStatus = "disconnected";
             lines.forEach(line => {
-                if (line.includes("ethernet") && line.includes("connected"))
+                if (line.startsWith("ethernet:") && line.slice(9) === "connected")
                     hasEthernet = true;
                 else if (line.includes("wifi:")) {
                     if (line.includes("disconnected")) {
@@ -291,6 +314,7 @@ Singleton {
                     }
                 }
             });
+            root.connectivity = ["full", "limited", "portal", "none"].includes(connectivity) ? connectivity : "unknown";
             root.wifiStatus = wifiStatus;
             root.ethernet = hasEthernet;
             root.wifi = hasWifi;
@@ -304,11 +328,27 @@ Singleton {
 
     Process {
         id: updateNetworkName
-        command: ["sh", "-c", "nmcli -t -f NAME c show --active | head -1"]
+        command: ["nmcli", "-t", "-f", "NAME,TYPE", "c", "show", "--active"]
         running: false
-        stdout: SplitParser {
-            onRead: data => {
-                root.networkName = data;
+        stdout: StdioCollector {
+            onStreamFinished: {
+                // A VPN is an active connection too, and it often sorts first, which used
+                // to make the bar show the VPN profile's name instead of the network's.
+                const carriers = ["802-11-wireless", "802-3-ethernet"];
+                const skipped = ["vpn", "wireguard", "tun", "tap", "bridge", "loopback"];
+                let carrier = "";
+                let fallback = "";
+                for (const line of text.split("\n")) {
+                    if (line.trim().length === 0) continue;
+                    const parts = line.replace(/\\:/g, "\u0000").split(":").map(part => part.replace(/\u0000/g, ":"));
+                    if (parts.length < 2) continue;
+                    const name = parts[0];
+                    const type = parts[parts.length - 1];
+                    if (carriers.includes(type)) { carrier = name; break; }
+                    if (fallback.length === 0 && !skipped.includes(type)) fallback = name;
+                }
+                if (root.simulatedLink.length === 0)
+                    root.networkName = carrier || fallback;
             }
         }
     }
@@ -319,7 +359,8 @@ Singleton {
         command: ["sh", "-c", "nmcli -f IN-USE,SIGNAL,SSID device wifi | awk '/^\\*/{if (NR!=1) {print $2}}'"]
         stdout: SplitParser {
             onRead: data => {
-                root.networkStrength = parseInt(data);
+                if (root.simulatedLink.length === 0)
+                    root.networkStrength = parseInt(data);
             }
         }
     }
@@ -334,7 +375,8 @@ Singleton {
         })
         stdout: StdioCollector {
             onStreamFinished: {
-                root.wifiEnabled = text.trim() === "enabled";
+                if (root.simulatedLink.length === 0)
+                    root.wifiEnabled = text.trim() === "enabled";
             }
         }
     }
@@ -342,7 +384,7 @@ Singleton {
     Process {
         id: getNetworks
         running: false
-        command: ["nmcli", "-g", "ACTIVE,SIGNAL,FREQ,SSID,BSSID,SECURITY,RATE", "d", "w"]
+        command: ["nmcli", "-g", "ACTIVE,SIGNAL,FREQ,SSID,BSSID,SECURITY,RATE", "device", "wifi", "list", "--rescan", "no"]
         environment: ({
             LANG: "C",
             LC_ALL: "C"
@@ -405,6 +447,55 @@ Singleton {
                     }
                 }
             }
+        }
+    }
+
+    Process {
+        id: connectivityCheck
+        command: ["nmcli", "networking", "connectivity", "check"]
+        onExited: root.update()
+    }
+
+    IpcHandler {
+        target: "network"
+
+        function status(): string {
+            return JSON.stringify({
+                online: root.online,
+                connectivity: root.effectiveConnectivity,
+                simulated: root.simulatedConnectivity !== "",
+                simulatedLink: root.simulatedLink,
+                ethernet: root.ethernet,
+                wifi: root.wifiStatus,
+                name: root.networkName
+            });
+        }
+        function check(): void {
+            connectivityCheck.running = true;
+        }
+        function simulate(state: string): string {
+            const s = (state ?? "").trim();
+            root.simulatedConnectivity = ["full", "limited", "portal", "none"].includes(s) ? s : "";
+            return root.effectiveConnectivity;
+        }
+        // "wifi 40", "searching", "connecting", "radio off", "ethernet", "none" (no adapter) or "off".
+        function simulateLink(spec: string): string {
+            const words = String(spec ?? "").trim().toLowerCase().split(/\s+/).filter(w => w.length > 0);
+            const kind = words[0] ?? "off";
+            if (!["wifi", "searching", "connecting", "radio", "ethernet", "none"].includes(kind)) {
+                root.simulatedLink = "";
+                root.update();
+                return status();
+            }
+            root.simulatedLink = kind;
+            root.ethernet = kind === "ethernet";
+            root.wifiEnabled = kind === "wifi" || kind === "searching" || kind === "connecting";
+            root.wifiStatus = kind === "wifi" ? "connected" : kind === "connecting" ? "connecting"
+                : kind === "searching" ? "disconnected" : "disabled";
+            root.wifi = kind === "wifi";
+            root.networkStrength = kind === "wifi" ? Math.max(0, Math.min(100, parseInt(words[1] ?? "80") || 0)) : 0;
+            root.networkName = kind === "wifi" ? "Simulated Wi-Fi" : kind === "ethernet" ? "Simulated cable" : "";
+            return status();
         }
     }
 

@@ -118,3 +118,37 @@ function testFile(path) {
 
 testFile('../modules/mediaControls/PlayerControl.qml');
 testFile('../modules/sidebarLeft/widgets/MediaPlayerWidget.qml');
+
+// A browser can temporarily lose mpris:length after seeking. The popup must
+// share the controller's remembered length and corrected position with its slider.
+const controllerSource = readFileSync(new URL('../services/MprisController.qml', import.meta.url), 'utf8');
+const player = { dbusName: 'browser', trackTitle: 'Video', position: 20, length: 20, lengthSupported: false, canSeek: true, isPlaying: true };
+const controller = {
+    knownLengths: { browser: { title: 'Video', length: 120 } },
+    positionOffsets: { browser: 15 },
+    titleOf: player => player.trackTitle
+};
+const controllerContext = vm.createContext({ root: controller });
+for (const name of ['lengthOf', 'positionOf', '_setPositionOffset', 'clearPositionOffset', 'seek']) {
+    const signature = controllerSource.match(new RegExp(`function ${name}\\(([^)]*)\\)`));
+    assert.ok(signature, `Missing ${name}`);
+    const args = signature[1].replace(/:\s*\w+/g, '');
+    controller[name] = vm.runInContext(`(function(${args}) {${blockAfter(controllerSource, `function ${name}(`)}})`, controllerContext);
+}
+const popupSource = readFileSync(new URL('../modules/mediaControls/PlayerControl.qml', import.meta.url), 'utf8');
+const timelineContext = vm.createContext({ root: { player }, MprisController: controller });
+const labels = [...popupSource.matchAll(/text: StringUtils\.friendlyTimeForSeconds\((.+)\)/g)]
+    .map(match => vm.runInContext(match[1], timelineContext));
+assert.deepEqual(labels, [35, 120], 'Time labels use the corrected position and remembered length');
+const progress = blockAfter(popupSource, 'PlayerProgress {');
+for (const [property, expected] of [['position', 35], ['length', 120]]) {
+    const expression = progress.match(new RegExp(`^\\s*${property}: (.+)$`, 'm'))?.[1];
+    assert.ok(expression, `Missing progress.${property}`);
+    assert.equal(vm.runInContext(expression, timelineContext), expected);
+}
+const seek = progress.match(/onSeekRequested: (.+)/)?.[1];
+assert.ok(seek, 'Missing seek handler');
+vm.runInContext(`(${seek})(75)`, timelineContext);
+assert.equal(player.position, 75);
+assert.equal(controller.positionOffsets.browser, undefined, 'Seeking clears the old correction');
+console.log('PASS popup timeline: remembered length, corrected position and seeking');

@@ -41,7 +41,7 @@ grep -rhoP '`\K[a-zA-Z0-9_./-]+\.qml(?=`)' docs/*.md 2>/dev/null | sort -u \
         || note "docs reference '$p' but no file named '$b' exists"
     done
 
-# 4. (local, optional) nested AGENTS.md are gitignored — only checked if present.
+# 4. Nested AGENTS.md, only checked if present.
 #    Same basename match; these cite components by name.
 if find modules services -name AGENTS.md -print -quit 2>/dev/null | grep -q .; then
   echo "[local] nested AGENTS.md .qml references"

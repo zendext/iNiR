@@ -23,10 +23,17 @@ Item {
     property int spectrumSmoothing: 2
     property string spectrumWaveMode: "fill"
     property real spectrumLineWidth: 2
-    property real spectrumEdgeInset: 0
-    property real spectrumEdgeSoftness: 0.28
+    property real spectrumEdgeInset: 6
+    property real spectrumEdgeSoftness: 0.36
     property string spectrumFrequencyProfile: "flat"
     property real spectrumAccentStrength: 0.7
+    property real spectrumOrganicSensitivity: 0.32
+    property real spectrumOrganicPulse: 0.42
+    property real spectrumOrganicMotionSpeed: 0.8
+    property real spectrumOrganicIdleMotion: 0
+    property real spectrumOrganicGlow: 0.18
+    property bool spectrumOrganicEdgeAura: false
+    property real spectrumOrganicBaseRadius: 0.36
     property Item spectrumDomain: null
     // Islands: the capsule needs real breathing room around content (matches
     // the edge islands' inner padding); classic groups keep the tight fit and
@@ -51,6 +58,14 @@ Item {
     // visible:false items, so an all-hidden zone reports ~0 inner width). Lets
     // callers collapse the pill entirely instead of showing a ghost background.
     readonly property bool empty: gridLayout.implicitWidth < 1
+    readonly property real elasticSlack: {
+        let slack = 0
+        for (const child of gridLayout.children)
+            if (child.visible && child.Layout.fillWidth && isFinite(child.Layout.maximumWidth))
+                slack += Math.max(0, child.implicitWidth - child.Layout.minimumWidth)
+        return slack
+    }
+    readonly property real minimumContentWidth: Math.max(0, contentWidth - elasticSlack)
     default property alias items: gridLayout.children
 
     readonly property real _spectrumX: {
@@ -89,6 +104,7 @@ Item {
             : !root.islandStyle && (Config.options?.bar?.borderless ?? false)
         radiusOverride: Appearance.regaliaEverywhere ? Appearance.regalia.roundSmall : -1
         elevation: Appearance.regaliaEverywhere ? 2 : 1
+        editorialGlassMaterial: Appearance.editorialEverywhere && Appearance.editorial.glassActive
         // En zzz la barra mantiene su contorno unificado; los grupos quedan transparentes.
         zzzChamfer: false
     }
@@ -140,14 +156,14 @@ Item {
             edgeSoftness: root.spectrumEdgeSoftness
             frequencyProfile: root.spectrumFrequencyProfile
             accentStrength: root.spectrumAccentStrength
-            organicSensitivity: 0.62
-            organicPulse: 0.72
-            organicMotionSpeed: 0.9
-            organicIdleMotion: 0.18
-            organicGlow: 0.38
+            organicSensitivity: root.spectrumOrganicSensitivity
+            organicPulse: root.spectrumOrganicPulse
+            organicMotionSpeed: root.spectrumOrganicMotionSpeed
+            organicIdleMotion: root.spectrumOrganicIdleMotion
+            organicGlow: root.spectrumOrganicGlow
             organicOpacity: root.spectrumOpacity
-            organicEdgeAura: true
-            organicBaseRadius: 0.42
+            organicEdgeAura: root.spectrumOrganicEdgeAura
+            organicBaseRadius: root.spectrumOrganicBaseRadius
             topLeftRadius: islandSurface.radius
             topRightRadius: islandSurface.radius
             bottomLeftRadius: islandSurface.radius
@@ -162,6 +178,10 @@ Item {
         GridLayout {
             id: gridLayout
             columns: root.vertical ? 1 : -1
+            // A group held narrower than its content lays it out in that width, so elastic modules
+            // (media) give way before anything is clipped; only past that does it overflow, centred.
+            width: root.vertical ? implicitWidth
+                : Math.min(implicitWidth, Math.max(implicitWidth - root.elasticSlack, parent.width - root.padding * 2))
             anchors {
                 verticalCenter: root.vertical ? undefined : parent.verticalCenter
                 horizontalCenter: parent.horizontalCenter

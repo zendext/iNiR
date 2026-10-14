@@ -334,6 +334,7 @@ Singleton {
                 'WorkspacesChanged',
                 'OutputsChanged',
                 'ConfigLoaded',
+                'OverviewOpenedOrClosed',
                 'KeyboardLayoutsChanged',
                 'KeyboardLayoutSwitched',
             ]
@@ -519,7 +520,7 @@ Singleton {
 
                 const updatedWorkspaces = {}
                 for (const id in root.workspaces) {
-                    updatedWorkspaces[id] = id === focusedWindow.workspace_id ? updatedWs : root.workspaces[id]
+                    updatedWorkspaces[id] = id === String(focusedWindow.workspace_id) ? updatedWs : root.workspaces[id]
                 }
                 root.workspaces = updatedWorkspaces
             }
@@ -536,13 +537,16 @@ Singleton {
             updatedWs[prop] = ws[prop]
         updatedWs.active_window_id = data.active_window_id
 
+        // for-in keys are strings; Niri's ids are numbers.
         const updatedWorkspaces = {}
         for (const id in root.workspaces)
-            updatedWorkspaces[id] = id === data.workspace_id ? updatedWs : root.workspaces[id]
+            updatedWorkspaces[id] = id === String(data.workspace_id) ? updatedWs : root.workspaces[id]
         root.workspaces = updatedWorkspaces
     }
 
     function handleWindowsChanged(data) {
+        const focused = (data.windows ?? []).find(window => window.is_focused === true)
+        root._latestFocusedWindowId = focused ? focused.id : null
         scheduleWindowsUpdate(data.windows)
     }
 
@@ -568,6 +572,9 @@ Singleton {
             return
 
         const window = data.window
+        // A window opened with focus gets no WindowFocusChanged of its own.
+        if (window.is_focused === true)
+            root._latestFocusedWindowId = window.id
         const currentList = _windowsDirty ? _pendingWindows : windows
         const existingIndex = currentList.findIndex(w => w.id === window.id)
         let updatedWindows
@@ -593,6 +600,12 @@ Singleton {
     property bool _windowOrderDirty: false
     property var _latestFocusedWindowId
 
+    // WindowLayoutsChanged is applied to _pendingWindows immediately, while the
+    // public sorted list is intentionally batched for UI consumers. Behavioural
+    // gates such as fullscreen detection must not wait for that presentation
+    // batching or an edge interaction can observe the previous geometry.
+    readonly property var liveWindows: _windowsDirty ? _pendingWindows : windows
+
     Timer {
         id: windowsUpdateTimer
         interval: root.windowListUpdateIntervalMs
@@ -602,7 +615,12 @@ Singleton {
                 const nextWindows = sortWindowsByLayout(_pendingWindows)
                 const orderChanged = _windowOrderDirty
                 windows = nextWindows
-                activeWindow = nextWindows.find(window => window.is_focused) ?? null
+                const focusedWindow = nextWindows.find(window => window.is_focused) ?? null
+                activeWindow = focusedWindow
+                if (focusedWindow && mruWindowIds[0] !== focusedWindow.id) {
+                    mruWindowIds = [focusedWindow.id,
+                        ...mruWindowIds.filter(id => id !== focusedWindow.id)]
+                }
                 _windowsDirty = false
                 _windowOrderDirty = false
                 if (orderChanged)
@@ -778,7 +796,7 @@ Singleton {
 
         const updatedWorkspaces = {}
         for (const id in root.workspaces) {
-            updatedWorkspaces[id] = id === data.id ? updatedWs : root.workspaces[id]
+            updatedWorkspaces[id] = id === String(data.id) ? updatedWs : root.workspaces[id]
         }
         root.workspaces = updatedWorkspaces
 
@@ -841,7 +859,12 @@ Singleton {
                     })
     }
 
+    // Emitted before the shell asks Niri to focus a window, so a surface holding
+    // on-demand keyboard focus (the desktop) can yield it to that window.
+    signal windowFocusRequested()
+
     function focusWindow(windowId) {
+        root.windowFocusRequested()
         return send({
                         "Action": {
                             "FocusWindow": {
@@ -1110,6 +1133,29 @@ Singleton {
         }
 
         return enriched
+    }
+
+    function hasWindowsOnActiveWorkspace(outputName: string): bool {
+        const active = Object.values(root.workspaces ?? {}).filter(workspace => workspace?.is_active
+            && (outputName.length === 0 || workspace.output === outputName))
+        if (active.length === 0 || !Array.isArray(root.windows)) return false
+        return root.windows.some(window => !window?.is_minimized
+            && active.some(workspace => workspace.id === window.workspace_id))
+    }
+
+    // True when the tiled columns of the output's active workspace span its width,
+    // so only gaps of the wallpaper remain visible.
+    function activeWorkspaceCovers(outputName: string): bool {
+        const workspace = Object.values(root.workspaces ?? {}).find(entry => entry?.is_active && entry.output === outputName)
+        const width = Number(root.outputs?.[outputName]?.logical?.width ?? 0)
+        if (!workspace || width <= 0 || !Array.isArray(root.windows)) return false
+        const columns = {}
+        for (const window of root.windows) {
+            const pos = window?.layout?.pos_in_scrolling_layout
+            if (window?.workspace_id !== workspace.id || window.is_floating || window.is_minimized || !pos) continue
+            columns[pos[0]] = Math.max(columns[pos[0]] ?? 0, Number(window.layout?.tile_size?.[0] ?? 0))
+        }
+        return Object.values(columns).reduce((sum, column) => sum + column, 0) >= width * 0.95
     }
 
     function filterCurrentWorkspace(toplevels, screenName) {

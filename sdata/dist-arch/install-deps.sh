@@ -29,7 +29,6 @@ if [[ -n "${ONLY_MISSING_DEPS:-}" ]]; then
     [git]="git"
     [python3]="python"
     [wlsunset]="wlsunset"
-    [dunstify]="dunst"
     [fish]="fish"
     [magick]="imagemagick"
     [swaylock]="swaylock"
@@ -39,7 +38,6 @@ if [[ -n "${ONLY_MISSING_DEPS:-}" ]]; then
     [cliphist]="cliphist"
     [wl-copy]="wl-clipboard"
     [wl-paste]="wl-clipboard"
-    [fuzzel]="fuzzel"
     [hyprpicker]="hyprpicker"
     [songrec]="songrec"
     [trans]="translate-shell"
@@ -278,8 +276,8 @@ OFFICIAL_PACKAGES=(
   # File manager
   nautilus
   
-  # Polkit agent (needed for auth dialogs — gnome agent works universally)
-  polkit-gnome
+  # Polkit, for the shell's own authentication dialogs
+  polkit
   
   # Icon themes - fallbacks from official repos (always available)
   hicolor-icon-theme
@@ -302,7 +300,6 @@ OFFICIAL_PACKAGES=(
   # SDDM login screen (users without another DE need this to log in)
   sddm
   qt6-svg
-  qt6-virtualkeyboard
   qt6-multimedia-ffmpeg
 
   # Video wallpaper support (thumbnail + SDDM background extraction)
@@ -311,6 +308,10 @@ OFFICIAL_PACKAGES=(
   # Prebuilt package that used to be routed through AUR
   mission-center
 )
+
+if [[ "${OS_SPECIFIC_ID:-}" == "cachyos" ]] && pacman -Si niri-focused-booster &>/dev/null; then
+  OFFICIAL_PACKAGES+=(niri-focused-booster)
+fi
 
 # Preserve install-group flags while preferring signed Arch packages wherever
 # possible. These used to be installed through AUR only when their group was on.
@@ -446,10 +447,14 @@ install_font_fallback() {
 
 # Add other AUR packages based on flags
 if $INSTALL_FONTS; then
-  AUR_PACKAGES+=(
-    whitesur-icon-theme
-    darkly-bin
-  )
+  AUR_PACKAGES+=(whitesur-icon-theme)
+  # Darkly already on the system (another package, or files left by an earlier install) makes
+  # darkly-bin fail with "exists in filesystem" and stops the whole AUR batch.
+  if [[ -e /usr/lib/qt6/plugins/styles/darkly6.so ]]; then
+    log_info "Darkly is already installed, skipping darkly-bin"
+  else
+    AUR_PACKAGES+=(darkly-bin)
+  fi
 fi
 
 if $INSTALL_AUDIO; then
@@ -524,7 +529,7 @@ tui_info "Registering dependencies with pacman..."
 _meta_dir="./sdata/dist-arch/inir-deps"
 if [[ -f "$_meta_dir/PKGBUILD" ]]; then
   # Update pkgver from VERSION file
-  _inir_ver="$(cat ./VERSION 2>/dev/null || echo '2.30.0')"
+  _inir_ver="$(cat ./VERSION 2>/dev/null || echo '2.33.0')"
   sed -i "s/^pkgver=.*/pkgver=${_inir_ver}/" "$_meta_dir/PKGBUILD"
 
   (
@@ -557,58 +562,20 @@ fi
 unset _meta_dir _inir_ver
 
 #####################################################################################
-# Post-install: Check for Qt/Quickshell ABI mismatch
-# pacman -Syu may update Qt while quickshell-git/quickshell-bin (AUR) was built
-# against the old Qt. Quickshell uses Qt private APIs, so minor bumps break ABI.
-# See: https://github.com/snowarch/iNiR/issues/93
+# Post-install: Quickshell built for another Qt version
+# Quickshell uses Qt internals and asks to be rebuilt after every Qt update.
+# `inir doctor --fix-abi` (scripts/inir) owns the rebuild for every install kind.
 #####################################################################################
 if command -v qs >/dev/null 2>&1; then
   qs_abi_output="$(timeout 5 env QT_QPA_PLATFORM=offscreen qs --version 2>&1 || true)"
   if echo "$qs_abi_output" | grep -qiE "built against Qt|Qt.*mismatch|incompatible Qt"; then
-    log_warning "Qt/Quickshell ABI mismatch detected!"
-    log_warning "Quickshell was built against a different Qt version than what is installed."
-    log_warning "The shell will crash until quickshell is rebuilt."
-
-    qs_rebuild_pkg=""
-    if pacman -Qi quickshell-git &>/dev/null; then
-      qs_rebuild_pkg="quickshell-git"
-    elif pacman -Qi quickshell-bin &>/dev/null; then
-      qs_rebuild_pkg="quickshell-bin"
+    log_warning "Quickshell was built for another Qt version. Until it is rebuilt it can crash."
+    qs_fix_args=(doctor --fix-abi)
+    $ask || qs_fix_args+=(--noninteractive)
+    if ! bash ./scripts/inir "${qs_fix_args[@]}"; then
+      log_warning "To fix later: inir doctor --fix-abi"
     fi
-
-    if [[ -n "$qs_rebuild_pkg" && -n "${AUR_HELPER:-}" ]]; then
-      # Determine correct rebuild method:
-      # - Foreign/AUR package: --rebuild triggers source compilation
-      # - Binary repo (CachyOS, chaotic-aur): -Sa forces AUR source build
-      qs_rebuild_cmd=""
-      if pacman -Qm "$qs_rebuild_pkg" &>/dev/null; then
-        qs_rebuild_cmd="$AUR_HELPER -S --rebuild --noconfirm $qs_rebuild_pkg"
-      else
-        qs_rebuild_cmd="$AUR_HELPER -Sa --noconfirm $qs_rebuild_pkg"
-      fi
-
-      do_rebuild=false
-      if ! $ask; then
-        do_rebuild=true
-      elif tui_confirm "Rebuild $qs_rebuild_pkg for current Qt version?"; then
-        do_rebuild=true
-      fi
-
-      if $do_rebuild; then
-        log_info "Running: $qs_rebuild_cmd"
-        if eval "$qs_rebuild_cmd"; then
-          log_success "Rebuilt $qs_rebuild_pkg — ABI mismatch resolved"
-        else
-          log_error "Rebuild failed. Try manually: ${qs_rebuild_cmd/--noconfirm /}"
-        fi
-      else
-        log_warning "To fix: ${qs_rebuild_cmd/--noconfirm /}"
-      fi
-    elif [[ -n "$qs_rebuild_pkg" ]]; then
-      log_warning "To fix: yay -Sa $qs_rebuild_pkg  (forces AUR source build; or use paru)"
-    else
-      log_warning "Reinstall quickshell from official repos: sudo pacman -S quickshell"
-    fi
+    unset qs_fix_args
   fi
 fi
 

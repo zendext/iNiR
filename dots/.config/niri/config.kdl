@@ -213,7 +213,7 @@ environment {
 spawn-at-startup "bash" "-c" "systemctl --user import-environment XDG_MENU_PREFIX && kbuildsycoca6"
 
 spawn-at-startup "bash" "-c" "wl-paste --watch cliphist store &"
-spawn-at-startup "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1"
+// Polkit: the iNiR shell is the authentication agent; another one here would take its place.
 // iNiR is started by the user systemd service (inir.service), not spawn-at-startup.
 
 // ============================================================================
@@ -251,7 +251,7 @@ binds {
     Ctrl+Alt+T { spawn "qs" "-c" "inir" "ipc" "call" "wallpaperSelector" "toggle"; }
     
     // ii Settings
-    Mod+Comma { spawn "qs" "-c" "inir" "ipc" "call" "settings" "open"; }
+    Mod+Comma { spawn "qs" "-c" "inir" "ipc" "call" "settings" "toggle"; }
     
     // ii Cheatsheet
     Mod+Slash { spawn "qs" "-c" "inir" "ipc" "call" "cheatsheet" "toggle"; }
@@ -266,7 +266,7 @@ binds {
     Super+W { spawn "bash" "-c" "xdg-open https://"; }
     
     // Window management
-    Mod+Q repeat=false { spawn "bash" "-c" "$HOME/.config/quickshell/inir/scripts/close-window.sh"; }
+    Mod+Q repeat=false allow-inhibiting=false { spawn "bash" "-c" "$HOME/.config/quickshell/inir/scripts/close-window.sh"; }
     Mod+D { maximize-column; }
     Mod+F { fullscreen-window; }
     Mod+A { toggle-window-floating; }

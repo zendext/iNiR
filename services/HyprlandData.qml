@@ -21,10 +21,15 @@ Singleton {
     property var activeWorkspace: null
     property var monitors: []
     property var layers: ({})
+    property bool _windowListRefreshQueued: false
 
     function updateWindowList() {
         if (!CompositorService.isHyprland)
             return;
+        if (getClients.running) {
+            root._windowListRefreshQueued = true;
+            return;
+        }
         getClients.running = true;
     }
 
@@ -72,7 +77,7 @@ Singleton {
     }
 
     Connections {
-        target: Hyprland
+        target: CompositorService.isHyprland ? Hyprland : null
         enabled: CompositorService.isHyprland
 
         function onRawEvent(event) {
@@ -84,6 +89,12 @@ Singleton {
     Process {
         id: getClients
         command: ["/usr/bin/hyprctl", "clients", "-j"]
+        onExited: {
+            if (root._windowListRefreshQueued) {
+                root._windowListRefreshQueued = false;
+                root.updateWindowList();
+            }
+        }
         stdout: StdioCollector {
             id: clientsCollector
             onStreamFinished: {

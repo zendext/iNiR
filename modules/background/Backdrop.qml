@@ -13,7 +13,6 @@ import Qt5Compat.GraphicalEffects as GE
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import "root:modules/common/functions/md5.js" as MD5
 
 Variants {
     id: root
@@ -52,6 +51,11 @@ Variants {
         readonly property size backdropSourceSize: Qt.size(
             Math.ceil(((screen?.width ?? 1920) + backdropDecodeOverflow * 2) * backdropDecodeScale),
             Math.ceil(((screen?.height ?? 1080) + backdropDecodeOverflow * 2) * backdropDecodeScale))
+        // A live wallpaper plays from the cached copy at the output's height, not a 4K original.
+        readonly property string videoSource: {
+            const path = wallpaperIsVideo ? Wallpapers.videoPlaybackPath(wallpaperPathRaw, Math.ceil((screen?.height ?? 1080) * backdropDecodeScale)) : ""
+            return !path ? "" : path.startsWith("file://") ? path : ("file://" + path)
+        }
         readonly property int thumbnailBlurStrength: Config.options?.background?.effects?.thumbnailBlurStrength ?? 50
         readonly property bool enableAnimatedBlur: iiBackdrop.enableAnimatedBlur ?? false
         // Niri's backdrop is a full-screen visual layer, not a photo viewer. It
@@ -128,14 +132,8 @@ Variants {
         // For ColorQuantizer: needs an image source (can't decode video files)
         // Uses first-frame cache for videos, config thumbnail as fallback
         readonly property string colorSourcePath: {
-            if (wallpaperIsVideo) {
-                const _dep = Wallpapers.videoFirstFrames // reactive binding
-                const ff = Wallpapers.getVideoFirstFramePath(wallpaperPathRaw)
-                // Cache-bust so ColorQuantizer reloads when the first frame appears.
-                if (ff) return ff + "?ff=1"
-                Wallpapers.ensureVideoFirstFrame(wallpaperPathRaw)
-                return Wallpapers._videoThumbDir + "/" + MD5.hash(wallpaperPathRaw) + ".jpg?ff=0"
-            }
+            if (wallpaperIsVideo)
+                return Wallpapers.stillUrlFor(wallpaperPathRaw)
             return wallpaperPathRaw
         }
 
@@ -178,6 +176,7 @@ Variants {
                 anchors.margins: parent.mediaMargin
                 fillMode: backdropWindow.imageFillMode
                 source: backdropWindow.effectiveWallpaperPath && !backdropWindow.wallpaperIsGif && !backdropWindow.wallpaperIsVideo
+                        && !Wallpapers.isVideoFile(backdropWindow.effectiveWallpaperPath)
                     ? (backdropWindow.effectiveWallpaperPath.startsWith("file://")
                         ? backdropWindow.effectiveWallpaperPath
                         : "file://" + backdropWindow.effectiveWallpaperPath)
@@ -216,6 +215,7 @@ Variants {
                 mipmap: false
                 visible: !backdropWindow.useAuroraStyle && backdropWindow.wallpaperIsGif
                 playing: visible && backdropWindow.enableAnimation && !GlobalStates.screenLocked && !Appearance._gameModeActive && !Wallpapers.batteryPauseActive
+                    && (!CompositorService.isNiri || NiriService.inOverview)
 
                 layer.enabled: visible && Appearance.effectsEnabled
                     && backdropWindow.enableAnimatedBlur
@@ -268,9 +268,7 @@ Variants {
                     // The Aurora branch owns its own player. Keep this pipeline
                     // completely unloaded while that style is visible.
                     if (!videoWallpaper.visible || !backdropWindow.wallpaperIsVideo) return "";
-                    const path = backdropWindow.wallpaperPathRaw;
-                    if (!path) return "";
-                    return path.startsWith("file://") ? path : ("file://" + path);
+                    return backdropWindow.videoSource;
                 }
                 fillMode: backdropWindow.videoFillMode
                 loops: MediaPlayer.Infinite
@@ -278,15 +276,17 @@ Variants {
                 autoPlay: true
 
                 readonly property bool shouldPlay: backdropWindow.enableAnimation && !GlobalStates.screenLocked && !Appearance._gameModeActive && !Wallpapers.batteryPauseActive
+                    && (!CompositorService.isNiri || NiriService.inOverview)
 
-                function pauseAndShowFirstFrame() {
+                // Leaving the Overview holds the frame; only a still backdrop shows the first one.
+                function pausePlayback() {
                     pause()
-                    seek(0) // Ensure first frame is displayed when paused
+                    if (!backdropWindow.enableAnimation) seek(0)
                 }
 
                 onPlaybackStateChanged: {
                     if (playbackState === MediaPlayer.PlayingState && !shouldPlay) {
-                        pauseAndShowFirstFrame()
+                        pausePlayback()
                     }
                     if (playbackState === MediaPlayer.StoppedState && visible && shouldPlay) {
                         play()
@@ -296,14 +296,14 @@ Variants {
                 onShouldPlayChanged: {
                     if (visible && backdropWindow.wallpaperIsVideo) {
                         if (shouldPlay) play()
-                        else pauseAndShowFirstFrame()
+                        else pausePlayback()
                     }
                 }
 
                 onVisibleChanged: {
                     if (visible && backdropWindow.wallpaperIsVideo) {
                         if (shouldPlay) play()
-                        else pauseAndShowFirstFrame()
+                        else pausePlayback()
                     } else {
                         pause()
                     }
@@ -327,7 +327,9 @@ Variants {
                 anchors.fill: parent
                 anchors.margins: parent.mediaMargin
                 fillMode: backdropWindow.imageFillMode
-                source: backdropWindow.wallpaperIsGif ? gifWallpaper.source : wallpaper.source
+                // Decoded only when it can show: off, it held a hidden half-size copy of the wallpaper per output.
+                source: backdropWindow.useAuroraStyle && !backdropWindow.wallpaperIsGif && !backdropWindow.wallpaperIsVideo
+                    ? wallpaper.source : ""
                 asynchronous: true
                 cache: false
                 smooth: true
@@ -361,13 +363,14 @@ Variants {
                 anchors.fill: parent
                 anchors.margins: parent.mediaMargin
                 fillMode: backdropWindow.imageFillMode
-                source: backdropWindow.wallpaperIsGif ? gifWallpaper.source : ""
+                source: backdropWindow.useAuroraStyle && backdropWindow.wallpaperIsGif ? gifWallpaper.source : ""
                 asynchronous: true
                 cache: false
                 smooth: true
                 mipmap: false
                 visible: backdropWindow.useAuroraStyle && backdropWindow.wallpaperIsGif
                 playing: visible && backdropWindow.enableAnimation && !GlobalStates.screenLocked && !Appearance._gameModeActive && !Wallpapers.batteryPauseActive
+                    && (!CompositorService.isNiri || NiriService.inOverview)
 
                 layer.enabled: visible && Appearance.effectsEnabled
                     && backdropWindow.enableAnimatedBlur
@@ -422,9 +425,7 @@ Variants {
                     // Do not borrow videoWallpaper.source: that kept the hidden
                     // non-Aurora MediaPlayer loaded as a second decoder.
                     if (!auroraVideoWallpaper.visible) return "";
-                    const path = backdropWindow.wallpaperPathRaw;
-                    if (!path) return "";
-                    return path.startsWith("file://") ? path : ("file://" + path);
+                    return backdropWindow.videoSource;
                 }
                 fillMode: backdropWindow.videoFillMode
                 loops: MediaPlayer.Infinite
@@ -432,15 +433,16 @@ Variants {
                 autoPlay: true
 
                 readonly property bool shouldPlay: backdropWindow.enableAnimation && !GlobalStates.screenLocked && !Appearance._gameModeActive && !Wallpapers.batteryPauseActive
+                    && (!CompositorService.isNiri || NiriService.inOverview)
 
-                function pauseAndShowFirstFrame() {
+                function pausePlayback() {
                     pause()
-                    seek(0)
+                    if (!backdropWindow.enableAnimation) seek(0)
                 }
 
                 onPlaybackStateChanged: {
                     if (playbackState === MediaPlayer.PlayingState && !shouldPlay) {
-                        pauseAndShowFirstFrame()
+                        pausePlayback()
                     }
                     if (playbackState === MediaPlayer.StoppedState && visible && shouldPlay) {
                         play()
@@ -450,14 +452,14 @@ Variants {
                 onShouldPlayChanged: {
                     if (visible && backdropWindow.wallpaperIsVideo) {
                         if (shouldPlay) play()
-                        else pauseAndShowFirstFrame()
+                        else pausePlayback()
                     }
                 }
 
                 onVisibleChanged: {
                     if (visible && backdropWindow.wallpaperIsVideo) {
                         if (shouldPlay) play()
-                        else pauseAndShowFirstFrame()
+                        else pausePlayback()
                     } else {
                         pause()
                     }

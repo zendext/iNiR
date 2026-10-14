@@ -56,7 +56,7 @@ if [[ -n "${ONLY_MISSING_DEPS:-}" ]]; then
     [qs]="quickshell" [niri]="niri" [nmcli]="network-manager" [wpctl]="wireplumber"
     [jq]="jq" [rsync]="rsync" [curl]="curl" [git]="git" [python3]="python3"
     [fish]="fish" [magick]="imagemagick" [grim]="grim" [cliphist]="cliphist"
-    [wl-copy]="wl-clipboard" [wl-paste]="wl-clipboard" [fuzzel]="fuzzel"
+    [wl-copy]="wl-clipboard" [wl-paste]="wl-clipboard"
     [hyprpicker]="hyprpicker" [playerctl]="playerctl" [notify-send]="libnotify-bin"
     [flock]="util-linux" [wlsunset]="wlsunset" [easyeffects]="easyeffects"
     [uv]="uv" [cava]="cava" [qalc]="qalc" [yt-dlp]="yt-dlp" [socat]="socat"
@@ -167,19 +167,25 @@ fi
 #####################################################################################
 # Version warnings
 #####################################################################################
+# iNiR needs Qt 6.9 or newer (QtQuick.Effects shadows, typed nested functions); Quickshell itself
+# needs 6.6. Stop early instead of failing after a long source build.
 if $IS_UBUNTU; then
   case "$UBUNTU_VERSION" in
-    22.04|22.10)
-      log_warning "Ubuntu ${UBUNTU_VERSION} has older Qt6 packages — Ubuntu 24.04+ recommended"
+    2[0-4].*|25.04)
+      log_error "Ubuntu ${UBUNTU_VERSION} ships Qt older than 6.9, which iNiR needs. Use Ubuntu 25.10 or newer."
+      exit 1
       ;;
   esac
 fi
 
 if $IS_DEBIAN; then
   case "$DEBIAN_VERSION" in
-    11*|10*|9*)
-      log_error "Debian ${DEBIAN_VERSION} is too old — Qt6 requires Debian 12 (bookworm) or newer"
+    12*|11*|10*|9*)
+      log_error "Debian ${DEBIAN_VERSION} ships Qt older than 6.9, which iNiR needs. Use Debian 14 (forky) or testing."
       exit 1
+      ;;
+    13*)
+      log_warning "Debian 13 ships Qt 6.8; iNiR needs 6.9. Some surfaces may not load until Qt 6.9 is available (testing or backports)."
       ;;
   esac
 fi
@@ -492,10 +498,8 @@ tui_info "Installing packages from official repositories..."
 # Core system packages
 DEBIAN_CORE_PKGS=(
   # Basic utilities
-  bc
   coreutils
   curl
-  wget
   ripgrep
   jq
   xdg-user-dirs
@@ -504,7 +508,6 @@ DEBIAN_CORE_PKGS=(
   wl-clipboard
   libnotify-bin
   wlsunset
-  dunst
   unzip
   
   # XDG Portals
@@ -561,18 +564,13 @@ for pkg in quickshell niri xwayland-satellite awww starship eza uv; do
   fi
 done
 
-# Polkit package names changed in Debian 13. Keep Bookworm/Ubuntu compatibility
-# while ensuring Trixie receives both the daemon/tools and a graphical agent.
+# Polkit daemon and pkexec (split into polkitd/pkexec in Debian 13). No graphical
+# agent: the shell answers password requests itself.
 if apt_pkg_available policykit-1; then
   DEBIAN_CORE_PKGS+=(policykit-1)
 else
   apt_pkg_available polkitd && DEBIAN_CORE_PKGS+=(polkitd)
   apt_pkg_available pkexec && DEBIAN_CORE_PKGS+=(pkexec)
-fi
-if apt_pkg_available policykit-1-gnome; then
-  DEBIAN_CORE_PKGS+=(policykit-1-gnome)
-elif apt_pkg_available polkit-kde-agent-1; then
-  DEBIAN_CORE_PKGS+=(polkit-kde-agent-1)
 fi
 
 # Qt6 packages - ONLY dev packages, runtime libs are auto-installed as dependencies
@@ -611,7 +609,6 @@ DEBIAN_AUDIO_PKGS=(
   wireplumber
   playerctl
   plasma-browser-integration
-  libdbusmenu-gtk3-4
   pavucontrol
   easyeffects
   lsp-plugins-lv2
@@ -628,6 +625,7 @@ DEBIAN_TOOLKIT_PKGS=(
   python3-evdev
   python3-pil
   python3-cairo
+  golang-go
   libgirepository-2.0-dev
   brightnessctl
   ddcutil
@@ -688,7 +686,6 @@ DEBIAN_FONT_PKGS=(
   fonts-jetbrains-mono
   
   # Launcher
-  fuzzel
   
   # Qt theming
   kvantum
@@ -1379,14 +1376,27 @@ if ! quickshell_installed_compatible; then
     qt6-wayland-dev
     libwayland-dev
     wayland-protocols
-    # Optional but recommended
+    # Services and buffers Quickshell builds by default (Debian's quickshell Build-Depends)
     libjemalloc-dev
     libpipewire-0.3-dev
     libpam0g-dev
+    libpolkit-agent-1-dev
+    libpolkit-gobject-1-dev
+    libglib2.0-dev
     libdrm-dev
     libgbm-dev
+    libegl-dev
+    libgles-dev
+    libvulkan-dev
     libxcb1-dev
   )
+
+  # The crash handler needs cpptrace (Debian 13 backports and newer); build without it elsewhere.
+  QUICKSHELL_CRASH_HANDLER=OFF
+  if apt_pkg_available libcpptrace-dev; then
+    QUICKSHELL_BASE_DEPS+=(libcpptrace-dev)
+    QUICKSHELL_CRASH_HANDLER=ON
+  fi
   
   # qt6-wayland-private-dev: only in trixie/sid, not bookworm
   if apt_pkg_available qt6-wayland-private-dev; then
@@ -1435,8 +1445,10 @@ if ! quickshell_installed_compatible; then
     if cmake -B build -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=/usr/local \
+      -DCRASH_HANDLER="$QUICKSHELL_CRASH_HANDLER" \
       -DSERVICE_PIPEWIRE=ON \
-      -DSERVICE_PAM=ON && cmake --build build -j$(nproc); then
+      -DSERVICE_PAM=ON \
+      -DSERVICE_POLKIT=ON && cmake --build build -j$(nproc); then
       sudo cmake --install build
       log_success "Quickshell installed!"
     else

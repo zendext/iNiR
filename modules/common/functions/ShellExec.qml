@@ -56,13 +56,15 @@ Singleton {
             # Rebuild the application-facing environment from the live user
             # session. Quickshell intentionally carries shell-only Qt scaling,
             # rendering and optional GPU policy that must not leak into apps.
+            # The socket exists only while the user manager runs: a probe that
+            # times out means a busy manager, still systemd, and an app left out
+            # of its scope would die with the shell's own unit.
             manager_env=""
-            if [ -x /usr/bin/systemctl ]; then
-                if [ -x /usr/bin/timeout ]; then
-                    manager_env="$(/usr/bin/timeout 1s /usr/bin/systemctl --user show-environment 2>/dev/null || true)"
-                else
-                    manager_env="$(/usr/bin/systemctl --user show-environment 2>/dev/null || true)"
-                fi
+            systemd_user_manager_usable=false
+            if [ -S "\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/systemd/private" ] &&
+               [ -x /usr/bin/systemctl ] && [ -x /usr/bin/timeout ]; then
+                manager_env="$(/usr/bin/timeout 3s /usr/bin/systemctl --user show-environment 2>/dev/null)"
+                case $? in 0|124) systemd_user_manager_usable=true ;; esac
             fi
 
             manager_value() {
@@ -98,7 +100,7 @@ Singleton {
                 QT_WAYLAND_FORCE_DPI QT_FONT_DPI QT_AUTO_SCREEN_SCALE_FACTOR \
                 QT_SCREEN_SCALE_FACTORS GDK_SCALE GDK_DPI_SCALE \
                 QSG_ATLAS_WIDTH QSG_ATLAS_HEIGHT QT_LOGGING_RULES \
-                QS_DISABLE_CRASH_HANDLER; do
+                QS_DISABLE_CRASH_HANDLER MALLOC_CONF mesa_glthread DRIRC_CONFIGDIR; do
                 restore_from_manager "$_var"
             done
 
@@ -165,7 +167,7 @@ Singleton {
                 cd -- "$workdir" || true
             fi
 
-            if [ -x "$systemd_run" ] && [ -S "$XDG_RUNTIME_DIR/systemd/private" ]; then
+            if [ -x "$systemd_run" ] && [ "$systemd_user_manager_usable" = true ]; then
                 if [ -n "$desc" ]; then
                     exec "$systemd_run" --user --quiet --collect --same-dir --scope \
                         --description="$desc" -- "$@"

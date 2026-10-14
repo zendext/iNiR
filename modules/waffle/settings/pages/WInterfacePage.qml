@@ -53,6 +53,14 @@ WSettingsPage {
         GlobalStates.settingsOverlayOpen = false
         GlobalStates.overlayOpen = true
     }
+
+    function gamePerformanceBackgroundOpacity(): real {
+        const localValue = Number(Config.options?.overlay?.gamePerformance?.backgroundOpacity ?? -1)
+        const globalValue = Number(Config.options?.overlay?.backgroundOpacity ?? 0.9)
+        const value = isFinite(localValue) && localValue >= 0 ? localValue : globalValue
+        return Math.max(0, Math.min(1, isFinite(value) ? value : 0.9))
+    }
+
     readonly property var recordingAudioModeOptions: [
         { value: "none", displayName: Translation.tr("No audio") },
         { value: "system", displayName: Translation.tr("System audio") },
@@ -513,6 +521,26 @@ WSettingsPage {
             onValueChanged: Config.setNestedValue("overlay.backgroundOpacity", value / 100)
         }
 
+        WSettingsSpinBox {
+            label: Translation.tr("Game Performance background opacity (%)")
+            icon: "monitor_heart"
+            suffix: "%"
+            from: 0; to: 100; stepSize: 5
+            value: Math.round(root.gamePerformanceBackgroundOpacity() * 100)
+            enabled: !(Config.options?.overlay?.gamePerformance?.transparentBackground ?? false)
+            onValueChanged: Config.setNestedValue(
+                "overlay.gamePerformance.backgroundOpacity", value / 100)
+        }
+
+        WSettingsSwitch {
+            label: Translation.tr("Transparent Game Performance background")
+            icon: "opacity"
+            description: Translation.tr("Set panel opacity to 0%; metrics remain visible")
+            checked: Config.options?.overlay?.gamePerformance?.transparentBackground ?? false
+            onCheckedChanged: Config.setNestedValue(
+                "overlay.gamePerformance.transparentBackground", checked)
+        }
+
         WSettingsSwitch {
             label: Translation.tr("Enable opening zoom animation")
             icon: "play"
@@ -559,6 +587,86 @@ WSettingsPage {
             from: 500; to: 5000; stepSize: 250
             value: Config.options?.osd?.timeout ?? 1000
             onValueChanged: Config.setNestedValue("osd.timeout", value)
+        }
+
+        WSettingsSwitch {
+            label: Translation.tr("Connection notices")
+            icon: "arrow-sync"
+            description: Translation.tr("A short notice when something is plugged in, connected, unplugged or lost")
+            checked: Config.options?.osd?.connections?.enable ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.enable", checked)
+        }
+
+        WSettingsSwitch {
+            visible: Config.options?.osd?.connections?.enable ?? true
+            label: Translation.tr("Network")
+            icon: "ethernet"
+            description: Translation.tr("Wi-Fi or cable connected and dropped")
+            checked: Config.options?.osd?.connections?.network ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.network", checked)
+        }
+
+        WSettingsSwitch {
+            visible: Config.options?.osd?.connections?.enable ?? true
+            label: Translation.tr("Internet")
+            icon: "wifi-warning"
+            description: Translation.tr("Lost and back online")
+            checked: Config.options?.osd?.connections?.internet ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.internet", checked)
+        }
+
+        WSettingsSwitch {
+            visible: Config.options?.osd?.connections?.enable ?? true
+            label: Translation.tr("Bluetooth devices")
+            icon: "bluetooth-connected"
+            description: Translation.tr("Headphones, keyboards, controllers")
+            checked: Config.options?.osd?.connections?.bluetooth ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.bluetooth", checked)
+        }
+
+        WSettingsSwitch {
+            visible: Config.options?.osd?.connections?.enable ?? true
+            label: Translation.tr("USB devices")
+            icon: "keyboard"
+            description: Translation.tr("Mice, keyboards, controllers, cameras, phones, by name")
+            checked: Config.options?.osd?.connections?.usb ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.usb", checked)
+        }
+
+        WSettingsSwitch {
+            visible: Config.options?.osd?.connections?.enable ?? true
+            label: Translation.tr("Charger")
+            icon: "battery-charge"
+            description: Translation.tr("Plugged in and on battery")
+            checked: Config.options?.osd?.connections?.power ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.power", checked)
+        }
+
+        WSettingsSwitch {
+            visible: Config.options?.osd?.connections?.enable ?? true
+            label: Translation.tr("Sound output")
+            icon: "headphones"
+            description: Translation.tr("Headphones or speakers take over")
+            checked: Config.options?.osd?.connections?.audio ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.audio", checked)
+        }
+
+        WSettingsSwitch {
+            visible: Config.options?.osd?.connections?.enable ?? true
+            label: Translation.tr("Displays")
+            icon: "desktop"
+            description: Translation.tr("A monitor plugged in or removed")
+            checked: Config.options?.osd?.connections?.displays ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.displays", checked)
+        }
+
+        WSettingsSwitch {
+            visible: Config.options?.osd?.connections?.enable ?? true
+            label: Translation.tr("Drives and memory cards")
+            icon: "folder"
+            description: Translation.tr("Pendrives, external disks and SD cards, with their name and size")
+            checked: Config.options?.osd?.connections?.drives ?? true
+            onCheckedChanged: Config.setNestedValue("osd.connections.drives", checked)
         }
     }
     
@@ -696,6 +804,36 @@ WSettingsPage {
             value: Math.round((Config.options?.lock?.dim?.opacity ?? 0.3) * 100)
             onMoved: Config.setNestedValue("lock.dim.opacity", value / 100)
             suffix: "%"
+        }
+
+        WSettingsDropdown {
+            visible: MaterialThemeLoader.loginScreenInstalled
+            label: Translation.tr("Login screen")
+            icon: "key"
+            description: Translation.tr("Where you sign in after starting the computer. Automatic shows iRiS while you use iRiS.")
+            currentValue: Config.options?.lock?.loginScreen ?? "auto"
+            options: [
+                { value: "auto", displayName: Translation.tr("Automatic") },
+                { value: "classic", displayName: Translation.tr("Classic") },
+                { value: "iris", displayName: Translation.tr("iRiS") }
+            ]
+            onSelected: newValue => Config.setNestedValue("lock.loginScreen", newValue)
+        }
+
+        WSettingsDropdown {
+            readonly property string look: Config.options?.lock?.loginScreen ?? "auto"
+            visible: MaterialThemeLoader.loginScreenInstalled
+                && (look === "iris" || (look === "auto" && (Config.options?.panelFamily ?? "ii") === "iris"))
+            label: Translation.tr("Login style")
+            icon: "image"
+            description: Translation.tr("Cover shows your picture sharp, Frame hangs it in a mat, Lens cuts the time out of it.")
+            currentValue: Config.options?.lock?.loginStyle ?? "lens"
+            options: [
+                { value: "cover", displayName: Translation.tr("Cover") },
+                { value: "frame", displayName: Translation.tr("Frame") },
+                { value: "lens", displayName: Translation.tr("Lens") }
+            ]
+            onSelected: newValue => Config.setNestedValue("lock.loginStyle", newValue)
         }
     }
 

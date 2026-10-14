@@ -25,6 +25,9 @@ declare -A INIR_ONLY_PATHS=(
     ["${HOME}/.local/bin/inir_super_overview_daemon.py"]="iNiR super daemon"
     ["${XDG_CONFIG_HOME}/systemd/user/inir.service"]="iNiR user service"
     ["${XDG_CONFIG_HOME}/systemd/user/inir-super-overview.service"]="iNiR daemon service"
+    ["${XDG_CONFIG_HOME}/service/inir"]="iNiR runit user service"
+    ["${XDG_CONFIG_HOME}/service/inir-xembedsniproxy"]="iNiR XEmbed runit service"
+    ["${XDG_CONFIG_HOME}/service/inir-super-overview"]="iNiR Super-tap runit service"
     ["${XDG_CONFIG_HOME}/vesktop/themes/system24.theme.css"]="iNiR Vesktop Material theme"
     ["${XDG_CONFIG_HOME}/vesktop/themes/inir-tui.theme.css"]="iNiR Vesktop TUI theme"
     ["${XDG_CONFIG_HOME}/vesktop/themes/inir-midnight.theme.css"]="iNiR Vesktop Midnight theme"
@@ -51,7 +54,7 @@ declare -A SHARED_PATHS=(
     ["${XDG_CONFIG_HOME}/dolphinrc"]="Dolphin file manager config|dolphin|optional"
     ["${XDG_CONFIG_HOME}/gtk-3.0/gtk.css"]="GTK3 custom styles||optional"
     ["${XDG_CONFIG_HOME}/gtk-4.0/gtk.css"]="GTK4 custom styles||optional"
-    ["${XDG_CONFIG_HOME}/fontconfig"]="Font configuration||essential"
+    ["${XDG_CONFIG_HOME}/fontconfig/conf.d/90-inir-shell.conf"]="iNiR shell font rendering||inir_default"
     ["${XDG_DATA_HOME:-$HOME/.local/share}/color-schemes/Darkly.colors"]="Darkly color scheme||inir_default"
 )
 
@@ -59,6 +62,18 @@ declare -A SHARED_PATHS=(
 declare -A QUICKSHELL_SHARED=(
     ["${XDG_STATE_HOME}/quickshell/.venv"]="Python virtual environment"
     ["${XDG_STATE_HOME}/quickshell/themes"]="Generated themes"
+)
+
+declare -A INIR_PREINSTALL_RESTORE_FILES=(
+    ["${XDG_CONFIG_HOME}/starship.toml"]="Starship config"
+    ["${XDG_CONFIG_HOME}/fish/config.fish"]="Fish config"
+    ["${XDG_CONFIG_HOME}/fish/auto-Niri.fish"]="Fish Niri integration"
+    ["${XDG_CONFIG_HOME}/foot/foot.ini"]="Foot config"
+    ["${XDG_CONFIG_HOME}/kitty/kitty.conf"]="Kitty config"
+    ["${XDG_CONFIG_HOME}/konsolerc"]="Konsole config"
+    ["${XDG_CONFIG_HOME}/chrome-flags.conf"]="Chrome flags"
+    ["${XDG_CONFIG_HOME}/code-flags.conf"]="VS Code flags"
+    ["${XDG_CONFIG_HOME}/mpv/mpv.conf"]="MPV config"
 )
 
 # Packages that iNiR may have installed - with usage context
@@ -218,6 +233,11 @@ package_has_dependents() {
             local deps=$(apt-cache rdepends "$pkg" 2>/dev/null | grep -v "^$pkg$" | head -1)
             [[ -n "$deps" ]]
             ;;
+        void)
+            # XBPS prints reverse dependencies one per line; no output means none.
+            local deps=$(xbps-query -X "$pkg" 2>/dev/null | head -1)
+            [[ -n "$deps" ]]
+            ;;
         *)
             # Can't check, assume it might have dependents
             return 0
@@ -278,12 +298,25 @@ get_package_removal_safety() {
 uninstall_stop_services() {
     tui_info "Stopping iNiR services..."
 
+    local user_service_root="${XDG_CONFIG_HOME:-$HOME/.config}/service"
+    local service_dir
+    if command -v sv >/dev/null 2>&1; then
+        for service_dir in inir inir-xembedsniproxy inir-super-overview; do
+            [[ -d "$user_service_root/$service_dir" ]] || continue
+            sv down "$user_service_root/$service_dir" >/dev/null 2>&1 || true
+        done
+        if [[ -f "$user_service_root/ydotool/run" ]] \
+                && grep -q '^# Managed by iNiR\.' "$user_service_root/ydotool/run"; then
+            sv down "$user_service_root/ydotool" >/dev/null 2>&1 || true
+        fi
+    fi
+
     # Stop quickshell inir config
     local runtime_target="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/inir"
     qs -p "$runtime_target" kill 2>/dev/null || true
 
     # Stop super daemon if running
-    if command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]; then
+    if has_usable_systemd_user_manager; then
         # Stop the service
         systemctl --user stop inir.service 2>/dev/null || true
         # Remove all wants links (compositor-specific and legacy graphical-session)
@@ -306,9 +339,143 @@ uninstall_stop_services() {
 }
 
 uninstall_reload_user_systemd() {
-    if command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]; then
+    if has_usable_systemd_user_manager; then
         systemctl --user daemon-reload 2>/dev/null || true
     fi
+}
+
+uninstall_backup_restorable_configs() {
+    local backup_dir="$1" target candidate rel destination
+
+    for target in "${!INIR_PREINSTALL_RESTORE_FILES[@]}"; do
+        for candidate in "$target" "$target.old"; do
+            [[ -e "$candidate" || -L "$candidate" ]] || continue
+            rel="${candidate#${XDG_CONFIG_HOME}/}"
+            destination="$backup_dir/shared-configs/$rel"
+            mkdir -p "$(dirname "$destination")"
+            cp -a -- "$candidate" "$destination"
+        done
+    done
+}
+
+uninstall_backup_shell_integration() {
+    local backup_dir="$1" profile destination
+    mkdir -p "$backup_dir/shell-integration"
+
+    for profile in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc" \
+                   "$HOME/.zprofile" "$HOME/.zshrc"; do
+        [[ -f "$profile" ]] || continue
+        destination="$backup_dir/shell-integration/$(basename "$profile")"
+        cp -a -- "$profile" "$destination"
+    done
+
+    for profile in "${XDG_CONFIG_HOME}/fish/conf.d/inir-path.fish" \
+                   "${XDG_CONFIG_HOME}/fish/conf.d/inir-env.fish"; do
+        [[ -e "$profile" || -L "$profile" ]] || continue
+        destination="$backup_dir/shell-integration/$(basename "$profile")"
+        cp -a -- "$profile" "$destination"
+    done
+}
+
+uninstall_remove_shell_integration() {
+    local profile tmp changed=0
+
+    for profile in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc" \
+                   "$HOME/.zprofile" "$HOME/.zshrc"; do
+        [[ -f "$profile" ]] || continue
+        tmp="${profile}.inir-uninstall.$$"
+        python3 - "$profile" > "$tmp" <<'PY'
+import re
+import sys
+
+text = open(sys.argv[1], encoding="utf-8").read()
+for start, end in (
+    ("iNiR launcher PATH", "end iNiR launcher PATH"),
+    ("iNiR environment", "end iNiR"),
+):
+    pattern = rf"(?ms)^[ \t]*# {re.escape(start)}[ \t]*$\n.*?^[ \t]*# {re.escape(end)}[ \t]*$\n?"
+    text = re.sub(pattern, "", text)
+sys.stdout.write(text)
+PY
+        if ! cmp -s "$profile" "$tmp"; then
+            mv "$tmp" "$profile"
+            ((changed++)) || true
+        else
+            rm -f "$tmp"
+        fi
+    done
+
+    for profile in "${XDG_CONFIG_HOME}/fish/conf.d/inir-path.fish" \
+                   "${XDG_CONFIG_HOME}/fish/conf.d/inir-env.fish"; do
+        if [[ -e "$profile" || -L "$profile" ]]; then
+            rm -f -- "$profile" || return 1
+            ((changed++)) || true
+        fi
+    done
+
+    if [[ "$changed" -gt 0 ]]; then
+        tui_success "Removed iNiR shell profile integration"
+    fi
+}
+
+uninstall_restore_backup_path() {
+    local relative="$1" target source
+    target="${XDG_CONFIG_HOME}/$relative"
+    source="${BACKUP_DIR}/.config/$relative"
+    [[ -e "$source" || -L "$source" ]] || return 1
+    mkdir -p "$(dirname "$target")"
+    rm -f -- "$target"
+    cp -a -- "$source" "$target"
+}
+
+uninstall_restore_preinstall_configs() {
+    local target old relative desc restored=0
+
+    echo ""
+    tui_section_start "Restoring pre-iNiR configs"
+    for target in "${!INIR_PREINSTALL_RESTORE_FILES[@]}"; do
+        old="$target.old"
+        relative="${target#${XDG_CONFIG_HOME}/}"
+        desc="${INIR_PREINSTALL_RESTORE_FILES[$target]}"
+
+        if [[ -e "$old" || -L "$old" ]]; then
+            mkdir -p "$(dirname "$target")"
+            rm -f -- "$target"
+            mv -- "$old" "$target"
+            echo -e "  ${STY_GREEN}✓${STY_RST} Restored: $desc"
+            ((restored++)) || true
+        elif [[ -e "${BACKUP_DIR}/.config/$relative" || -L "${BACKUP_DIR}/.config/$relative" ]]; then
+            uninstall_restore_backup_path "$relative"
+            echo -e "  ${STY_GREEN}✓${STY_RST} Restored from install backup: $desc"
+            ((restored++)) || true
+        fi
+    done
+
+    local kitty_theme="${XDG_CONFIG_HOME}/kitty/theme.conf"
+    local kitty_link="${XDG_CONFIG_HOME}/kitty/current-theme.conf"
+    if [[ -f "$kitty_theme" ]] && grep -Fq 'Auto-generated by ii wallpaper theming system' "$kitty_theme" 2>/dev/null; then
+        [[ -L "$kitty_link" && "$(readlink "$kitty_link" 2>/dev/null || true)" == "theme.conf" ]] && rm -f "$kitty_link"
+        rm -f "$kitty_theme"
+        uninstall_restore_backup_path "kitty/theme.conf" 2>/dev/null || true
+        uninstall_restore_backup_path "kitty/current-theme.conf" 2>/dev/null || true
+    fi
+
+    local foot_colors foot_colors_rel
+    for foot_colors_rel in "foot/inir-colors.ini" "foot/colors.ini"; do
+        foot_colors="${XDG_CONFIG_HOME}/${foot_colors_rel}"
+        if [[ -f "$foot_colors" ]] && grep -Fq 'Auto-generated by ii wallpaper theming system' "$foot_colors" 2>/dev/null; then
+            rm -f "$foot_colors"
+            uninstall_restore_backup_path "$foot_colors_rel" 2>/dev/null || true
+        fi
+    done
+
+    if [[ $restored -eq 0 ]]; then
+        tui_info "No pre-iNiR exact-file backups were found"
+    else
+        tui_success "Restored $restored pre-iNiR config(s)"
+    fi
+    [[ -d "$BACKUP_DIR" ]] && echo -e "  ${STY_FAINT}Original install backup: $BACKUP_DIR${STY_RST}"
+    tui_section_end
 }
 
 uninstall_create_backup() {
@@ -335,6 +502,9 @@ uninstall_create_backup() {
     if [[ -d "${XDG_STATE_HOME}/quickshell/user" ]]; then
         cp -r "${XDG_STATE_HOME}/quickshell/user" "$backup_dir/quickshell-state"
     fi
+
+    uninstall_backup_restorable_configs "$backup_dir"
+    uninstall_backup_shell_integration "$backup_dir"
 
     tui_success "Backup created: $backup_dir" >&2
     echo "$backup_dir"
@@ -646,6 +816,10 @@ uninstall_show_manual_steps() {
     echo ""
     echo -e "  ${STY_YELLOW}•${STY_RST} SDDM theme drop-in: /etc/sddm.conf.d/99-inir-theme.conf"
     echo -e "    ${STY_FAINT}Used by: sets Current=ii-pixel (legacy path: /etc/sddm.conf.d/inir-theme.conf)${STY_RST}"
+    if [[ -f /etc/sddm.conf.d/98-inir-greeter.conf ]]; then
+        echo -e "  ${STY_YELLOW}•${STY_RST} SDDM greeter drop-in: /etc/sddm.conf.d/98-inir-greeter.conf"
+        echo -e "    ${STY_FAINT}Used by: login screen on Wayland with Niri (/usr/share/inir/sddm/niri-greeter.kdl)${STY_RST}"
+    fi
     echo ""
 
     if $ask && tui_confirm "Show commands to revert these changes?" "no"; then
@@ -656,9 +830,12 @@ uninstall_show_manual_steps() {
         echo -e "  ${STY_CYAN}# Remove i2c module autoload${STY_RST}"
         echo -e "  sudo rm /etc/modules-load.d/i2c-dev.conf"
         echo ""
-        if command -v systemctl &>/dev/null; then
+        if has_usable_systemd_user_manager; then
             echo -e "  ${STY_CYAN}# Disable ydotool${STY_RST}"
             echo -e "  systemctl --user disable ydotool"
+        elif command -v sv &>/dev/null; then
+            echo -e "  ${STY_CYAN}# Disable ydotool user service${STY_RST}"
+            echo -e "  sv down ~/.config/service/ydotool"
         fi
         echo ""
         echo -e "  ${STY_CYAN}# Remove SDDM theme${STY_RST}"
@@ -666,6 +843,10 @@ uninstall_show_manual_steps() {
         echo ""
         echo -e "  ${STY_CYAN}# Remove SDDM theme config drop-in${STY_RST}"
         echo -e "  sudo rm -f /etc/sddm.conf.d/99-inir-theme.conf /etc/sddm.conf.d/inir-theme.conf"
+        if [[ -f /etc/sddm.conf.d/98-inir-greeter.conf ]]; then
+            echo -e "  ${STY_CYAN}# Put the login screen back on the distribution's display server${STY_RST}"
+            echo -e "  sudo rm -f /etc/sddm.conf.d/98-inir-greeter.conf && sudo rm -rf /usr/share/inir/sddm"
+        fi
         echo ""
     fi
 }
@@ -789,6 +970,18 @@ uninstall_show_packages() {
                 echo -e "  # sudo rm /usr/local/bin/niri"
                 echo ""
                 ;;
+            void)
+                if [[ ${#safe_to_remove[@]} -gt 0 ]]; then
+                    echo -e "  ${STY_GREEN}# Safe to remove:${STY_RST}"
+                    echo -e "  sudo xbps-remove -R ${safe_to_remove[*]}"
+                    echo ""
+                fi
+                if [[ ${#ask_before_remove[@]} -gt 0 ]]; then
+                    echo -e "  ${STY_YELLOW}# Check before removing:${STY_RST}"
+                    echo -e "  # sudo xbps-remove -R ${ask_before_remove[*]}"
+                    echo ""
+                fi
+                ;;
             *)
                 echo -e "${STY_FAINT}Remove packages using your package manager.${STY_RST}"
                 echo -e "${STY_FAINT}Check ~/.cargo/bin and ~/go/bin for tools installed there.${STY_RST}"
@@ -803,7 +996,12 @@ uninstall_show_packages() {
         echo ""
     fi
 
-    echo -e "${STY_FAINT}Tip: Run 'pacman -Qi <package>' or 'apt show <package>' to see what depends on a package.${STY_RST}"
+    case "$distro" in
+        void) echo -e "${STY_FAINT}Tip: Run 'xbps-query -X <package>' to see reverse dependencies.${STY_RST}" ;;
+        arch) echo -e "${STY_FAINT}Tip: Run 'pacman -Qi <package>' to inspect package dependencies.${STY_RST}" ;;
+        debian|ubuntu) echo -e "${STY_FAINT}Tip: Run 'apt-cache rdepends <package>' to see reverse dependencies.${STY_RST}" ;;
+        *) echo -e "${STY_FAINT}Review reverse dependencies with your package manager before removing shared tools.${STY_RST}" ;;
+    esac
     echo ""
 }
 
@@ -920,6 +1118,9 @@ run_uninstall() {
     uninstall_remove_inir_only
     uninstall_reload_user_systemd
 
+    uninstall_restore_preinstall_configs
+    uninstall_remove_shell_integration || tui_warn "Could not fully remove shell profile integration"
+
     # Handle shared configs (ask user)
     uninstall_handle_shared_configs
 
@@ -951,8 +1152,12 @@ EOF
     printf "${STY_RST}"
     echo ""
 
-    echo -e "${STY_CYAN}Backup saved to:${STY_RST}"
+    echo -e "${STY_CYAN}Safety backup from just before uninstall:${STY_RST}"
     echo -e "  $backup_dir"
+    if [[ -d "$BACKUP_DIR" ]]; then
+        echo -e "${STY_CYAN}Original pre-install backup:${STY_RST}"
+        echo -e "  $BACKUP_DIR"
+    fi
     echo ""
     echo -e "${STY_FAINT}To restore from backup:${STY_RST}"
     echo -e "  cp -r $backup_dir/quickshell-inir ${XDG_CONFIG_HOME}/quickshell/inir"
@@ -997,6 +1202,8 @@ run_uninstall_quick() {
     ask=false  # Disable prompts for shared configs
     uninstall_remove_inir_only
     uninstall_reload_user_systemd
+    uninstall_restore_preinstall_configs
+    uninstall_remove_shell_integration || tui_warn "Could not fully remove shell profile integration"
 
     echo ""
     tui_success "iNiR removed. All shared configs and packages preserved."

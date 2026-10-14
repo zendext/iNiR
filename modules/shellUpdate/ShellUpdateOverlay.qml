@@ -23,45 +23,55 @@ Scope {
     property bool suppressOutsideClose: false
 
     readonly property bool _zzz: Appearance.zzzEverywhere
+    readonly property bool _editorial: Appearance.editorialEverywhere
 
     // Style-aware tokens (no hardcoded hex fallbacks)
     readonly property color accentColor: root._zzz ? Appearance.zzz.accent
+        : root._editorial ? Appearance.editorial.accent
         : Appearance.angelEverywhere ? Appearance.angel.colPrimary
         : Appearance.inirEverywhere ? (Appearance.inir?.colAccent ?? Appearance.colors.colPrimary)
         : Appearance.auroraEverywhere ? (Appearance.aurora?.colAccent ?? Appearance.colors.colPrimary)
         : Appearance.colors.colPrimary
 
     readonly property color layerColor: root._zzz ? Appearance.zzz.bg0
+        : root._editorial ? Appearance.editorial.paper
         : Appearance.angelEverywhere ? Appearance.colors.colLayer0Base
         : Appearance.inirEverywhere ? Appearance.inir.colLayer0
         : Appearance.auroraEverywhere ? (Appearance.aurora?.colSurface ?? Appearance.colors.colLayer0)
         : Appearance.colors.colLayer0
 
     readonly property color surfaceColor: root._zzz ? Appearance.zzz.bg1
+        : root._editorial ? Appearance.editorial.layer(1)
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
         : Appearance.inirEverywhere ? Appearance.inir.colLayer1
         : Appearance.auroraEverywhere ? (Appearance.aurora?.colSubSurface ?? Appearance.colors.colSurfaceContainerLow)
         : Appearance.colors.colSurfaceContainerLow
 
     readonly property color textColor: root._zzz ? Appearance.zzz.onBg
+        : root._editorial ? Appearance.editorial.ink
         : Appearance.angelEverywhere ? Appearance.angel.colText : Appearance.colors.colOnSurface
     readonly property color subtextColor: root._zzz ? Appearance.zzz.ghostInk
+        : root._editorial ? Appearance.editorial.muted
         : Appearance.angelEverywhere ? Appearance.angel.colTextSecondary : Appearance.colors.colSubtext
     readonly property color borderColor: root._zzz ? Appearance.zzz.borderColor
+        : root._editorial ? Appearance.editorial.rule
         : Appearance.angelEverywhere ? Appearance.angel.colBorder
         : Appearance.inirEverywhere ? Appearance.inir.colBorder
         : Appearance.colors.colLayer0Border
 
     // Adaptive rounding
     readonly property real cardRadius: root._zzz ? Appearance.zzz.panelRadius
+        : root._editorial ? Appearance.editorial.radius
         : Appearance.angelEverywhere ? Appearance.angel.roundingNormal
         : Appearance.inirEverywhere ? Appearance.inir.roundingNormal
         : Appearance.rounding.windowRounding
     readonly property real sectionRadius: root._zzz ? Appearance.zzz.controlRadius
+        : root._editorial ? Appearance.rounding.small
         : Appearance.angelEverywhere ? Appearance.angel.roundingSmall
         : Appearance.inirEverywhere ? Appearance.inir.roundingSmall
         : Appearance.rounding.small
     readonly property real pillRadius: root._zzz ? Appearance.zzz.controlRadius
+        : root._editorial ? Appearance.rounding.small
         : Appearance.angelEverywhere ? Appearance.angel.roundingSmall
         : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : 999
 
@@ -365,7 +375,9 @@ Scope {
                                 : Translation.tr("Shell Status")
                             font {
                                 pixelSize: Appearance.font.pixelSize.larger
-                                weight: Font.DemiBold
+                                family: root._editorial ? Appearance.editorial.displayFamily : Appearance.font.family.main
+                                weight: root._editorial ? Appearance.editorial.titleWeight : Font.DemiBold
+                                letterSpacing: root._editorial ? Appearance.editorial.titleTracking * 0.55 : 0
                             }
                             color: root.textColor
                         }
@@ -393,7 +405,8 @@ Scope {
                                         text: "v" + ShellUpdates.localVersion
                                         font {
                                             pixelSize: Appearance.font.pixelSize.smaller
-                                            family: Appearance.font.family.monospace
+                                            family: root._editorial ? Appearance.font.family.numbers : Appearance.font.family.monospace
+                                            weight: root._editorial ? Font.DemiBold : Font.Normal
                                         }
                                         color: root.subtextColor
                                     }
@@ -408,7 +421,7 @@ Scope {
                                         text: "v" + ShellUpdates.remoteVersion
                                         font {
                                             pixelSize: Appearance.font.pixelSize.smaller
-                                            family: Appearance.font.family.monospace
+                                            family: root._editorial ? Appearance.font.family.numbers : Appearance.font.family.monospace
                                             weight: Font.DemiBold
                                         }
                                         color: root.accentColor
@@ -576,13 +589,8 @@ Scope {
                             onClicked: {
                                 const diag = ShellUpdates.getDiagnostics()
                                 console.log("[ShellUpdates] Diagnostics:\n" + diag)
-                                Notifications.notify({
-                                    summary: "Update System Diagnostics",
-                                    body: "Diagnostics printed to console. Run: qs log -c inir | tail -50",
-                                    urgency: NotificationUrgency.Normal,
-                                    timeout: 8000,
-                                    appName: "iNiR Shell"
-                                })
+                                Notifications.send("Update System Diagnostics",
+                                    "Diagnostics printed to console. Run: qs log -c inir | tail -50", "normal", 8000)
                             }
 
                             Rectangle {
@@ -718,7 +726,9 @@ Scope {
                                             text: Translation.tr("Current System")
                                             font {
                                                 pixelSize: Appearance.font.pixelSize.normal
+                                                family: root._editorial ? Appearance.editorial.displayFamily : Appearance.font.family.main
                                                 weight: Font.DemiBold
+                                                letterSpacing: root._editorial ? 0.35 : 0
                                             }
                                             color: root.textColor
                                         }
@@ -741,7 +751,7 @@ Scope {
                                             text: ShellUpdates.localVersion.length > 0 ? ("v" + ShellUpdates.localVersion) : "\u2014"
                                             font {
                                                 pixelSize: Appearance.font.pixelSize.small
-                                                family: Appearance.font.family.monospace
+                                                family: root._editorial ? Appearance.font.family.numbers : Appearance.font.family.monospace
                                                 weight: Font.Medium
                                             }
                                             color: root.textColor
@@ -1216,7 +1226,9 @@ Scope {
                                         text: Translation.tr("Recent History")
                                         font {
                                             pixelSize: Appearance.font.pixelSize.normal
+                                            family: root._editorial ? Appearance.editorial.displayFamily : Appearance.font.family.main
                                             weight: Font.DemiBold
+                                            letterSpacing: root._editorial ? 0.35 : 0
                                         }
                                         color: root.textColor
                                     }

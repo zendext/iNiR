@@ -6,7 +6,7 @@
 # Safe to remove with: sudo pacman -R inir-deps
 
 pkgname=inir-deps
-pkgver=2.30.0
+pkgver=2.33.0
 pkgrel=1
 pkgdesc='iNiR desktop shell - dependency tracker (meta-package)'
 url='https://github.com/snowarch/inir'
@@ -27,12 +27,8 @@ depends=(
   qt6-imageformats
   qt6-multimedia
   qt6-multimedia-ffmpeg
-  qt6-positioning
-  qt6-quicktimeline
-  qt6-sensors
   qt6-tools
   qt6-translations
-  qt6-virtualkeyboard
 
   #--- System libs for Quickshell ---
   jemalloc
@@ -60,13 +56,12 @@ depends=(
   niri
 
   #--- Core utilities ---
-  bc
   coreutils
   cliphist
   curl
-  wget
   ripgrep
   jq
+  go
   python
   rsync
   git
@@ -100,7 +95,6 @@ depends=(
   pipewire-alsa
   wireplumber
   playerctl
-  libdbusmenu-gtk3
   pavucontrol
   cava
   easyeffects
@@ -120,17 +114,14 @@ depends=(
   ttf-dejavu
   ttf-liberation
   ttf-roboto
-  ttf-roboto-mono
   papirus-icon-theme
 
   #--- Desktop integration ---
   polkit
-  polkit-gnome
   networkmanager
   gnome-keyring
   nautilus
   kitty
-  fuzzel
   glib2
   starship
   eza
@@ -185,6 +176,8 @@ optdepends=(
   'ttf-rubik-vf: alternate UI font'
   'ttf-oxanium: display font'
   'millennium-bin: Steam theming via Millennium (requires steam)'
+  'mangohud: live FPS and frametime telemetry for the Game Performance overlay'
+  'lib32-mangohud: MangoHud support for 32-bit games'
   'whitesur-icon-theme: macOS-style icons'
   'qt6-avif-image-plugin: AVIF wallpaper support'
 )

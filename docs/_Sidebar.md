@@ -10,6 +10,7 @@
 
 ### Use
 - [Panel families](PANEL_FAMILIES)
+- [iRiS](IRIS)
 - [Configuration](CONFIG_SYSTEM)
 - [Wallpaper](WALLPAPER)
 - [Notifications](NOTIFICATIONS)
@@ -34,6 +35,8 @@
 ### System
 - [Runtime](RUNTIME)
 - [Packages](PACKAGES)
+- [Void Linux](VOID)
+- [Void capability matrix](VOID_CAPABILITIES)
 - [Compositors](COMPOSITORS)
 - [Optimization](OPTIMIZATION)
 - [NixOS](NIXOS)

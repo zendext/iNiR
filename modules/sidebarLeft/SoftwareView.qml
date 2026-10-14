@@ -22,7 +22,7 @@ Item {
     readonly property color colBgHover: Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
         : Appearance.inirEverywhere ? Appearance.inir.colLayer1Hover
         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
-        : Appearance.colors.colLayer1Hover
+        : Appearance.colLayer1Hover
     readonly property real radius: Appearance.angelEverywhere ? Appearance.angel.roundingSmall
         : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.verysmall
 
@@ -84,7 +84,7 @@ Item {
                             colBackgroundHover: Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
                                 : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
                                 : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
-                                : Appearance.colors.colLayer1Hover
+                                : Appearance.colLayer1Hover
                             colBackgroundToggled: Appearance.angelEverywhere ? Appearance.angel.colGlassElevated
                                 : Appearance.inirEverywhere ? Appearance.inir.colSecondaryContainer
                                 : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
@@ -130,7 +130,7 @@ Item {
                                 colBackgroundHover: Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
                                     : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
                                     : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
-                                    : Appearance.colors.colLayer1Hover
+                                    : Appearance.colLayer1Hover
                                 colBackgroundToggled: Appearance.angelEverywhere ? Appearance.angel.colGlassElevated
                                     : Appearance.inirEverywhere ? Appearance.inir.colSecondaryContainer
                                     : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
@@ -284,7 +284,7 @@ Item {
                 StyledText {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
-                    text: Translation.tr("Install pacman, apt, or dnf")
+                    text: Translation.tr("Install pacman, apt, or dnf") + " / xbps"
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     color: root.colTextSecondary
                 }
@@ -373,6 +373,7 @@ Item {
                 if (AppCatalog.hasFlatpak) label += " + flatpak"
                 return label
             }
+            case "xbps": return AppCatalog.hasFlatpak ? "xbps + flatpak" : "xbps"
             case "apt": return AppCatalog.hasFlatpak ? "apt + flatpak" : "apt"
             case "dnf": return AppCatalog.hasFlatpak ? "dnf + flatpak" : "dnf"
             case "unknown": return Translation.tr("Detecting...")
@@ -401,7 +402,7 @@ Item {
         colRipple: Appearance.angelEverywhere ? Appearance.angel.colGlassCardActive
             : Appearance.inirEverywhere ? Appearance.inir.colLayer1Active
             : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive
-            : Appearance.colors.colLayer1Active
+            : Appearance.colLayer1Active
 
         onClicked: {
             if (card.isInstalled) {

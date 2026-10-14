@@ -58,6 +58,25 @@ if [[ ! -f "$COLOR_SOURCE" ]] || ! command -v jq &>/dev/null; then
     exit 0
 fi
 
+# The icon theme follows the scheme: the chosen theme names a family, and its light or dark sibling
+# is applied (WhiteSur-dark draws white symbolic icons, lost on a light scheme). Everything below
+# (GTK settings.ini, kdeglobals, qt5ct, qt6ct) reads the applied name.
+THEME_MODE=$(jq -r '.mode // empty' "$XDG_STATE_HOME/quickshell/user/generated/theme-meta.json" 2>/dev/null || true)
+if [[ "$THEME_MODE" != "light" && "$THEME_MODE" != "dark" ]]; then
+    [[ "$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null)" == "'prefer-light'" ]] \
+        && THEME_MODE="light" || THEME_MODE="dark"
+fi
+CHOSEN_ICON_THEME=$(jq -r '.appearance.iconTheme // empty' "$SHELL_CONFIG_FILE" 2>/dev/null || true)
+[[ -z "$CHOSEN_ICON_THEME" ]] && CHOSEN_ICON_THEME=$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'" || true)
+APPLIED_ICON_THEME=""
+if [[ -n "$CHOSEN_ICON_THEME" ]]; then
+    APPLIED_ICON_THEME=$("$SCRIPT_DIR/icon-theme-for-mode.sh" "$CHOSEN_ICON_THEME" "$THEME_MODE" 2>/dev/null || echo "$CHOSEN_ICON_THEME")
+    if [[ "$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")" != "$APPLIED_ICON_THEME" ]]; then
+        gsettings set org.gnome.desktop.interface icon-theme "$APPLIED_ICON_THEME" 2>/dev/null || true
+    fi
+    "$SCRIPT_DIR/icon-theme-polarity.sh" "$APPLIED_ICON_THEME" 2>/dev/null || true
+fi
+
 BG=$(jq -r '.app_background // .background // empty' "$COLOR_SOURCE" 2>/dev/null || echo "#1e1e2e")
 FG=$(jq -r '.app_foreground // .on_background // empty' "$COLOR_SOURCE" 2>/dev/null || echo "#cdd6f4")
 PRIMARY=$(jq -r '.app_accent // .primary // empty' "$COLOR_SOURCE" 2>/dev/null || echo "#cba6f7")
@@ -65,7 +84,7 @@ ON_PRIMARY=$(jq -r '.app_on_accent // .on_primary // empty' "$COLOR_SOURCE" 2>/d
 PRIMARY_CONTAINER=$(jq -r '.primary_container // empty' "$COLOR_SOURCE" 2>/dev/null)
 ON_PRIMARY_CONTAINER=$(jq -r '.on_primary_container // empty' "$COLOR_SOURCE" 2>/dev/null)
 SURFACE=$(jq -r '.app_view_bg // .surface // empty' "$COLOR_SOURCE" 2>/dev/null || echo "$BG")
-ON_SURFACE=$(jq -r '.app_on_surface // .on_surface // empty' "$COLOR_SOURCE" 2>/dev/null || echo "$FG")
+ON_SURFACE=$(jq -r '.app_foreground // .on_surface // empty' "$COLOR_SOURCE" 2>/dev/null || echo "$FG")
 SURFACE_CONTAINER=$(jq -r '.app_surface_elevated // .surface_container // empty' "$COLOR_SOURCE" 2>/dev/null)
 SURFACE_CONTAINER_HIGH=$(jq -r '.app_surface_popup // .surface_container_high // empty' "$COLOR_SOURCE" 2>/dev/null)
 SURFACE_CONTAINER_LOW=$(jq -r '.app_surface // .surface_container_low // empty' "$COLOR_SOURCE" 2>/dev/null)
@@ -84,6 +103,9 @@ APP_SURFACE_POPUP_ACTIVE=$(jq -r '.app_surface_popup_active // empty' "$COLOR_SO
 APP_SELECTION=$(jq -r '.app_selection // empty' "$COLOR_SOURCE" 2>/dev/null)
 APP_SELECTION_HOVER=$(jq -r '.app_selection_hover // empty' "$COLOR_SOURCE" 2>/dev/null)
 APP_ON_SELECTION=$(jq -r '.app_on_selection // empty' "$COLOR_SOURCE" 2>/dev/null)
+APP_SUCCESS=$(jq -r '.app_success // empty' "$COLOR_SOURCE" 2>/dev/null)
+APP_WARNING=$(jq -r '.app_warning // empty' "$COLOR_SOURCE" 2>/dev/null)
+APP_ERROR=$(jq -r '.app_error // empty' "$COLOR_SOURCE" 2>/dev/null)
 
 # Semantic colors from Material tokens
 ERROR_COLOR=$(jq -r '.error // empty' "$COLOR_SOURCE" 2>/dev/null)
@@ -178,10 +200,9 @@ write_if_changed() {
 [[ -z "$SECONDARY" ]]   && SECONDARY="#69db7c"
 [[ -z "$SECONDARY_CONTAINER" ]] && SECONDARY_CONTAINER=$(adjust_color "$PRIMARY_CONTAINER" 8)
 
-# Map to KDE semantic names
-FG_NEGATIVE="$ERROR_COLOR"
-FG_NEUTRAL="$TERTIARY"
-FG_POSITIVE="$SECONDARY"
+FG_NEGATIVE="${APP_ERROR:-$ERROR_COLOR}"
+FG_NEUTRAL="${APP_WARNING:-$TERTIARY}"
+FG_POSITIVE="${APP_SUCCESS:-$SECONDARY}"
 
 avg_brightness() {
     local hex="${1#\#}"
@@ -243,7 +264,7 @@ generate_kdeglobals() {
     fi
     if [[ -z "$icon_theme" ]]; then
         if [[ -d "$HOME/.local/share/icons/WhiteSur-dark" || -d "/usr/share/icons/WhiteSur-dark" ]]; then
-            icon_theme="WhiteSur-dark"
+            icon_theme=$("$SCRIPT_DIR/icon-theme-for-mode.sh" WhiteSur-dark "$THEME_MODE")
         else
             icon_theme="Adwaita"
         fi
@@ -290,13 +311,13 @@ BackgroundNormal=${KDE_SELECTION_BG}
 DecorationFocus=${KDE_DECORATION_FOCUS}
 DecorationHover=${KDE_DECORATION_HOVER}
 ForegroundActive=${KDE_SELECTION_FG}
-ForegroundInactive=${FG_INACTIVE}
-ForegroundLink=${PRIMARY}
+ForegroundInactive=${KDE_SELECTION_FG_INACTIVE}
+ForegroundLink=${KDE_SELECTION_FG}
 ForegroundNegative=${FG_NEGATIVE}
 ForegroundNeutral=${FG_NEUTRAL}
 ForegroundNormal=${KDE_SELECTION_FG}
 ForegroundPositive=${FG_POSITIVE}
-ForegroundVisited=${PRIMARY}
+ForegroundVisited=${KDE_SELECTION_FG}
 
 [Colors:Tooltip]
 BackgroundAlternate=${KDE_TOOLTIP_ALT}
@@ -490,13 +511,14 @@ KDE_COMPLEMENTARY_ALT="$APP_SURFACE_POPUP_ACTIVE"
 # used for item selection. Give Highlight a modest visibility lift so disk
 # usage/progress bars remain readable without turning selections into raw
 # accent blocks.
-KDE_SELECTION_BG=$(blend_hex_percent "$ROW_ACTIVE_BG" "$PRIMARY" 15)
-KDE_SELECTION_ALT=$(blend_hex_percent "$ROW_ACTIVE_HOVER_BG" "$PRIMARY" 12)
-KDE_SELECTION_FG="$ROW_SELECTED_FG"
-# Darkly paints DecorationHover/Focus prominently (menu fills and focus
-# indicators). Use subtle state-container tones instead of the raw accent.
-KDE_DECORATION_HOVER="$ROW_ACTIVE_BG"
-KDE_DECORATION_FOCUS="$ROW_ACTIVE_HOVER_BG"
+KDE_SELECTION_BG="${APP_SELECTION:-$(blend_hex_percent "$ROW_ACTIVE_BG" "$PRIMARY" 15)}"
+KDE_SELECTION_ALT="${APP_SELECTION_HOVER:-$(blend_hex_percent "$ROW_ACTIVE_HOVER_BG" "$PRIMARY" 12)}"
+KDE_SELECTION_FG="${APP_ON_SELECTION:-$ROW_SELECTED_FG}"
+KDE_SELECTION_FG_INACTIVE=$(blend_hex_percent "$KDE_SELECTION_FG" "$KDE_SELECTION_BG" 18)
+# Darkly fills the chosen menu item and the active tab with DecorationFocus under the window's text, so it stays a
+# container tone (the raw accent would put light text on a light fill), from the same family as the selection.
+KDE_DECORATION_HOVER="${APP_SELECTION:-$ROW_ACTIVE_BG}"
+KDE_DECORATION_FOCUS="${APP_SELECTION_HOVER:-$ROW_ACTIVE_HOVER_BG}"
 KDE_ACTIVE_FG="$PRIMARY"
 
 # Generate Darkly.colors for Qt style override
@@ -584,8 +606,8 @@ BackgroundNormal=${selection_bg_rgb}
 DecorationFocus=${decoration_focus_rgb}
 DecorationHover=${decoration_hover_rgb}
 ForegroundActive=${selection_fg_rgb}
-ForegroundInactive=${fg_inactive_rgb}
-ForegroundLink=${primary_rgb}
+ForegroundInactive=$(hex_to_rgb "$KDE_SELECTION_FG_INACTIVE")
+ForegroundLink=${selection_fg_rgb}
 ForegroundNegative=${error_rgb}
 ForegroundNeutral=${neutral_rgb}
 ForegroundNormal=${selection_fg_rgb}
@@ -618,7 +640,7 @@ ForegroundNegative=${error_rgb}
 ForegroundNeutral=${neutral_rgb}
 ForegroundNormal=${fg_rgb}
 ForegroundPositive=${positive_rgb}
-ForegroundVisited=${primary_rgb}
+ForegroundVisited=${selection_fg_rgb}
 
 [Colors:Tooltip]
 BackgroundAlternate=${tooltip_alt_rgb}
@@ -736,6 +758,19 @@ if write_if_changed "$GTK3_CSS" << EOF
 
 @define-color card_bg_color ${APP_CARD_BG};
 @define-color card_fg_color ${ON_SURFACE};
+
+@define-color success_color ${FG_POSITIVE};
+@define-color warning_color ${FG_NEUTRAL};
+@define-color error_color ${FG_NEGATIVE};
+@define-color destructive_color ${FG_NEGATIVE};
+@define-color success_bg_color ${FG_POSITIVE};
+@define-color warning_bg_color ${FG_NEUTRAL};
+@define-color error_bg_color ${FG_NEGATIVE};
+@define-color destructive_bg_color ${FG_NEGATIVE};
+@define-color success_fg_color ${BG};
+@define-color warning_fg_color ${BG};
+@define-color error_fg_color ${BG};
+@define-color destructive_fg_color ${BG};
 
 @define-color sidebar_bg_color ${APP_SIDEBAR_BG};
 @define-color sidebar_fg_color ${FG};
@@ -929,6 +964,20 @@ if write_if_changed "$GTK4_CSS" << EOF
     --thumbnail-bg-color: ${SURFACE_CONTAINER_HIGHEST};
     --thumbnail-fg-color: ${ON_SURFACE};
 
+    /* Status: the palette's own green, amber and red, the same KDE uses */
+    --success-color: ${FG_POSITIVE};
+    --success-bg-color: ${FG_POSITIVE};
+    --success-fg-color: ${BG};
+    --warning-color: ${FG_NEUTRAL};
+    --warning-bg-color: ${FG_NEUTRAL};
+    --warning-fg-color: ${BG};
+    --error-color: ${FG_NEGATIVE};
+    --error-bg-color: ${FG_NEGATIVE};
+    --error-fg-color: ${BG};
+    --destructive-color: ${FG_NEGATIVE};
+    --destructive-bg-color: ${FG_NEGATIVE};
+    --destructive-fg-color: ${BG};
+
     /* Misc */
     --shade-color: rgba(0, 0, 0, 0.25);
     --scrollbar-outline-color: rgba(255, 255, 255, 0.1);
@@ -976,10 +1025,11 @@ fi
 QT6CT_CONF="$HOME/.config/qt6ct/qt6ct.conf"
 mkdir -p "$(dirname "$QT6CT_CONF")"
 touch "$QT6CT_CONF"
-CURRENT_ICON_THEME=$(grep '^icon_theme=' "$QT6CT_CONF" 2>/dev/null | cut -d= -f2 || true)
+CURRENT_ICON_THEME="$APPLIED_ICON_THEME"
+[[ -z "$CURRENT_ICON_THEME" ]] && CURRENT_ICON_THEME=$(grep '^icon_theme=' "$QT6CT_CONF" 2>/dev/null | cut -d= -f2 || true)
 if [[ -z "$CURRENT_ICON_THEME" ]]; then
     if [[ -d "$HOME/.local/share/icons/WhiteSur-dark" || -d "/usr/share/icons/WhiteSur-dark" ]]; then
-        CURRENT_ICON_THEME="WhiteSur-dark"
+        CURRENT_ICON_THEME=$("$SCRIPT_DIR/icon-theme-for-mode.sh" WhiteSur-dark "$THEME_MODE")
     else
         CURRENT_ICON_THEME="Adwaita"
     fi
@@ -998,7 +1048,8 @@ EOF
 QT5CT_CONF="$HOME/.config/qt5ct/qt5ct.conf"
 mkdir -p "$(dirname "$QT5CT_CONF")"
 touch "$QT5CT_CONF"
-CURRENT_QT5_ICON_THEME=$(grep '^icon_theme=' "$QT5CT_CONF" 2>/dev/null | cut -d= -f2 || true)
+CURRENT_QT5_ICON_THEME="$APPLIED_ICON_THEME"
+[[ -z "$CURRENT_QT5_ICON_THEME" ]] && CURRENT_QT5_ICON_THEME=$(grep '^icon_theme=' "$QT5CT_CONF" 2>/dev/null | cut -d= -f2 || true)
 [[ -z "$CURRENT_QT5_ICON_THEME" ]] && CURRENT_QT5_ICON_THEME="$CURRENT_ICON_THEME"
 CURRENT_QT5_STYLE=$(grep '^style=' "$QT5CT_CONF" 2>/dev/null | cut -d= -f2 || true)
 [[ -z "$CURRENT_QT5_STYLE" ]] && CURRENT_QT5_STYLE="Darkly"
@@ -1107,7 +1158,9 @@ if [[ "$gtk_css_changed" == true || "$gtk_settings_changed" == true ]]; then
     if pgrep -x nautilus >/dev/null 2>&1; then
         nautilus -q >/dev/null 2>&1 || true
     fi
-    if command -v systemctl >/dev/null 2>&1 \
+    if [[ -S "${XDG_RUNTIME_DIR:-}/systemd/private" ]] \
+            && command -v systemctl >/dev/null 2>&1 \
+            && timeout 3s systemctl --user show-environment >/dev/null 2>&1 \
             && systemctl --user is-active --quiet xdg-desktop-portal-gtk.service; then
         systemctl --user try-restart xdg-desktop-portal-gtk.service >/dev/null 2>&1 || true
     fi

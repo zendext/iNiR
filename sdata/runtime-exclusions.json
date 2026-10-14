@@ -92,6 +92,7 @@
     "scripts/qml-check.fish",
     "scripts/test-local-distribution.sh",
     "scripts/test-mascot-pack-flow.sh",
+    "scripts/test-detect-sensors.py",
     "scripts/test-runtime-payload.py",
     "scripts/orbit-visual-audit.sh",
     "scripts/lib/generate-ipc-registry.py",
@@ -120,7 +121,10 @@
     "scripts/colors/vscode_themegen/vscode_themegen",
     "scripts/colors/opencode_themegen/opencode_themegen",
     "scripts/colors/system24_themegen/system24_themegen",
-    "scripts/colors/zed_themegen/zed_themegen"
+    "scripts/colors/zed_themegen/zed_themegen",
+    "modules/iris/DESIGN.md",
+    "modules/iris/DECISIONS.md",
+    "modules/iris/SYSTEM.md"
   ],
   "excludedDirectorySuffixes": {
     "assets/images/mascot": [
