@@ -110,8 +110,8 @@ transport, so QML parsing and live UI checks remain necessary.
 The iRiS check covers the four displayed-player bindings, shared mode behavior,
 foreground/background states, absent hover text, and disabled controls while editing.
 Icon sizing is checked visually: the Material Symbols mode glyphs are taller
-than skip/rewind at equal font sizes, so they use separate optical size adjustments,
-with a final 1px increase for shuffle and 2px for repeat.
+than skip/rewind at equal font sizes, so shuffle uses 75% and repeat uses 70%
+of each surface's transport icon font size.
 
 On 2026-09-14, both changed QML files passed Qt 6 `qmlformat` parsing. Both surfaces
 were exercised against Spotify: clicking the repeat cycle and shuffle toggle

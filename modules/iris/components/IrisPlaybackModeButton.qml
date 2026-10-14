@@ -28,8 +28,8 @@ IrisIconButton {
         : root.player?.loopState === MprisLoopState.Track ? "repeat_one" : "repeat"
     // These glyphs are taller than skip/rewind at the same font size.
     iconSize: root.mode === "shuffle"
-        ? Math.round(root.transportIconSize * 0.65) + 1
-        : Math.round(root.transportIconSize * 0.55) + 2
+        ? Math.round(root.transportIconSize * 0.75)
+        : Math.round(root.transportIconSize * 0.7)
     foreground: IrisStyle.text
     colBackgroundToggled: root.colBackground
     colBackgroundToggledHover: root.colBackgroundHover
