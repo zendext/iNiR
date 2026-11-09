@@ -928,6 +928,11 @@
         }
     },
     "calendar": {
+        "china": {
+            "enable": false,
+            "showLunar": true,
+            "showWorkStatus": true
+        },
         "externalSync": {
             "enable": false,
             "refreshMinutes": 15,

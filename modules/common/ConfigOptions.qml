@@ -1628,6 +1628,11 @@ JsonAdapter {
 
     // External calendar integration (ICS/iCal URL sync)
     property JsonObject calendar: JsonObject {
+        property JsonObject china: JsonObject {
+            property bool enable: false
+            property bool showLunar: true
+            property bool showWorkStatus: true
+        }
         property JsonObject externalSync: JsonObject {
             property bool enable: false
             property int refreshMinutes: 15

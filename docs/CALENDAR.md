@@ -25,6 +25,33 @@ Waffle: click a day in the notification centre to see its events under the grid.
 
 External events show their calendar's name and colour. You cannot edit them in iNiR.
 
+## Chinese calendar (local customization)
+
+The local fork shares `CalendarCn` across the ii calendar and iRiS calendar
+card and classic desktop widget. It uses the existing yearly holiday cache, including
+off-days and make-up workdays, together with the local lunar-date converter.
+
+Run `scripts/calendar/update_holiday_cn.sh YEAR` to refresh a year's holiday data.
+The `calendar.china` settings control the display:
+
+- `enable`: enable Chinese-calendar information (off by default).
+- `showLunar`: show lunar-date labels.
+- `showWorkStatus`: show `休` for an off-day and `班` for a make-up workday.
+
+In iRiS, open the Today panel with `inir iris today open` and expand its month
+heading. Add a direct calendar-card entry with `inir iris barPiece calendar on`.
+The month grid shows holiday names in preference to lunar labels; selecting a
+date shows both labels and its work status below the grid. The collapsed week
+strip also shows Chinese date information.
+
+The large desktop widget shows labels below each date. Small and medium grids
+keep the dates compact with work-status markers; hovering a date shows its
+lunar label, holiday name and work status. The medium widget also shows today's
+Chinese date beside its month grid. Missing yearly holiday data leaves holiday
+names and work-status markers empty while lunar conversion remains available.
+
+---
+
 ## Privacy
 
 The link stays in your settings on your machine. Requests go straight to the calendar service, with no server in between. Events are cached on disk, so they show after a restart. Treat a secret link like a password, because anyone with it can read the calendar.
