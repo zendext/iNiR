@@ -240,12 +240,12 @@ Singleton {
     // so it works even when Quickshell has not yet tracked the USB sink node.
     Process {
         id: wpctlIncrementSinkVolume
-        command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "2%+"]
+        command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "1%+"]
     }
 
     Process {
         id: wpctlDecrementSinkVolume
-        command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "2%-"]
+        command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "1%-"]
     }
 
     Process {
