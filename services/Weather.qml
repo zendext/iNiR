@@ -421,7 +421,7 @@ Singleton {
         root.fetchAirQuality()
     }
 
-    function fetchWeatherFallback(): void {
+    function fetchOpenMeteoWeather(): void {
         const lat = root.location.lat
         const lon = root.location.lon
         if ((lat === 0 && lon === 0) || openMeteoFetcher.running) {
@@ -524,7 +524,7 @@ Singleton {
             console.info("[Weather] Using manual city:", root.redactedLogLocationName(root.configCity));
             const q = encodeURIComponent(root.configCity);
             forwardGeocoder.command = ["/usr/bin/curl", "-s", "--max-time", "10",
-                "https://nominatim.openstreetmap.org/search?format=jsonv2&q=" + q + "&limit=5&addressdetails=1&accept-language=" + root.placeLanguage];
+                "https://geocoding-api.open-meteo.com/v1/search?name=" + q + "&count=5&language=" + encodeURIComponent(root.placeLanguage) + "&format=json"];
             forwardGeocoder.running = true;
             return;
         }
@@ -546,24 +546,22 @@ Singleton {
         ipLocator.running = true;
     }
 
-    // Step 2: Fetch weather using coordinates (precise) or city name (fallback)
+    // Step 2: Fetch weather from Open-Meteo using resolved coordinates.
     function fetchWeather(): void {
-        if (!root.location.valid || fetcher.running) return;
+        if (!root.location.valid || openMeteoFetcher.running || fetcher.running) return;
 
-        // Skip primary provider (wttr.in) if it has failed repeatedly — go straight to Open-Meteo
-        if (root._primaryFailCount >= 3 && Date.now() < root._primaryFailUntil) {
-            root.fetchWeatherFallback();
-            return;
-        }
-        
-        let query;
-        if (root.location.lat !== 0 || root.location.lon !== 0) {
-            query = root.location.lat + "," + root.location.lon;
-        } else {
-            query = encodeURIComponent(root.location.name.split(',')[0].trim());
-        }
-        const cmd = `curl -s --max-time 15 'https://wttr.in/${query}?format=j1'`;
-        fetcher.command = ["/usr/bin/bash", "-c", cmd];
+        if (root.location.lat === 0 && root.location.lon === 0)
+            root.fetchWttrWeather();
+        else
+            root.fetchOpenMeteoWeather();
+    }
+
+    function fetchWttrWeather(): void {
+        if (fetcher.running) return;
+        const query = root.location.lat !== 0 || root.location.lon !== 0
+            ? root.location.lat + "," + root.location.lon
+            : encodeURIComponent(root.location.name.split(",")[0].trim());
+        fetcher.command = ["/usr/bin/curl", "-fsS", "--max-time", "15", "https://wttr.in/" + query + "?format=j1"];
         fetcher.running = true;
     }
 
@@ -634,8 +632,6 @@ Singleton {
         root.location = { valid: false, lat: 0, lon: 0, name: "" };
         root._retryCount = 0;
         root._emptyResponseCount = 0;
-        root._primaryFailCount = 0;
-        root._primaryFailUntil = 0;
         root._markAqiUnavailable();
         if (root.hasRunningRequests()) {
             root._forceRefreshPending = true;
@@ -648,9 +644,6 @@ Singleton {
     // Retry timer for when network isn't ready at startup
     property int _retryCount: 0
     property int _emptyResponseCount: 0
-    // Track consecutive primary provider failures to skip it after repeated timeouts
-    property int _primaryFailCount: 0
-    property double _primaryFailUntil: 0  // timestamp (ms) until which primary is skipped
     property bool _forceRefreshPending: false
     Timer {
         id: retryTimer
@@ -772,7 +765,8 @@ Singleton {
                     return;
                 }
                 try {
-                    const results = JSON.parse(text);
+                    const parsed = JSON.parse(text);
+                    const results = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.results) ? parsed.results : []);
                     if (Array.isArray(results) && results.length > 0) {
                         const queryLower = root.configCity.toLowerCase().trim();
                         let best = results[0];
@@ -780,7 +774,7 @@ Singleton {
 
                         for (let i = 0; i < results.length; i++) {
                             const r = results[i];
-                            const type = String(r?.type ?? "").toLowerCase();
+                            const type = String(r?.type ?? r?.feature_code ?? "").toLowerCase();
                             const cls = String(r?.class ?? "").toLowerCase();
                             const name = String(r?.name ?? r?.display_name ?? "").toLowerCase();
                             const cityLike = ["city", "town", "village", "municipality", "hamlet", "suburb", "county", "administrative"];
@@ -798,14 +792,19 @@ Singleton {
                             }
                         }
 
-                        const lat = parseFloat(best.lat);
-                        const lon = parseFloat(best.lon);
+                        const lat = parseFloat(best.lat ?? best.latitude);
+                        const lon = parseFloat(best.lon ?? best.longitude);
                         let displayName = root.configCity;
                         const addr = best.address ?? {};
                         const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || "";
                         const state = addr.state || addr.region || "";
                         const country = addr.country || "";
-                        if (city && state) displayName = city + ", " + state;
+                        const omCity = best.name || "";
+                        const omState = best.admin1 || best.admin2 || "";
+                        const omCountry = best.country || best.country_code || "";
+                        if (omCity && omState) displayName = omCity + ", " + omState;
+                        else if (omCity && omCountry) displayName = omCity + ", " + omCountry;
+                        else if (city && state) displayName = city + ", " + state;
                         else if (city && country) displayName = city + ", " + country;
                         else if (best.display_name) {
                             const parts = best.display_name.split(",").map(s => s.trim());
@@ -814,7 +813,7 @@ Singleton {
 
                         root.location = {
                             valid: true, lat: lat, lon: lon, name: displayName,
-                            countryCode: String(addr.country_code ?? "").toLowerCase()
+                            countryCode: String(best.country_code ?? addr.country_code ?? "").toLowerCase()
                         };
                         console.info(
                             "[Weather] Geocoded:",
@@ -998,9 +997,9 @@ Singleton {
     // Weather fetcher
     Process {
         id: fetcher
-        // Guard: prevent double fallback invocation from both onStreamFinished and onExited
+        // Schedule only one retry for a failed fallback request
         property bool _fallbackTriggered: false
-        command: ["/usr/bin/bash", "-c", ""]
+        command: []
         onRunningChanged: if (running) _fallbackTriggered = false
         stdout: StdioCollector {
             onStreamFinished: {
@@ -1014,9 +1013,7 @@ Singleton {
                     }
                     if (!fetcher._fallbackTriggered) {
                         fetcher._fallbackTriggered = true;
-                        root._primaryFailCount++;
-                        root._primaryFailUntil = Date.now() + 30 * 60 * 1000; // Skip primary for 30min after 3 fails
-                        root.fetchWeatherFallback();
+                        retryTimer.restart();
                     }
                     return;
                 }
@@ -1030,9 +1027,7 @@ Singleton {
                     }
                     if (!fetcher._fallbackTriggered) {
                         fetcher._fallbackTriggered = true;
-                        root._primaryFailCount++;
-                        root._primaryFailUntil = Date.now() + 30 * 60 * 1000;
-                        root.fetchWeatherFallback();
+                        retryTimer.restart();
                     }
                     return;
                 }
@@ -1047,7 +1042,6 @@ Singleton {
                     }
                     root.refineData(normalized);
                     root._emptyResponseCount = 0;
-                    root._primaryFailCount = 0; // Reset on success
                 } catch (e) {
                     root._emptyResponseCount++;
                     if (root._emptyResponseCount >= 3) {
@@ -1057,9 +1051,7 @@ Singleton {
                     }
                     if (!fetcher._fallbackTriggered) {
                         fetcher._fallbackTriggered = true;
-                        root._primaryFailCount++;
-                        root._primaryFailUntil = Date.now() + 30 * 60 * 1000;
-                        root.fetchWeatherFallback();
+                        retryTimer.restart();
                     }
                 }
             }
@@ -1067,10 +1059,8 @@ Singleton {
         onExited: (code) => {
             if (code !== 0 && !fetcher._fallbackTriggered) {
                 fetcher._fallbackTriggered = true;
-                root._primaryFailCount++;
-                root._primaryFailUntil = Date.now() + 30 * 60 * 1000;
-                console.warn("[Weather] Primary provider failed, switching fallback. code:", code);
-                root.fetchWeatherFallback();
+                console.warn("[Weather] Fallback provider failed. code:", code);
+                retryTimer.restart();
             }
         }
     }
@@ -1082,22 +1072,21 @@ Singleton {
             onStreamFinished: {
                 const payload = text.trim()
                 if (payload.length === 0) {
-                    retryTimer.start()
+                    root.fetchWttrWeather()
                     return
                 }
                 try {
-                    root.refineOpenMeteoData(JSON.parse(payload))
+                    const data = JSON.parse(payload)
+                    if (!data?.current) {
+                        root.fetchWttrWeather()
+                        return
+                    }
+                    root.refineOpenMeteoData(data)
                     root._emptyResponseCount = 0
                 } catch (e) {
                     console.warn("[Weather] Open-Meteo parse error:", e.message)
-                    retryTimer.start()
+                    root.fetchWttrWeather()
                 }
-            }
-        }
-        onExited: (code) => {
-            if (code !== 0) {
-                console.warn("[Weather] Open-Meteo fetch failed, code:", code)
-                retryTimer.start()
             }
         }
     }
