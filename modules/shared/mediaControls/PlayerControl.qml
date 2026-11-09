@@ -528,6 +528,7 @@ Item {
 
                         contentItem: Item {
                             MaterialSymbol {
+                                id: playPauseIcon
                                 anchors.centerIn: parent
                                 text: root.player?.isPlaying ? "pause" : "play_arrow"
                                 iconSize: 24; fill: 1

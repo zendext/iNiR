@@ -136,6 +136,7 @@ for (const name of ['lengthOf', 'positionOf', '_setPositionOffset', 'clearPositi
     controller[name] = vm.runInContext(`(function(${args}) {${blockAfter(controllerSource, `function ${name}(`)}})`, controllerContext);
 }
 const popupSource = readFileSync(new URL('../modules/shared/mediaControls/PlayerControl.qml', import.meta.url), 'utf8');
+assert.match(popupSource, /id: playPauseIcon\b/, 'The playback mode buttons share a real transport icon');
 const timelineContext = vm.createContext({ root: { player }, MprisController: controller });
 const labels = [...popupSource.matchAll(/text: StringUtils\.friendlyTimeForSeconds\((.+)\)/g)]
     .map(match => vm.runInContext(match[1], timelineContext));
