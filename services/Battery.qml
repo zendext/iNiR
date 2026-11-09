@@ -100,20 +100,31 @@ Singleton {
 
     // ─── Charge limit ───
     readonly property bool chargeLimitEnabled: Config.options?.battery?.chargeLimit?.enable ?? false
+    readonly property int chargeLimitStartThreshold: Math.max(0, Math.min(Config.options?.battery?.chargeLimit?.startThreshold ?? 60, chargeLimitThreshold - 1))
     readonly property int chargeLimitThreshold: Config.options?.battery?.chargeLimit?.threshold ?? 80
     property string _chargeLimitBackend: ""
     property string _chargeLimitSysfsPath: ""
+    property string _chargeLimitStartSysfsPath: ""
+    property string _chargeLimitBehaviourSysfsPath: ""
     property int _rawChargeLimitValue: -1
+    property int _currentChargeLimitStart: -1
+    property string _currentChargeLimitBehaviour: ""
     property int _pendingChargeLimitAction: -1 // -1 none, 0 disable, 1 enable
     property int _currentChargeLimit: -1
     property bool _chargeLimitActive: false
     readonly property bool chargeLimitSupported: _chargeLimitBackend.length > 0 && _chargeLimitSysfsPath.length > 0
+    readonly property bool chargeLimitStartSupported: _chargeLimitBackend === "threshold" && _chargeLimitStartSysfsPath.length > 0
     readonly property bool chargeLimitAdjustable: _chargeLimitBackend === "threshold"
         || _chargeLimitBackend === "smapi"
         || _chargeLimitBackend === "sony"
         || _chargeLimitBackend === "huawei"
     readonly property bool chargeLimitActive: _chargeLimitActive
+    readonly property bool chargeLimitBusy: chargeLimitWriter.running || chargeLimitResetter.running || chargeLimitReader.running
+    readonly property int currentChargeLimitStart: _currentChargeLimitStart
     readonly property int currentChargeLimit: _currentChargeLimit
+    readonly property string chargeLimitModeText: chargeLimitStartSupported
+        ? `${_currentChargeLimitStart}/${_currentChargeLimit}`
+        : `${_currentChargeLimit}`
 
     Component.onCompleted: {
         if (root.available) {
@@ -140,8 +151,11 @@ Singleton {
             "[ -d \"$dir\" ] || continue; " +
             "[ \"$(cat \"$dir/type\" 2>/dev/null)\" = \"Battery\" ] || continue; " +
             "if [ -f \"$dir/present\" ] && [ \"$(cat \"$dir/present\" 2>/dev/null)\" = \"0\" ]; then continue; fi; " +
+            "start_path=''; behaviour_path=''; " +
+            "for attr in charge_control_start_threshold charge_start_threshold; do [ -f \"$dir/$attr\" ] && start_path=\"$dir/$attr\" && break; done; " +
+            "[ -f \"$dir/charge_behaviour\" ] && behaviour_path=\"$dir/charge_behaviour\"; " +
             "for attr in charge_control_end_threshold charge_stop_threshold; do " +
-            "[ -f \"$dir/$attr\" ] && printf 'threshold|%s\\n' \"$dir/$attr\" && exit 0; " +
+            "[ -f \"$dir/$attr\" ] && printf 'threshold|%s|%s|%s\\n' \"$dir/$attr\" \"$start_path\" \"$behaviour_path\" && exit 0; " +
             "done; " +
             "done; " +
             "for p in /sys/devices/platform/smapi/BAT*/stop_charge_thresh; do [ -f \"$p\" ] && printf 'smapi|%s\\n' \"$p\" && exit 0; done; " +
@@ -159,6 +173,8 @@ Singleton {
                     const parts = result.split("|")
                     root._chargeLimitBackend = parts[0] ?? ""
                     root._chargeLimitSysfsPath = parts[1] ?? ""
+                    root._chargeLimitStartSysfsPath = parts[2] ?? ""
+                    root._chargeLimitBehaviourSysfsPath = parts[3] ?? ""
                     _log("[Battery] Charge limit backend: " + root._chargeLimitBackend + " (" + root._chargeLimitSysfsPath + ")")
                     root._readChargeLimit()
                 }
@@ -180,7 +196,20 @@ Singleton {
 
     function _readChargeLimit(): void {
         if (_chargeLimitSysfsPath.length === 0 || chargeLimitReader.running) return
-        chargeLimitReader.command = ["/bin/cat", _chargeLimitSysfsPath]
+        if (_chargeLimitBackend === "threshold" && _chargeLimitStartSysfsPath.length > 0) {
+            chargeLimitReader.command = [
+                "/bin/sh", "-c",
+                "printf 'start=%s\\n' \"$(cat \"$2\" 2>/dev/null)\"; " +
+                "[ -n \"$3\" ] && printf 'behaviour=%s\\n' \"$(cat \"$3\" 2>/dev/null)\"; " +
+                "printf 'end=%s\\n' \"$(cat \"$1\" 2>/dev/null)\"",
+                "battery-charge-limit",
+                _chargeLimitSysfsPath,
+                _chargeLimitStartSysfsPath,
+                _chargeLimitBehaviourSysfsPath,
+            ]
+        } else {
+            chargeLimitReader.command = ["/bin/cat", _chargeLimitSysfsPath]
+        }
         chargeLimitReader.running = true
     }
 
@@ -193,6 +222,10 @@ Singleton {
         case "samsung":
             _chargeLimitActive = rawValue === 1
             _currentChargeLimit = rawValue === 1 ? 80 : 100
+            break
+        case "threshold":
+            _chargeLimitActive = (_currentChargeLimitStart > 0) || (rawValue > 0 && rawValue < 100)
+            _currentChargeLimit = rawValue
             break
         default:
             _chargeLimitActive = rawValue > 0 && rawValue < 100
@@ -224,11 +257,20 @@ Singleton {
     }
 
     function _chargeLimitMatches(enable: bool): bool {
-        return _rawChargeLimitValue >= 0
-            && _rawChargeLimitValue === _desiredChargeLimitValue(enable)
+        if (_rawChargeLimitValue < 0)
+            return false
+        if (chargeLimitStartSupported) {
+            const desiredStart = enable ? chargeLimitStartThreshold : 0
+            const behaviourMatches = _chargeLimitBehaviourSysfsPath.length === 0
+                || _currentChargeLimitBehaviour === "auto"
+            return _currentChargeLimitStart === desiredStart
+                && _rawChargeLimitValue === _desiredChargeLimitValue(enable)
+                && behaviourMatches
+        }
+        return _rawChargeLimitValue === _desiredChargeLimitValue(enable)
     }
 
-    function _buildChargeLimitWriteCommand(enable: bool) {
+    function _buildChargeLimitWriteCommand(enable: bool): var {
         switch (_chargeLimitBackend) {
         case "ideapad":
         case "samsung":
@@ -257,6 +299,32 @@ Singleton {
                 _chargeLimitSysfsPath,
             ]
         case "threshold":
+            if (_chargeLimitStartSysfsPath.length > 0) {
+                return [
+                    "/usr/bin/pkexec", "/bin/sh", "-c",
+                    "start=\"$1\"; end=\"$2\"; end_path=\"$3\"; start_path=\"$4\"; behaviour_path=\"$5\"; " +
+                    "current_end=\"$(cat \"$end_path\" 2>/dev/null || printf 100)\"; " +
+                    "if [ \"$current_end\" -gt \"$start\" ]; then " +
+                    "printf '%s' \"$start\" > \"$start_path\" && printf '%s' \"$end\" > \"$end_path\"; " +
+                    "else " +
+                    "printf '%s' \"$end\" > \"$end_path\" && printf '%s' \"$start\" > \"$start_path\"; " +
+                    "fi || exit $?; " +
+                    "if [ -n \"$behaviour_path\" ]; then printf '%s' auto > \"$behaviour_path\"; fi",
+                    "battery-charge-limit",
+                    enable ? String(chargeLimitStartThreshold) : "0",
+                    String(_desiredChargeLimitValue(enable)),
+                    _chargeLimitSysfsPath,
+                    _chargeLimitStartSysfsPath,
+                    _chargeLimitBehaviourSysfsPath,
+                ]
+            }
+            return [
+                "/usr/bin/pkexec", "/bin/sh", "-c",
+                "printf '%s' \"$1\" > \"$2\"",
+                "battery-charge-limit",
+                String(_desiredChargeLimitValue(enable)),
+                _chargeLimitSysfsPath,
+            ]
         case "smapi":
         case "sony":
             return [
@@ -276,28 +344,50 @@ Singleton {
         stdout: SplitParser {
             onRead: data => {
                 const trimmed = data.trim()
+                if (_chargeLimitBackend === "threshold" && trimmed.includes("=")) {
+                    const index = trimmed.indexOf("=")
+                    const key = trimmed.slice(0, index)
+                    const value = trimmed.slice(index + 1)
+                    if (key === "start") {
+                        const start = parseInt(value)
+                        if (!isNaN(start))
+                            root._currentChargeLimitStart = start
+                    } else if (key === "behaviour") {
+                        const selected = value.match(/\[([^\]]+)\]/)
+                        root._currentChargeLimitBehaviour = selected?.[1] ?? value.split(/\s+/)[0] ?? ""
+                    } else if (key === "end") {
+                        const end = parseInt(value)
+                        if (!isNaN(end))
+                            root._recordChargeLimitRead(end)
+                    }
+                    return
+                }
+
                 const val = _chargeLimitBackend === "huawei"
                     ? parseInt(trimmed.split(/\s+/).slice(-1)[0])
                     : parseInt(trimmed)
 
-                if (!isNaN(val)) {
-                    const initialRead = root._rawChargeLimitValue < 0
-                    root._rawChargeLimitValue = val
-                    root._updateChargeLimitState(val)
-                    const pendingAction = root._pendingChargeLimitAction
-                    if (pendingAction >= 0) {
-                        root._pendingChargeLimitAction = -1
-                        Qt.callLater(() => {
-                            if (pendingAction === 1)
-                                root._applyChargeLimit()
-                            else
-                                root._resetChargeLimit()
-                        })
-                    } else if (initialRead && root.chargeLimitEnabled) {
-                        chargeLimitApplyDelay.restart()
-                    }
-                }
+                if (!isNaN(val))
+                    root._recordChargeLimitRead(val)
             }
+        }
+    }
+
+    function _recordChargeLimitRead(rawValue: int): void {
+        const initialRead = root._rawChargeLimitValue < 0
+        root._rawChargeLimitValue = rawValue
+        root._updateChargeLimitState(rawValue)
+        const pendingAction = root._pendingChargeLimitAction
+        if (pendingAction >= 0) {
+            root._pendingChargeLimitAction = -1
+            Qt.callLater(() => {
+                if (pendingAction === 1)
+                    root._applyChargeLimit()
+                else
+                    root._resetChargeLimit()
+            })
+        } else if (initialRead && root.chargeLimitEnabled) {
+            chargeLimitApplyDelay.restart()
         }
     }
 
@@ -364,6 +454,7 @@ Singleton {
                 _log("[Battery] Charge limit applied")
             } else {
                 root._pendingChargeLimitAction = -1
+                root._readChargeLimit()
                 console.warn("[Battery] Failed to set charge limit (exit code " + exitCode + ")")
             }
         }
@@ -377,6 +468,7 @@ Singleton {
                 _log("[Battery] Charge limit removed")
             } else {
                 root._pendingChargeLimitAction = -1
+                root._readChargeLimit()
                 console.warn("[Battery] Failed to reset charge limit (exit code " + exitCode + ")")
             }
         }
@@ -394,6 +486,11 @@ Singleton {
 
     onChargeLimitThresholdChanged: {
         if (!chargeLimitSupported || !chargeLimitEnabled || !chargeLimitAdjustable) return
+        _applyChargeLimit()
+    }
+
+    onChargeLimitStartThresholdChanged: {
+        if (!chargeLimitStartSupported || !chargeLimitEnabled) return
         _applyChargeLimit()
     }
 
