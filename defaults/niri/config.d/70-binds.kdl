@@ -91,7 +91,7 @@ binds {
     Mod+Return { spawn "inir" "terminal"; }
 
     // File manager
-    Super+E { spawn "nautilus"; }
+    Super+E { spawn "dolphin"; }
 
     // Browser
     Super+W { spawn "inir" "browser"; }

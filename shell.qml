@@ -347,8 +347,8 @@ ShellRoot {
         const currentPinnedApps = Config.options?.apps?.pinned ?? [];
         if (currentPinnedApps.length === legacyPinnedApps.length
                 && currentPinnedApps.every((panel, idx) => panel === legacyPinnedApps[idx])) {
-            root._log("[Shell] Migrating apps.pinned default terminal from foot to kitty");
-            Config.setNestedValue("apps.pinned", ["org.gnome.Nautilus", "firefox", "kitty"])
+            root._log("[Shell] Migrating legacy pinned apps to Dolphin and Kitty");
+            Config.setNestedValue("apps.pinned", ["org.kde.dolphin", "firefox", "kitty"])
         }
 
         if (changed)

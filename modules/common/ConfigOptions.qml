@@ -447,7 +447,7 @@ JsonAdapter {
         property string update: "" // Empty uses the package-manager-aware update backend
         property string manageUser: "kcmshell6 kcm_users" // User account management
         property list<string> pinned: [ // IDs of pinned entries
-            "org.gnome.Nautilus", "firefox", "kitty",]
+            "org.kde.dolphin", "firefox", "kitty",]
         property list<string> ignoredRegexes: []
     }
 

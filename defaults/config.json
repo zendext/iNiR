@@ -186,7 +186,7 @@
         "volumeMixer": "pavucontrol",
         "update": "",
         "pinned": [
-            "org.gnome.Nautilus",
+            "org.kde.dolphin",
             "firefox",
             "kitty"
         ],
@@ -3526,7 +3526,7 @@
                     {
                         "icon": "folder",
                         "name": "Files",
-                        "cmd": "/usr/bin/nautilus"
+                        "cmd": "dolphin"
                     },
                     {
                         "icon": "terminal",

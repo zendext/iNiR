@@ -189,7 +189,7 @@ Singleton {
             case "$desktop_id" in
                 ""|kitty-open*|*terminal*|foot*|alacritty*|konsole*|xterm*|wezterm*)
                     desktop_id=""
-                    for candidate in org.gnome.Nautilus org.kde.dolphin thunar nemo pcmanfm-qt; do
+                    for candidate in org.kde.dolphin org.gnome.Nautilus thunar nemo pcmanfm-qt; do
                         if [ -f "/usr/share/applications/$candidate.desktop" ]; then
                             desktop_id="$candidate"
                             break
