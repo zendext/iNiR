@@ -208,3 +208,10 @@ assets/fonts/.uuid
 # written in the runtime by inir hub
 /HubScan.qml
 /plugins.list
+
+# Generated downstream family catalogue
+/local-families/dist/
+/local-families/.build.*/
+/modules/ii
+/modules/iris
+/modules/waffle

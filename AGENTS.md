@@ -25,7 +25,14 @@ The maintained local customization inventory is [docs/LOCAL_CHANGES.md](docs/LOC
 Keep it and the relevant behavior documentation aligned when local changes are
 added, removed, or superseded by upstream.
 
-### Current baseline
+### v3.0.1 baseline
+
+- The upstream source is v3.0.1 at `4c7cab0b8c209a8b7969d95de5a36096937eb78f`. The pre-upgrade recovery point is `140c47196927bd6c8a4750d95241612d1a570dbc`.
+- Material, iRiS, and Waffle are now Hub plugins. Build the downstream catalogue and install the matching families using the instructions in [docs/LOCAL_CHANGES.md](docs/LOCAL_CHANGES.md).
+- Use the upstream maximum of CPU and GPU for the bar temperature. The local temperature source selector is retired.
+- The isolated Niri smoke test used qs-rs 0.1.4. It loaded each family and opened the Material and iRiS panels through IPC. See the local inventory for test boundaries.
+
+### October v2.33.0 synchronization
 
 - The synchronization merge is `7bcf54f47d32edb30c1c5ab2a102f6549959396c`, integrating upstream v2.33.0 on 2026-10-14. Its parents are the previous local `main` (`644487cf77503bd2e74b213242bc428b10d0703c`) and upstream (`48cdcecb0f6089cfbb7019054602eab28e154b3b`).
 - The merge retains the local Open-Meteo primary provider and geocoding, selectable bar temperature source, dual-threshold battery protection and quick toggles, Chinese calendar, compact-screen filtering, one-percent audio steps, focused-monitor wallpaper settings, folder-name labels, Dolphin defaults, screen-local popup bindings, sidebar-button selected state, and media playback-mode controls.

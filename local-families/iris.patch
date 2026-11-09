@@ -1,0 +1,391 @@
+diff --git a/families/iris/components/IrisPlaybackModeButton.qml b/families/iris/components/IrisPlaybackModeButton.qml
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d1c82efdf50e986f115c1f97980065f01a7a153
+--- /dev/null
++++ b/families/iris/components/IrisPlaybackModeButton.qml
+@@ -0,0 +1,57 @@
++pragma ComponentBehavior: Bound
++
++import QtQuick
++import Quickshell.Services.Mpris
++import qs.services
++import qs.modules.iris.style
++
++IrisIconButton {
++    id: root
++    required property var player
++    property string mode: "repeat"
++    property real transportIconSize: 18 * IrisStyle.density
++    readonly property bool supported: Boolean(root.player?.canControl
++        && (root.mode === "shuffle" ? root.player.shuffleSupported : root.player.loopSupported))
++    readonly property string caption: {
++        if (root.mode === "shuffle")
++            return root.selected ? Translation.tr("Shuffle On") : Translation.tr("Shuffle Off")
++        if (root.player?.loopState === MprisLoopState.Track) return Translation.tr("Repeat One")
++        if (root.player?.loopState === MprisLoopState.Playlist) return Translation.tr("Repeat All")
++        return Translation.tr("Repeat Off")
++    }
++
++    visible: root.supported
++    enabled: root.supported
++    selected: root.mode === "shuffle" ? Boolean(root.player?.shuffle)
++        : (root.player?.loopState ?? MprisLoopState.None) !== MprisLoopState.None
++    materialIcon: root.mode === "shuffle" ? "shuffle"
++        : root.player?.loopState === MprisLoopState.Track ? "repeat_one" : "repeat"
++    // These glyphs are taller than skip/rewind at the same font size.
++    iconSize: root.mode === "shuffle"
++        ? Math.round(root.transportIconSize * 0.75)
++        : Math.round(root.transportIconSize * 0.7)
++    foreground: IrisStyle.text
++    colBackgroundToggled: root.colBackground
++    colBackgroundToggledHover: root.colBackgroundHover
++    opacity: root.selected ? 1 : 0.45
++    Accessible.name: root.caption
++    Accessible.checkable: true
++
++    onClicked: {
++        if (!root.enabled || !root.supported) return
++        if (root.mode === "shuffle") {
++            root.player.shuffle = !root.player.shuffle
++            return
++        }
++        switch (root.player.loopState) {
++        case MprisLoopState.None:
++            root.player.loopState = MprisLoopState.Playlist
++            break
++        case MprisLoopState.Playlist:
++            root.player.loopState = MprisLoopState.Track
++            break
++        default:
++            root.player.loopState = MprisLoopState.None
++        }
++    }
++}
+diff --git a/families/iris/components/qmldir b/families/iris/components/qmldir
+index e86026b49a771c7129043a6c7bcdd36894c6abd0..3caa920c4ecbaa6b38f42fa904035abcd6cf5d1b 100644
+--- a/families/iris/components/qmldir
++++ b/families/iris/components/qmldir
+@@ -4,6 +4,7 @@ IrisSurface 1.0 IrisSurface.qml
+ IrisActionRow 1.0 IrisActionRow.qml
+ IrisButton 1.0 IrisButton.qml
+ IrisIconButton 1.0 IrisIconButton.qml
++IrisPlaybackModeButton 1.0 IrisPlaybackModeButton.qml
+ IrisMark 1.0 IrisMark.qml
+ IrisSlider 1.0 IrisSlider.qml
+ IrisField 1.0 IrisField.qml
+diff --git a/families/iris/control/IrisControlGrid.qml b/families/iris/control/IrisControlGrid.qml
+index a75b44f2d12f1086d9228c8027538fbb21cfe22e..c6c475c9d9cb68ddb8bc7ccee7d00c9a573fc5e4 100644
+--- a/families/iris/control/IrisControlGrid.qml
++++ b/families/iris/control/IrisControlGrid.qml
+@@ -927,7 +927,7 @@ Item {
+                 }
+                 Transport {
+                     visible: nowPlaying.strip
+-                    Layout.preferredWidth: Math.round(112 * root.d)
++                    Layout.preferredWidth: Math.max(Math.round(112 * root.d), implicitWidth)
+                     player: media
+                     live: true
+                 }
+@@ -947,6 +947,17 @@ Item {
+         property var player: null
+         property bool live: false
+         spacing: 0
++        IrisPlaybackModeButton {
++            Layout.fillWidth: true
++            player: transport.player?.player ?? null
++            mode: "shuffle"
++            enabled: supported && transport.live && !root.editing
++            implicitWidth: Math.round(26 * root.d)
++            implicitHeight: Math.round(30 * root.d)
++            transportIconSize: Math.round(20 * root.d)
++            buttonRadius: height / 2
++            buttonRadiusPressed: buttonRadius
++        }
+         Repeater {
+             model: [
+                 { glyph: "fast_rewind", action: "previous" },
+@@ -973,5 +984,16 @@ Item {
+                 }
+             }
+         }
++        IrisPlaybackModeButton {
++            Layout.fillWidth: true
++            player: transport.player?.player ?? null
++            mode: "repeat"
++            enabled: supported && transport.live && !root.editing
++            implicitWidth: Math.round(26 * root.d)
++            implicitHeight: Math.round(30 * root.d)
++            transportIconSize: Math.round(20 * root.d)
++            buttonRadius: height / 2
++            buttonRadiusPressed: buttonRadius
++        }
+     }
+ }
+diff --git a/families/iris/hub.json b/families/iris/hub.json
+index a554865de763b92bc34a7231314a05837108d7a5..8acce3dbe731f293168c60eaec3e2b94b32e89f5 100644
+--- a/families/iris/hub.json
++++ b/families/iris/hub.json
+@@ -1,7 +1,8 @@
+ {
+     "$schema": "../../schema/hub.schema.json",
+-    "version": "2.33.62",
++    "version": "2.33.1062",
+     "changes": {
++        "2.33.1062": ["Restore the downstream iNiR customizations."],
+         "2.33.60": [
+             "Prism Settings: rows that pick several pieces show which are on and in what order; a tap adds to the list instead of replacing it",
+             "React with any emoji: one small pill opens a search, and votes and reactions show the moment people give them"
+diff --git a/families/iris/plugin.json b/families/iris/plugin.json
+index 2c04b3478aecb88d87fc61c105dd37e6b4277f54..a8a1d38ac3107e3feb03fe87d574ac80d191f362 100644
+--- a/families/iris/plugin.json
++++ b/families/iris/plugin.json
+@@ -5,7 +5,7 @@
+   "summary": "One living body: the Island, the chassis and Apple-grade motion.",
+   "tagline": "Island, pieces and a Dock on any edge.",
+   "icon": "visibility",
+-  "version": "2.33.62",
++  "version": "2.33.1062",
+   "provides": "modules/iris",
+   "wears": ["iris.appearance.design"],
+   "parts": {
+diff --git a/families/iris/sidebar/IrisSidebarSection.qml b/families/iris/sidebar/IrisSidebarSection.qml
+index ab9ca0e085148659cfa81d4b9e0722922f7205f3..28d291ec220c5bd204ac135bb65cba997f4b178b 100644
+--- a/families/iris/sidebar/IrisSidebarSection.qml
++++ b/families/iris/sidebar/IrisSidebarSection.qml
+@@ -658,6 +658,7 @@ Loader {
+             }
+             readonly property var entries: calendar.eventsOn(calendar.selectedDate)
+             readonly property var todayEntries: calendar.eventsOn(DateTime.clock.date)
++            readonly property var china: CalendarCn.getDayDisplay(calendar.selectedDate)
+             function moveMonth(delta: int): void {
+                 calendar.selectedDate = new Date(calendar.month.getFullYear(), calendar.month.getMonth() + delta, 1)
+             }
+@@ -689,6 +690,7 @@ Loader {
+                             required property int index
+                             readonly property date date: new Date(weekStrip.start.getFullYear(), weekStrip.start.getMonth(), weekStrip.start.getDate() + stripDay.index)
+                             readonly property bool today: stripDay.date.toDateString() === DateTime.clock.date.toDateString()
++                            readonly property var china: CalendarCn.getDayDisplay(stripDay.date)
+                             width: weekStrip.width / 7
+                             spacing: 3 * root.d
+                             IrisText {
+@@ -720,6 +722,15 @@ Loader {
+                                 radius: IrisStyle.capsule(width)
+                                 color: calendar.eventsOn(stripDay.date).length > 0 ? IrisStyle.secondaryAccent : "transparent"
+                             }
++                            IrisText {
++                                width: parent.width
++                                horizontalAlignment: Text.AlignHCenter
++                                visible: text.length > 0
++                                text: [stripDay.china.holidayName || stripDay.china.lunarLabel, stripDay.china.workStatus].filter(Boolean).join(" ")
++                                color: stripDay.china.workStatus === "休" ? IrisStyle.identity.red : IrisStyle.muted
++                                font.pixelSize: Math.round(9 * root.d)
++                                elide: Text.ElideRight
++                            }
+                         }
+                     }
+                 },
+@@ -766,16 +777,18 @@ Loader {
+                         readonly property bool chosen: day.date.toDateString() === calendar.selectedDate.toDateString()
+                         readonly property bool inMonth: day.date.getMonth() === calendar.month.getMonth()
+                         readonly property bool hasEvents: day.inMonth && calendar.eventsOn(day.date).length > 0
++                        readonly property var china: CalendarCn.getDayDisplay(day.date)
+                         Layout.fillWidth: true
+                         Layout.preferredWidth: 1
+-                        Layout.preferredHeight: Math.round(34 * root.d)
++                        Layout.preferredHeight: Math.round((CalendarCn.enabled ? 50 : 34) * root.d)
+                         hoverEnabled: true
+                         cursorShape: Qt.PointingHandCursor
+                         Accessible.role: Accessible.Button
+-                        Accessible.name: Translation.locale.toString(day.date, "dddd, d MMMM yyyy")
++                        Accessible.name: [Translation.locale.toString(day.date, "dddd, d MMMM yyyy"), day.china.lunarLabel, day.china.holidayName, day.china.workStatus].filter(Boolean).join(" · ")
+                         onClicked: calendar.selectedDate = day.date
+                         Rectangle {
+                             anchors.centerIn: parent
++                            anchors.verticalCenterOffset: CalendarCn.enabled ? -8 * root.d : 0
+                             width: Math.round(30 * root.d)
+                             height: width
+                             radius: IrisStyle.capsule(width)
+@@ -786,6 +799,7 @@ Loader {
+                         }
+                         IrisText {
+                             anchors.centerIn: parent
++                            anchors.verticalCenterOffset: CalendarCn.enabled ? -8 * root.d : 0
+                             text: String(day.date.getDate())
+                             color: day.today ? IrisStyle.onTint : day.chosen ? IrisStyle.accent : IrisStyle.text
+                             opacity: day.inMonth ? 1 : 0.32
+@@ -793,6 +807,28 @@ Loader {
+                             font.pixelSize: IrisStyle.typeLabel
+                             font.weight: day.today || day.chosen ? IrisStyle.weight(Font.Bold) : IrisStyle.weight(Font.Medium)
+                         }
++                        IrisText {
++                            anchors.top: parent.top
++                            anchors.right: parent.right
++                            anchors.rightMargin: 2 * root.d
++                            visible: day.inMonth && text.length > 0
++                            text: day.china.workStatus
++                            color: text === "休" ? IrisStyle.identity.red : IrisStyle.muted
++                            font.pixelSize: Math.round(9 * root.d)
++                            font.weight: Font.DemiBold
++                        }
++                        IrisText {
++                            anchors.horizontalCenter: parent.horizontalCenter
++                            anchors.bottom: parent.bottom
++                            anchors.bottomMargin: 5 * root.d
++                            width: parent.width
++                            horizontalAlignment: Text.AlignHCenter
++                            text: day.china.holidayName || day.china.lunarLabel
++                            color: day.china.holidayName.length > 0 ? IrisStyle.identity.red : IrisStyle.muted
++                            opacity: day.inMonth ? 1 : 0.32
++                            font.pixelSize: Math.round(9 * root.d)
++                            elide: Text.ElideRight
++                        }
+                         Rectangle {
+                             visible: day.hasEvents && !day.today
+                             anchors.horizontalCenter: parent.horizontalCenter
+@@ -831,6 +867,14 @@ Loader {
+                     onClicked: { calendar.composing = true; eventTitle.forceActiveFocus() }
+                 }
+             }
++            IrisText {
++                Layout.fillWidth: true
++                visible: text.length > 0
++                text: [calendar.china.lunarLabel, calendar.china.holidayName, calendar.china.workStatus].filter(Boolean).join(" · ")
++                color: calendar.china.workStatus === "休" ? IrisStyle.identity.red : IrisStyle.subtext
++                font.pixelSize: IrisStyle.typeMeta
++                wrapMode: Text.WordWrap
++            }
+             EmptyLabel { visible: calendar.entries.length === 0 && !calendar.composing; text: Translation.tr("Nothing scheduled for this day.") }
+             // A departures board: the next thing today on a band in the accent with how long until it, then each
+             // entry with its colour, its name and, today, how far off it is.
+diff --git a/families/iris/widgets/IrisCalendarFace.qml b/families/iris/widgets/IrisCalendarFace.qml
+index b7f45f03ebe496ef045a78f535d50ff26ca8b932..92e6a066f20f67c4f6de18b078772af32e6d1552 100644
+--- a/families/iris/widgets/IrisCalendarFace.qml
++++ b/families/iris/widgets/IrisCalendarFace.qml
+@@ -42,6 +42,7 @@ IrisWidgetFace {
+     readonly property color todayFill: root.nothing ? root.signal : IrisStyle.accentFill
+     readonly property color todayInk: root.nothing ? IrisStyle.onTintFor(root.signal) : IrisStyle.inkOnAccentFill
+     readonly property string monthName: IrisFaceData.capitalized(Translation.locale.standaloneMonthName(root.viewing.getMonth()))
++    readonly property var china: CalendarCn.getDayDisplay(root.today)
+
+     component MonthHead: Row {
+         id: head
+@@ -122,6 +123,10 @@ IrisWidgetFace {
+                 required property int index
+                 readonly property var date: new Date(root.viewing.getFullYear(), root.viewing.getMonth()
+                     + (cell.modelData.currentMonth ? 0 : cell.index < 7 ? -1 : 1), cell.modelData.day)
++                readonly property var china: CalendarCn.getDayDisplay(cell.date)
++                readonly property bool labelled: root.large && CalendarCn.enabled
++                readonly property string detail: [cell.china.lunarLabel, cell.china.holidayName, cell.china.workStatus].filter(Boolean).join(" · ")
++                Accessible.name: [Translation.locale.toString(cell.date, "yyyy-MM-dd"), cell.detail].filter(Boolean).join(" · ")
+                 readonly property bool chosen: root.sameDay(root.picked, cell.date)
+                 x: Math.round((cell.index % 7) * grid.cellW)
+                 y: Math.round(grid.headH + grid.dayRowH + Math.floor(cell.index / 7) * grid.cellH)
+@@ -129,7 +134,7 @@ IrisWidgetFace {
+                 height: Math.round(grid.headH + grid.dayRowH + (Math.floor(cell.index / 7) + 1) * grid.cellH) - y
+                 Rectangle {
+                     x: Math.round((cell.width - width) / 2)
+-                    y: Math.round((cell.height - height) / 2)
++                    y: Math.round((cell.height - height) / 2) - (cell.labelled ? root.dp(4) : 0)
+                     width: grid.disc
+                     height: width
+                     radius: IrisStyle.capsule(width)
+@@ -138,6 +143,35 @@ IrisWidgetFace {
+                     border.width: cell.chosen && !cell.modelData.isToday ? 1 : 0
+                     border.color: root.accent
+                 }
++                FaceText {
++                    face: root
++                    anchors.top: parent.top
++                    anchors.right: parent.right
++                    visible: text.length > 0 && (cell.modelData.currentMonth || root.adjacent)
++                    text: cell.china.workStatus
++                    color: text === "休" ? root.highlight : root.inkTertiary
++                    opacity: cell.modelData.currentMonth ? 1 : 0.4
++                    size: root.small ? 6.5 : 8
++                    weight: Font.DemiBold
++                }
++                FaceText {
++                    face: root
++                    anchors.horizontalCenter: parent.horizontalCenter
++                    anchors.bottom: parent.bottom
++                    anchors.bottomMargin: root.dp(1)
++                    elide: Text.ElideRight
++                    width: parent.width
++                    horizontalAlignment: Text.AlignHCenter
++                    visible: cell.labelled && (cell.modelData.currentMonth || root.adjacent)
++                    text: cell.china.holidayName || cell.china.lunarLabel
++                    color: cell.china.holidayName.length > 0 ? root.highlight : root.inkTertiary
++                    opacity: cell.modelData.currentMonth ? 1 : 0.4
++                    size: 9
++                }
++                StyledToolTip {
++                    extraVisibleCondition: dayHover.hovered && cell.detail.length > 0
++                    text: cell.detail
++                }
+                 HoverHandler { id: dayHover; cursorShape: grid.picks || !cell.modelData.currentMonth ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                 TapHandler {
+                     onTapped: {
+@@ -150,7 +184,7 @@ IrisWidgetFace {
+                 FaceText {
+                     face: root
+                     x: Math.round((cell.width - width) / 2)
+-                    y: Math.round((cell.height - height) / 2)
++                    y: Math.round((cell.height - height) / 2) - (cell.labelled ? root.dp(4) : 0)
+                     visible: cell.modelData.currentMonth || root.adjacent
+                     text: cell.modelData.day
+                     color: cell.modelData.isToday ? root.todayInk
+@@ -372,6 +406,16 @@ IrisWidgetFace {
+                 tone: root.picked ? root.inkSecondary : root.ink
+                 TapHandler { enabled: root.picked !== null || root.browsing; onTapped: root.turn(0) }
+             }
++            FaceText {
++                face: root
++                Layout.fillWidth: true
++                visible: text.length > 0
++                text: [root.china.lunarLabel, root.china.holidayName, root.china.workStatus].filter(Boolean).join(" · ")
++                color: root.inkSecondary
++                size: 11
++                wrapMode: Text.WordWrap
++                maximumLineCount: 3
++            }
+             Item { width: 1; height: root.dp(6) }
+             // what the day holds reads right under it, not at the far edge
+             EventLine {
+diff --git a/families/iris/widgets/IrisNowPlayingFace.qml b/families/iris/widgets/IrisNowPlayingFace.qml
+index 96208f43fcd6665e6ed542b281e5113ffe734a22..82bee988ff70eeebde1c515f0418e60374cd5272 100644
+--- a/families/iris/widgets/IrisNowPlayingFace.qml
++++ b/families/iris/widgets/IrisNowPlayingFace.qml
+@@ -72,6 +72,16 @@ IrisWidgetFace {
+         property real disc: root.dp(34)
+         property bool overMedia: false
+         spacing: root.dp(6)
++        IrisPlaybackModeButton {
++            player: root.player
++            mode: "shuffle"
++            foreground: root.ink
++            implicitWidth: Math.round(transport.disc * 0.7)
++            implicitHeight: transport.disc
++            transportIconSize: root.px(17)
++            buttonRadius: height / 2
++            buttonRadiusPressed: buttonRadius
++        }
+         FaceAction {
+             face: root
+             implicitWidth: transport.disc
+@@ -103,6 +113,16 @@ IrisWidgetFace {
+             opacity: enabled ? 1 : 0.4
+             onActivated: media.next()
+         }
++        IrisPlaybackModeButton {
++            player: root.player
++            mode: "repeat"
++            foreground: root.ink
++            implicitWidth: Math.round(transport.disc * 0.7)
++            implicitHeight: transport.disc
++            transportIconSize: root.px(17)
++            buttonRadius: height / 2
++            buttonRadiusPressed: buttonRadius
++        }
+     }
+
+     component Progress: Rectangle {

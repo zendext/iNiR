@@ -30,6 +30,12 @@ When several players are running, iNiR shows:
 2. otherwise the first player that is playing,
 3. otherwise the one you used last.
 
+The local fork uses 1% steps for the default output. The Material media popup
+and left sidebar widget, plus the iRiS control center and classic medium/large
+music widgets, add repeat and shuffle for supported MPRIS players. The iRiS
+full media card and Island use their upstream controls. A button always
+controls the player shown in its own view.
+
 ## YT Music
 
 The left sidebar (Material) has a YT Music player. It plays through mpv and fetches its streams with yt-dlp, so install both.

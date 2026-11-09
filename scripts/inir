@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# The local family catalogue sits beside the repo-linked runtime.
+_local_hub_root="$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.."
+if [[ -f "$_local_hub_root/scripts/lib/local-hub-source.sh" ]]; then
+    source "$_local_hub_root/scripts/lib/local-hub-source.sh"
+    inir_local_hub_source "$(realpath -- "$_local_hub_root")"
+fi
+unset _local_hub_root
+
 # The inir binary (snowarch/inir-cli) is the front door when it is installed: it does
 # what it knows and hands the rest back to this file (INIR_CLI_DELEGATED set). Nothing
 # here changes without it. INIR_NO_CLI=1 skips it; a binary that cannot run is skipped too.

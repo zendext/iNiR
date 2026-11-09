@@ -87,6 +87,8 @@ source ./sdata/lib/uninstall.sh
 source ./sdata/lib/user-modifications.sh
 source ./sdata/lib/cli-binary.sh
 source ./sdata/lib/hub-plugins.sh
+source ./scripts/lib/local-hub-source.sh
+inir_local_hub_source "$REPO_ROOT"
 source ./sdata/lib/prebuilt.sh
 
 prevent_sudo_or_root

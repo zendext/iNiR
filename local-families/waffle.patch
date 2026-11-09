@@ -1,0 +1,82 @@
+diff --git a/families/waffle/hub.json b/families/waffle/hub.json
+index 697fea8a8ad2c5779a7243b24ad74602cbf02271..af9c7759f7658bd678cdf50ac07f6dff44bf19f0 100644
+--- a/families/waffle/hub.json
++++ b/families/waffle/hub.json
+@@ -1,7 +1,8 @@
+ {
+     "$schema": "../../schema/hub.schema.json",
+-    "version": "2.34.8",
++    "version": "2.34.1008",
+     "changes": {
++        "2.34.1008": ["Restore the downstream iNiR customizations."],
+         "2.34.8": [
+             "React with any emoji: one small pill opens a search, and votes and reactions show the moment people give them"
+         ],
+diff --git a/families/waffle/plugin.json b/families/waffle/plugin.json
+index f01f94a0e38754e53e77770dab263e3957291a8a..a16292c0453bc4e0b67c445bc12c1781094c0e54 100644
+--- a/families/waffle/plugin.json
++++ b/families/waffle/plugin.json
+@@ -5,7 +5,7 @@
+   "summary": "Windows 11 for people who want it: taskbar, Start, Action Center.",
+   "tagline": "Taskbar, Start menu, Action Center and notification center.",
+   "icon": "grid_view",
+-  "version": "2.34.8",
++  "version": "2.34.1008",
+   "provides": "modules/waffle",
+   "parts": {
+     "critical": "critical/ShellWaffleCriticalPanels.qml",
+diff --git a/families/waffle/settings/pages/WBackgroundPage.qml b/families/waffle/settings/pages/WBackgroundPage.qml
+index f502263fa6e56eccb91d0416fd28fd93cae0c678..47b2467dd0e84bcafbfe75755f7341b267c66c54 100644
+--- a/families/waffle/settings/pages/WBackgroundPage.qml
++++ b/families/waffle/settings/pages/WBackgroundPage.qml
+@@ -387,11 +387,11 @@ WSettingsPage {
+             icon: "settings-cog-multiple"
+
+             property string selectedMonitor: {
++                const focused = WallpaperListener.getFocusedMonitor()
++                if (focused) return focused
+                 const primary = GlobalStates.primaryScreen
+                 const primaryName = primary ? (WallpaperListener.getMonitorName(primary) ?? "") : ""
+                 if (primaryName) return primaryName
+-                const focused = WallpaperListener.getFocusedMonitor()
+-                if (focused) return focused
+                 const screens = Quickshell.screens
+                 if (!screens || screens.length === 0) return ""
+                 return WallpaperListener.getMonitorName(screens[0]) ?? ""
+diff --git a/families/waffle/settings/pages/WQuickPage.qml b/families/waffle/settings/pages/WQuickPage.qml
+index 281c8bdbdf53cb15acc92498b5bda80c14055d1f..9a30575f27d7e7697f019dc7b8c469b82b6e0429 100644
+--- a/families/waffle/settings/pages/WQuickPage.qml
++++ b/families/waffle/settings/pages/WQuickPage.qml
+@@ -85,15 +85,15 @@ WSettingsPage {
+         if (!root.multiMonitorEnabled)
+             return ""
+
++        const focused = WallpaperListener.getFocusedMonitor()
++        if (focused)
++            return focused
++
+         const primary = GlobalStates.primaryScreen
+         const primaryName = primary ? (WallpaperListener.getMonitorName(primary) ?? "") : ""
+         if (primaryName)
+             return primaryName
+
+-        const focused = WallpaperListener.getFocusedMonitor()
+-        if (focused)
+-            return focused
+-
+         const screens = Quickshell.screens
+         if (!screens || screens.length === 0)
+             return ""
+diff --git a/families/waffle/widgets/WidgetsContent.qml b/families/waffle/widgets/WidgetsContent.qml
+index d9389833d0534e1d1cfe6a782a0e900c7e58b9bd..c4324c12272ffbdebfdb19aaad23c792a9f65904 100644
+--- a/families/waffle/widgets/WidgetsContent.qml
++++ b/families/waffle/widgets/WidgetsContent.qml
+@@ -36,7 +36,7 @@ WBarAttachedPanelContent {
+     function runQuickAction(actionId: string): void {
+         switch (actionId) {
+         case "files":
+-            ShellExec.execDetachedArgs(["/usr/bin/nautilus"], "Launch Files")
++            ShellExec.execDetachedArgs(["dolphin"], "Launch Files")
+             break
+         case "terminal":
+             AppLauncher.launch("terminal")

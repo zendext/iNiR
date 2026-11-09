@@ -1,0 +1,949 @@
+diff --git a/families/ii/MaterialConfigSchema.qml b/families/ii/MaterialConfigSchema.qml
+index b3c1a7ff4ff09871b136a6724b85a32080c6d442..e852736ead4b8291e23291318f60fc69edbacb0c 100644
+--- a/families/ii/MaterialConfigSchema.qml
++++ b/families/ii/MaterialConfigSchema.qml
+@@ -498,7 +498,7 @@ JsonObject {
+                 {
+                     "icon": "folder",
+                     "name": "Files",
+-                    "cmd": "/usr/bin/nautilus"
++                    "cmd": "dolphin"
+                 },
+                 {
+                     "icon": "terminal",
+diff --git a/families/ii/bar/BarBreakpoints.js b/families/ii/bar/BarBreakpoints.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..f862d7531305d2f92dd705c1046063b08524d357
+--- /dev/null
++++ b/families/ii/bar/BarBreakpoints.js
+@@ -0,0 +1,11 @@
++.pragma library
++
++var compactScreenWidth = 1800
++
++function moduleAllowedAtWidth(moduleId, screenWidth) {
++    if (!(screenWidth > 0 && screenWidth <= compactScreenWidth))
++        return true
++    return moduleId !== "media" && moduleId !== "weather"
++        && moduleId !== "clock" && moduleId !== "utilButtons"
++        && moduleId !== "battery"
++}
+diff --git a/families/ii/bar/BarContent.qml b/families/ii/bar/BarContent.qml
+index 30ec3a1c65127d8593edd3528d155e3ea4da874d..fee5a009feacfe13bc61e00178839d8d79a8ab21 100644
+--- a/families/ii/bar/BarContent.qml
++++ b/families/ii/bar/BarContent.qml
+@@ -10,6 +10,7 @@ import qs.modules.common.models
+ import qs.modules.common.widgets
+ import qs.modules.common.functions
+ import qs.modules.ii.pill
++import "BarBreakpoints.js" as BarBreakpoints
+ import QtQuick.Effects
+ import Qt5Compat.GraphicalEffects as GE
+
+@@ -511,6 +512,7 @@ Item { // Bar content region
+         if (id === "spacer") return root._fillWidth(id, zone) || root._spacerMinimumWidth > 0;
+         if (id === "tray") return root._moduleVisible("sysTray") && root.useShortenedForm === 0;
+         if (!root._moduleVisible(id)) return false;
++        if (!BarBreakpoints.moduleAllowedAtWidth(id, root.screen?.width ?? 0)) return false;
+         if (id === "activeWindow")
+             return root.taskbarEnabled || root.useShortenedForm === 0;
+         if (id === "media") return root.useShortenedForm < 2;
+@@ -1671,7 +1673,7 @@ Item { // Bar content region
+                 z: -1
+             }
+
+-            toggled: ShellLayoutController.sidebarOpenAtSlot("right")
++            toggled: ShellLayoutController.sidebarOpenAtSlot("right", root.screen?.name ?? "")
+             property color colText: root.regaliaEverywhere
+                 ? (toggled ? Appearance.regalia.primaryPlateInk : Appearance.regalia.onColor)
+                 : root.zzzEverywhere
+diff --git a/families/ii/bar/Media.qml b/families/ii/bar/Media.qml
+index b260ed11a4059b092ac1eec7c411c2430c904811..7c45e6b321e214089f21caeaf71ef929c1ec7921 100644
+--- a/families/ii/bar/Media.qml
++++ b/families/ii/bar/Media.qml
+@@ -135,6 +135,7 @@ Item {
+     Loader {
+         active: root.barMediaPopupVisible && root.popupMode === "bar" && CompositorService.isNiri
+         sourceComponent: PanelWindow {
++            screen: root.QsWindow.window?.screen
+             anchors { top: true; bottom: true; left: true; right: true }
+             color: "transparent"
+             exclusionMode: ExclusionMode.Ignore
+diff --git a/families/ii/bar/StyledPopup.qml b/families/ii/bar/StyledPopup.qml
+index 1c72c64e9f3ce70b72aecbf41fd2e06d1294d1ad..e3ef14f5a674eccaa601aa8073e2daca7ec8dba8 100644
+--- a/families/ii/bar/StyledPopup.qml
++++ b/families/ii/bar/StyledPopup.qml
+@@ -15,6 +15,7 @@ LazyLoader {
+     property bool popupHovered: false
+     default property Item contentItem
+     property real popupBackgroundMargin: 0
++    readonly property var targetScreen: root.QsWindow.window?.screen
+
+     signal requestClose()
+
+@@ -30,6 +31,7 @@ LazyLoader {
+     // but visually invisible — do not use "transparent" (alpha=0 breaks input)
+     PanelWindow {
+         id: clickOutsideBackdrop
++        screen: root.targetScreen
+         visible: root.active && root.closeOnOutsideClick
+         color: Qt.rgba(0, 0, 0, 1/255)
+         exclusiveZone: 0
+@@ -46,6 +48,7 @@ LazyLoader {
+
+     component: PanelWindow {
+         id: popupWindow
++        screen: root.targetScreen
+         color: "transparent"
+
+         HoverHandler {
+diff --git a/families/ii/bar/SysTrayMenu.qml b/families/ii/bar/SysTrayMenu.qml
+index 26421b57af8f869694d0fe0655c7048796f3a382..1fe255ca5a302a7b5f0d0ac403f58071295dd2c3 100644
+--- a/families/ii/bar/SysTrayMenu.qml
++++ b/families/ii/bar/SysTrayMenu.qml
+@@ -80,6 +80,7 @@ PopupWindow {
+     // Fullscreen transparent backdrop for Niri to detect clicks outside
+     PanelWindow {
+         id: clickOutsideBackdrop
++        screen: root.screen
+         visible: root.visible && CompositorService.isNiri
+         color: "transparent"
+         exclusiveZone: 0
+diff --git a/families/ii/controlPanel/ControlPanel.qml b/families/ii/controlPanel/ControlPanel.qml
+index a9138901db49fe9ec86cf64d2221dd160b911ca5..3ba386b0eea38c7117574f63cf36132221ab7bc0 100644
+--- a/families/ii/controlPanel/ControlPanel.qml
++++ b/families/ii/controlPanel/ControlPanel.qml
+@@ -43,8 +43,8 @@ Scope {
+
+     PanelWindow {
+         id: panelRoot
+-
+         Component.onCompleted: {
++            screen = GlobalStates.primaryScreen
+             visible = GlobalStates.controlPanelOpen
+             if (GlobalStates.controlPanelOpen)
+                 Qt.callLater(() => { root._presentedOpen = GlobalStates.controlPanelOpen })
+diff --git a/families/ii/hub.json b/families/ii/hub.json
+index 2e86ac584e2efad8ef23f32d0227bdabf241b7ef..28ae29d46a4a59ec60196426a489069eddb39a1b 100644
+--- a/families/ii/hub.json
++++ b/families/ii/hub.json
+@@ -1,7 +1,8 @@
+ {
+     "$schema": "../../schema/hub.schema.json",
+-    "version": "2.35.6",
++    "version": "2.35.1006",
+     "changes": {
++        "2.35.1006": ["Restore the downstream iNiR customizations."],
+         "2.35.6": [
+             "Side panels open on the first click, also after a while unused",
+             "React with any emoji: one small pill opens a search, and votes and reactions show the moment people give them"
+diff --git a/families/ii/plugin.json b/families/ii/plugin.json
+index b822fdc3a2f48f844ea040aa48631826bb6b3080..59ff9531223ef758db6d50f01bad70dbd3678940 100644
+--- a/families/ii/plugin.json
++++ b/families/ii/plugin.json
+@@ -37,7 +37,7 @@
+   "summary": "Material 3 Expressive panels, bars, docks and widgets in nine global styles.",
+   "tagline": "Modular bars, sidebars and Material controls.",
+   "icon": "dashboard",
+-  "version": "2.35.6",
++  "version": "2.35.1006",
+   "provides": "modules/ii",
+   "parts": {
+     "critical": "critical/ShellIiCriticalPanels.qml",
+diff --git a/families/ii/settings/BackgroundConfig.qml b/families/ii/settings/BackgroundConfig.qml
+index 3dc73062c107b550a9f2fba1394e4c4d326441dd..2fe327dd601a3cb5cd53c86537c740306b08cd76 100644
+--- a/families/ii/settings/BackgroundConfig.qml
++++ b/families/ii/settings/BackgroundConfig.qml
+@@ -318,11 +318,11 @@ ContentPage {
+                 spacing: Appearance.sizes.spacingSmall
+
+                 property string selectedMonitor: {
++                    const focused = WallpaperListener.getFocusedMonitor()
++                    if (focused) return focused
+                     const primary = GlobalStates.primaryScreen
+                     const primaryName = primary ? (WallpaperListener.getMonitorName(primary) ?? "") : ""
+                     if (primaryName) return primaryName
+-                    const focused = WallpaperListener.getFocusedMonitor()
+-                    if (focused) return focused
+                     const screens = Quickshell.screens
+                     if (!screens || screens.length === 0) return ""
+                     return WallpaperListener.getMonitorName(screens[0]) ?? ""
+diff --git a/families/ii/settings/InterfaceConfig.qml b/families/ii/settings/InterfaceConfig.qml
+index f094ac84da890fd2f1332d4208188c67295eb9a1..b5de04c0c0301cbc2058fa96a38f00ac87d8165b 100644
+--- a/families/ii/settings/InterfaceConfig.qml
++++ b/families/ii/settings/InterfaceConfig.qml
+@@ -885,7 +885,7 @@ ContentPage {
+                     visible: Config.options?.material?.sidebar?.widgets?.launch ?? true
+
+                     property var shortcuts: Config.options?.material?.sidebar?.widgets?.quickLaunch ?? [
+-                        { icon: "folder", name: "Files", cmd: "/usr/bin/nautilus" },
++                        { icon: "folder", name: "Files", cmd: "dolphin" },
+                         { icon: "terminal", name: "Terminal", cmd: "/usr/bin/kitty" },
+                         { icon: "web", name: "Browser", cmd: "/usr/bin/firefox" },
+                         { icon: "code", name: "Code", cmd: "/usr/bin/code" }
+diff --git a/families/ii/settings/QuickConfig.qml b/families/ii/settings/QuickConfig.qml
+index f90d6f2e295186cabc84ea450134dc5656111f93..5a7a6c4989d1dae2b83ce27cc4c3ad9bae9b0a88 100644
+--- a/families/ii/settings/QuickConfig.qml
++++ b/families/ii/settings/QuickConfig.qml
+@@ -677,11 +677,11 @@ ContentPage {
+                 spacing: Appearance.sizes.spacingSmall
+
+                 property string selectedMonitor: {
++                    const focused = WallpaperListener.getFocusedMonitor()
++                    if (focused) return focused
+                     const primary = GlobalStates.primaryScreen
+                     const primaryName = primary ? (WallpaperListener.getMonitorName(primary) ?? "") : ""
+                     if (primaryName) return primaryName
+-                    const focused = WallpaperListener.getFocusedMonitor()
+-                    if (focused) return focused
+                     const screens = Quickshell.screens
+                     if (!screens || screens.length === 0) return ""
+                     return WallpaperListener.getMonitorName(screens[0]) ?? ""
+diff --git a/families/ii/settings/QuickWallpaperItem.qml b/families/ii/settings/QuickWallpaperItem.qml
+index bcef305c7f008e3f89f070e420b62c68c1f58127..4fa6745aa9f8f2317838cbe2c37e35e14977f7e9 100644
+--- a/families/ii/settings/QuickWallpaperItem.qml
++++ b/families/ii/settings/QuickWallpaperItem.qml
+@@ -109,6 +109,31 @@ MouseArea {
+                 }
+             }
+
++            Rectangle {
++                visible: root.isDirectory
++                anchors.left: parent.left
++                anchors.right: parent.right
++                anchors.bottom: parent.bottom
++                height: Math.max(22, folderName.implicitHeight + 8)
++                radius: Appearance.rounding.small
++                color: ColorUtils.transparentize(root.isHovered ? Appearance.colors.colPrimary : Appearance.colors.colLayer0, 0.18)
++
++                StyledText {
++                    id: folderName
++                    anchors.left: parent.left
++                    anchors.right: parent.right
++                    anchors.verticalCenter: parent.verticalCenter
++                    anchors.leftMargin: 6
++                    anchors.rightMargin: 6
++                    text: root.fileModelData.fileName
++                    font.pixelSize: Appearance.font.pixelSize.smallest
++                    font.weight: Font.Medium
++                    color: root.colText
++                    horizontalAlignment: Text.AlignHCenter
++                    elide: Text.ElideRight
++                }
++            }
++
+             // Selection indicator
+             MaterialSymbol {
+                 anchors.top: parent.top
+diff --git a/families/ii/settings/ServicesConfig.qml b/families/ii/settings/ServicesConfig.qml
+index 7893ec4fc33045a2a7fc1c6f9a6f0a48ebad4e48..9a5076375c8f0207f85803fa730938687103eadd 100644
+--- a/families/ii/settings/ServicesConfig.qml
++++ b/families/ii/settings/ServicesConfig.qml
+@@ -1004,7 +1004,7 @@ ContentPage {
+         SettingsGroup {
+             StyledText {
+                 Layout.fillWidth: true
+-                text: Translation.tr("Set a city name or coordinates for precise location. Leave empty to auto-detect from IP. Weather from wttr.in with Open-Meteo fallback; air quality from Open-Meteo.")
++                text: Translation.tr("Set a city name or coordinates for precise location. Leave empty to auto-detect from IP. Weather from Open-Meteo with wttr.in fallback; air quality from Open-Meteo.")
+                 color: Appearance.colors.colOnSurfaceVariant
+                 font.pixelSize: Appearance.font.pixelSize.small
+                 wrapMode: Text.WordWrap
+diff --git a/families/ii/settings/SettingsOverlay.qml b/families/ii/settings/SettingsOverlay.qml
+index f31ec7ce753a86292cb1c85e281c23e58d167d82..51a822207e3384ce2add45df43107cc11d7dfddd 100644
+--- a/families/ii/settings/SettingsOverlay.qml
++++ b/families/ii/settings/SettingsOverlay.qml
+@@ -36,6 +36,7 @@ Scope {
+
+         sourceComponent: PanelWindow {
+             id: panel
++            Component.onCompleted: screen = GlobalStates.primaryScreen
+             visible: root.settingsOpen || root._closing
+             exclusionMode: ExclusionMode.Ignore
+             WlrLayershell.namespace: "quickshell:settingsOverlay"
+diff --git a/families/ii/sidebarLeft/ToolsView.qml b/families/ii/sidebarLeft/ToolsView.qml
+index 65093be8ec962ce3e22fa5703be7f99f22476129..dd41f63428c076ee36065e9ee029cf24f453455e 100644
+--- a/families/ii/sidebarLeft/ToolsView.qml
++++ b/families/ii/sidebarLeft/ToolsView.qml
+@@ -195,7 +195,7 @@ Item {
+                     ActionTile {
+                         tileIcon: "folder"
+                         label: Translation.tr("Files")
+-                        onClicked: ShellExec.execDetachedArgs(["/usr/bin/nautilus"], "Launch Files")
++                        onClicked: ShellExec.execDetachedArgs(["dolphin"], "Launch Files")
+                     }
+                     ActionTile {
+                         tileIcon: "settings"
+diff --git a/families/ii/sidebarLeft/widgets/MediaPlayerWidget.qml b/families/ii/sidebarLeft/widgets/MediaPlayerWidget.qml
+index 0cf491fe06683589f4165def5b3d79ba623a23f8..101fac6ff026c608aa4b3f098177f6565c533058 100644
+--- a/families/ii/sidebarLeft/widgets/MediaPlayerWidget.qml
++++ b/families/ii/sidebarLeft/widgets/MediaPlayerWidget.qml
+@@ -359,6 +359,41 @@ Item {
+
+                     Item { Layout.fillWidth: true }
+
++                    RippleButton {
++                        id: shuffleButton
++                        implicitWidth: 32; implicitHeight: 32
++                        visible: !!(root.player?.canControl && root.player.shuffleSupported)
++                        toggled: root.player?.shuffle ?? false
++                        buttonText: Translation.tr(root.player?.shuffle ? "Shuffle On" : "Shuffle Off")
++                        Accessible.name: buttonText
++                        Accessible.checkable: true
++                        Accessible.checked: toggled
++                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
++                            : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.full
++                        colBackground: "transparent"
++                        colBackgroundToggled: "transparent"
++                        colBackgroundHover: Appearance.zzzEverywhere ? Appearance.zzz.paperAlt
++                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
++                            : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
++                            : Appearance.colors.colLayer1Hover
++                        colBackgroundToggledHover: colBackgroundHover
++                        colRipple: Appearance.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.28)
++                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Active : Appearance.colors.colLayer1Active
++                        colRippleToggled: colRipple
++                        onClicked: {
++                            if (!root.player?.canControl || !root.player.shuffleSupported) return;
++                            root.player.shuffle = !root.player.shuffle;
++                        }
++                        contentItem: MaterialSymbol {
++                            text: "shuffle"; iconSize: 20
++                            horizontalAlignment: Text.AlignHCenter
++                            verticalAlignment: Text.AlignVCenter
++                            color: playPauseIcon.color
++                            opacity: shuffleButton.toggled ? 1 : 0.45
++                        }
++                        StyledToolTip { text: shuffleButton.buttonText }
++                    }
++
+                     // Controls
+                     RippleButton {
+                         implicitWidth: 32
+@@ -403,7 +438,7 @@ Item {
+                             ? "transparent"
+                             : Appearance.auroraEverywhere
+                                 ? "transparent"
+-                                : (root.effectiveIsPlaying 
++                                : (root.effectiveIsPlaying
+                                     ? (effectiveColors?.colPrimary ?? Appearance.colors.colPrimary)
+                                     : (effectiveColors?.colSecondaryContainer ?? Appearance.colors.colSecondaryContainer))
+                         colBackgroundHover: Appearance.zzzEverywhere
+@@ -414,7 +449,7 @@ Item {
+                             ? Appearance.inir.colLayer2Hover
+                             : Appearance.auroraEverywhere
+                                 ? ColorUtils.transparentize(effectiveColors?.colLayer1 ?? Appearance.colors.colLayer1, 0.5)
+-                                : (root.effectiveIsPlaying 
++                                : (root.effectiveIsPlaying
+                                     ? (effectiveColors?.colPrimaryHover ?? Appearance.colors.colPrimaryHover)
+                                     : (effectiveColors?.colSecondaryContainerHover ?? Appearance.colors.colSecondaryContainerHover))
+                         colRipple: Appearance.zzzEverywhere
+@@ -425,7 +460,7 @@ Item {
+                             ? Appearance.inir.colLayer2Active
+                             : Appearance.auroraEverywhere
+                                 ? (effectiveColors?.colLayer1Active ?? Appearance.colLayer1Active)
+-                                : (root.effectiveIsPlaying 
++                                : (root.effectiveIsPlaying
+                                     ? (effectiveColors?.colPrimaryActive ?? Appearance.colors.colPrimaryActive)
+                                     : (effectiveColors?.colSecondaryContainerActive ?? Appearance.colors.colSecondaryContainerActive))
+                         onClicked: MprisController.togglePlaying()
+@@ -437,6 +472,7 @@ Item {
+
+                         contentItem: Item {
+                             MaterialSymbol {
++                                id: playPauseIcon
+                                 anchors.centerIn: parent
+                                 text: root.effectiveIsPlaying ? "pause" : "play_arrow"
+                                 iconSize: 24
+@@ -449,7 +485,7 @@ Item {
+                                     ? root.jiraColPrimary
+                                     : Appearance.auroraEverywhere
+                                         ? root.mediaAccent
+-                                        : (root.effectiveIsPlaying 
++                                        : (root.effectiveIsPlaying
+                                             ? (effectiveColors?.colOnPrimary ?? Appearance.colors.colOnPrimary)
+                                             : (effectiveColors?.colOnSecondaryContainer ?? Appearance.colors.colOnSecondaryContainer))
+
+@@ -490,6 +526,43 @@ Item {
+                         StyledToolTip { text: Translation.tr("Next") }
+                     }
+
++                    RippleButton {
++                        id: loopButton
++                        implicitWidth: 32; implicitHeight: 32
++                        visible: !!(root.player?.canControl && root.player.loopSupported)
++                        toggled: (root.player?.loopState ?? MprisLoopState.None) !== MprisLoopState.None
++                        property string iconName: root.player?.loopState === MprisLoopState.Track ? "repeat_one" : "repeat"
++                        buttonText: Translation.tr(root.player?.loopState === MprisLoopState.Track ? "Repeat One" : root.player?.loopState === MprisLoopState.Playlist ? "Repeat All" : "Repeat Off")
++                        Accessible.name: buttonText
++                        Accessible.checkable: true
++                        Accessible.checked: toggled
++                        buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
++                            : Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.full
++                        colBackground: "transparent"
++                        colBackgroundToggled: "transparent"
++                        colBackgroundHover: Appearance.zzzEverywhere ? Appearance.zzz.paperAlt
++                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
++                            : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurface
++                            : Appearance.colors.colLayer1Hover
++                        colBackgroundToggledHover: colBackgroundHover
++                        colRipple: Appearance.zzzEverywhere ? ColorUtils.applyAlpha(Appearance.zzz.accent, 0.28)
++                            : Appearance.inirEverywhere ? Appearance.inir.colLayer2Active : Appearance.colors.colLayer1Active
++                        colRippleToggled: colRipple
++                        onClicked: {
++                            if (!root.player?.canControl || !root.player.loopSupported) return;
++                            root.player.loopState = root.player.loopState === MprisLoopState.None ? MprisLoopState.Playlist
++                                : root.player.loopState === MprisLoopState.Playlist ? MprisLoopState.Track : MprisLoopState.None;
++                        }
++                        contentItem: MaterialSymbol {
++                            text: loopButton.iconName; iconSize: 20
++                            horizontalAlignment: Text.AlignHCenter
++                            verticalAlignment: Text.AlignVCenter
++                            color: playPauseIcon.color
++                            opacity: loopButton.toggled ? 1 : 0.45
++                        }
++                        StyledToolTip { text: loopButton.buttonText }
++                    }
++
+                     Item { Layout.fillWidth: true }
+
+                     StyledText {
+diff --git a/families/ii/sidebarLeft/widgets/QuickLaunch.qml b/families/ii/sidebarLeft/widgets/QuickLaunch.qml
+index 58b5c5f403b141ff2af51fdd5a6fc82b4bc2cfdc..4a24ef4586d65327a4e578a54e509400efde3e4c 100644
+--- a/families/ii/sidebarLeft/widgets/QuickLaunch.qml
++++ b/families/ii/sidebarLeft/widgets/QuickLaunch.qml
+@@ -13,7 +13,7 @@ Item {
+     implicitHeight: row.implicitHeight
+
+     readonly property var defaultShortcuts: [
+-        { icon: "folder", name: "Files", cmd: "/usr/bin/nautilus" },
++        { icon: "folder", name: "Files", cmd: "dolphin" },
+         { icon: "terminal", name: "Terminal", cmd: "/usr/bin/kitty" },
+         { icon: "web", name: "Browser", cmd: "/usr/bin/firefox" },
+         { icon: "code", name: "Code", cmd: "/usr/bin/code" }
+diff --git a/families/ii/sidebarLeft/widgets/WeekStrip.qml b/families/ii/sidebarLeft/widgets/WeekStrip.qml
+index 93193fc1195d16c429e62cbba1d840f632f96862..8488e052ea0aeb16a6474e467b637f280ad1abcc 100644
+--- a/families/ii/sidebarLeft/widgets/WeekStrip.qml
++++ b/families/ii/sidebarLeft/widgets/WeekStrip.qml
+@@ -40,14 +40,23 @@ Item {
+         for (let i = 0; i < 7; i++) {
+             const d = new Date(weekStart)
+             d.setDate(weekStart.getDate() + i)
++            const holidayInfo = CalendarCn.getHolidayInfo(d)
++            const lunarInfo = CalendarCn.getLunarInfo(d)
+             const isToday = d.getDate() === today.getDate() &&
+                            d.getMonth() === today.getMonth() &&
+                            d.getFullYear() === today.getFullYear()
+             arr.push({
++                date: d,
+                 dayNum: d.getDate(),
+                 dayName: locale.toString(d, "ddd").substring(0, 2),
+                 isToday: isToday && weekOffset === 0,
+-                isWeekend: d.getDay() === 0 || d.getDay() === 6
++                isWeekend: d.getDay() === 0 || d.getDay() === 6,
++                holidayInfo: holidayInfo,
++                lunarInfo: lunarInfo,
++                lunarLabel: CalendarCn.getLunarLabel(lunarInfo),
++                statusLabel: (Config.options?.calendar?.china?.showWorkStatus ?? true)
++                    ? CalendarCn.getWorkStatusType(holidayInfo)
++                    : ""
+             })
+         }
+         return arr
+@@ -174,7 +183,7 @@ Item {
+                 required property var modelData
+                 required property int index
+                 Layout.fillWidth: true
+-                implicitHeight: 36
++                implicitHeight: 46
+
+                 ColumnLayout {
+                     anchors.centerIn: parent
+@@ -187,15 +196,41 @@ Item {
+                         color: root.colSubtext
+                     }
+
++                    RowLayout {
++                        Layout.alignment: Qt.AlignHCenter
++                        spacing: 2
++
++                        StyledText {
++                            Layout.alignment: Qt.AlignVCenter
++                            text: modelData.dayNum
++                            font.pixelSize: Appearance.font.pixelSize.small
++                            font.weight: modelData.isToday ? Font.Bold : Font.Normal
++                            font.family: Appearance.font.family.numbers
++                            color: modelData.isToday ? root.colPrimary
++                                 : modelData.isWeekend ? root.colSubtext
++                                 : root.colText
++                        }
++
++                        StyledText {
++                            Layout.alignment: Qt.AlignVCenter
++                            visible: modelData.statusLabel.length > 0
++                            text: modelData.statusLabel
++                            font.pixelSize: Math.max(7, Appearance.font.pixelSize.smallest * 0.75)
++                            font.weight: Font.Bold
++                            color: root.colPrimary
++                        }
++                    }
++
+                     StyledText {
+                         Layout.alignment: Qt.AlignHCenter
+-                        text: modelData.dayNum
+-                        font.pixelSize: Appearance.font.pixelSize.small
+-                        font.weight: modelData.isToday ? Font.Bold : Font.Normal
+-                        font.family: Appearance.font.family.numbers
+-                        color: modelData.isToday ? root.colPrimary
+-                             : modelData.isWeekend ? root.colSubtext
+-                             : root.colText
++                        visible: modelData.lunarLabel.length > 0
++                        text: modelData.lunarLabel
++                        width: 34
++                        horizontalAlignment: Text.AlignHCenter
++                        elide: Text.ElideRight
++                        maximumLineCount: 1
++                        font.pixelSize: Math.max(7, Appearance.font.pixelSize.smallest * 0.72)
++                        color: modelData.isToday ? root.colPrimary : root.colSubtext
+                     }
+                 }
+             }
+diff --git a/families/ii/sidebarRight/calendar/CalendarDayButton.qml b/families/ii/sidebarRight/calendar/CalendarDayButton.qml
+index 4712665a5f7be5a61602c7ae970edbd22588acc9..b4817972bf9c09728bcd60dab834a725643fca61 100644
+--- a/families/ii/sidebarRight/calendar/CalendarDayButton.qml
++++ b/families/ii/sidebarRight/calendar/CalendarDayButton.qml
+@@ -16,6 +16,14 @@ RippleButton {
+     property int eventCount: 0
+     // Source colors for multi-colored dots (from CalendarSync + local events)
+     property var sourceColors: []
++    property string subLabel: ""
++    property string statusLabel: ""
++    property color statusColor: Appearance.regaliaEverywhere ? Appearance.regalia.hardwarePrimary
++        : Appearance.zzzEverywhere ? Appearance.zzz.accent
++        : Appearance.angelEverywhere ? Appearance.angel.colPrimary
++        : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary
++    readonly property bool hasSubLabel: subLabel.length > 0 && !isHeader
++    readonly property bool hasStatusLabel: statusLabel.length > 0 && !isHeader
+
+     Layout.fillWidth: false
+     Layout.fillHeight: false
+@@ -37,42 +45,86 @@ RippleButton {
+     contentItem: Item {
+         anchors.fill: parent
+
+-        StyledText {
++        ColumnLayout {
+             anchors.centerIn: parent
+-            anchors.verticalCenterOffset: (button.eventCount > 0 && !button.isHeader) ? -2 : 0
+-            text: button.day
+-            horizontalAlignment: Text.AlignHCenter
+-            font.family: button.isHeader ? Appearance.font.family.main : Appearance.font.family.numbers
+-            font.letterSpacing: Appearance.editorialEverywhere && button.isHeader ? 0.5 : 0
+-            font.weight: button.bold || (Appearance.editorialEverywhere && button.isHeader) ? Font.DemiBold : Font.Normal
++            anchors.verticalCenterOffset: button.hasSubLabel ? -1 : ((button.eventCount > 0 && !button.isHeader) ? -2 : 0)
++            spacing: button.hasSubLabel ? -2 : 0
++
++            StyledText {
++                Layout.alignment: Qt.AlignHCenter
++                text: button.day
++                horizontalAlignment: Text.AlignHCenter
++                font.family: button.isHeader ? Appearance.font.family.main : Appearance.font.family.numbers
++                font.letterSpacing: Appearance.editorialEverywhere && button.isHeader ? 0.5 : 0
++                font.weight: button.bold || (Appearance.editorialEverywhere && button.isHeader) ? Font.DemiBold : Font.Normal
++                color: Appearance.regaliaEverywhere
++                    ? (button.isHeader && (button.isToday == 1) ? Appearance.regalia.hardwarePrimary
++                        : (button.isToday == 1) ? Appearance.regalia.primaryPlateInk
++                        : (button.isToday == 0) ? Appearance.regalia.onColor
++                        : Appearance.regalia.onMuted)
++                    : Appearance.zzzEverywhere
++                    ? (button.isHeader && (button.isToday == 1) ? Appearance.zzz.accent
++                        : (button.isToday == 1) ? Appearance.zzz.onSticker
++                        : (button.isToday == 0) ? Appearance.zzz.ink
++                        : Appearance.zzz.inkMuted)
++                    : button.isHeader && (button.isToday == 1)
++                    ? (Appearance.angelEverywhere ? Appearance.angel.colPrimary
++                        : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary)
++                    : (button.isToday == 1)
++                        ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
++                            : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary : Appearance.colors.colOnPrimary)
++                        : (button.isToday == 0)
++                            ? (Appearance.angelEverywhere ? Appearance.angel.colText
++                                : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1)
++                            : (Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
++                                : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary
++                                : Appearance.auroraEverywhere ? Appearance.colors.colSubtext
++                                : Appearance.colors.colOutlineVariant)
++
++                Behavior on color {
++                    enabled: Appearance.animationsEnabled
++                    animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
++                }
++            }
++
++            StyledText {
++                Layout.alignment: Qt.AlignHCenter
++                Layout.maximumWidth: button.width - 8
++                visible: button.hasSubLabel
++                text: button.subLabel
++                horizontalAlignment: Text.AlignHCenter
++                font.pixelSize: Appearance.font.pixelSize.smallest
++                color: Appearance.regaliaEverywhere
++                    ? (button.isToday == 1 ? Appearance.regalia.primaryPlateInk : Appearance.regalia.onMuted)
++                    : Appearance.zzzEverywhere
++                    ? (button.isToday == 1 ? Appearance.zzz.onSticker : Appearance.zzz.inkMuted)
++                    : button.isToday == 1
++                        ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
++                            : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary : Appearance.colors.colOnPrimary)
++                        : (Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
++                            : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext)
++                opacity: button.isToday == 1 ? 0.78 : 0.9
++                elide: Text.ElideRight
++            }
++        }
++
++        StyledText {
++            anchors.top: parent.top
++            anchors.right: parent.right
++            anchors.topMargin: 1
++            anchors.rightMargin: 2
++            visible: button.hasStatusLabel
++            text: button.statusLabel
++            font.pixelSize: Appearance.font.pixelSize.smallest
++            font.weight: Font.DemiBold
+             color: Appearance.regaliaEverywhere
+-                ? (button.isHeader && (button.isToday == 1) ? Appearance.regalia.hardwarePrimary
+-                    : (button.isToday == 1) ? Appearance.regalia.primaryPlateInk
+-                    : (button.isToday == 0) ? Appearance.regalia.onColor
+-                    : Appearance.regalia.onMuted)
++                ? (button.isToday == 1 ? Appearance.regalia.primaryPlateInk : button.statusColor)
+                 : Appearance.zzzEverywhere
+-                ? (button.isHeader && (button.isToday == 1) ? Appearance.zzz.accent
+-                    : (button.isToday == 1) ? Appearance.zzz.onSticker
+-                    : (button.isToday == 0) ? Appearance.zzz.ink
+-                    : Appearance.zzz.inkMuted)
+-                : button.isHeader && (button.isToday == 1)
+-                ? (Appearance.angelEverywhere ? Appearance.angel.colPrimary
+-                    : Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary)
+-                : (button.isToday == 1)
++                ? (button.isToday == 1 ? Appearance.zzz.onSticker : button.statusColor)
++                : button.isToday == 1
+                     ? (Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
+                         : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary : Appearance.colors.colOnPrimary)
+-                    : (button.isToday == 0)
+-                        ? (Appearance.angelEverywhere ? Appearance.angel.colText
+-                            : Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1)
+-                        : (Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
+-                            : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary
+-                            : Appearance.auroraEverywhere ? Appearance.colors.colSubtext
+-                            : Appearance.colors.colOutlineVariant)
+-
+-            Behavior on color {
+-                enabled: Appearance.animationsEnabled
+-                animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+-            }
++                    : button.statusColor
+         }
+
+         // Multi-colored event indicator dots
+@@ -85,7 +137,7 @@ RippleButton {
+             }
+             anchors.horizontalCenter: parent.horizontalCenter
+             anchors.bottom: parent.bottom
+-            anchors.bottomMargin: 3
++            anchors.bottomMargin: button.hasSubLabel ? 1 : 3
+             spacing: 2
+
+             Repeater {
+diff --git a/families/ii/sidebarRight/calendar/CalendarDayDetail.qml b/families/ii/sidebarRight/calendar/CalendarDayDetail.qml
+index 24c8f2bb18d1d89ef26bb206638d799384698f6d..edec4ba135fd13140f41e92bccd768381b3d7966 100644
+--- a/families/ii/sidebarRight/calendar/CalendarDayDetail.qml
++++ b/families/ii/sidebarRight/calendar/CalendarDayDetail.qml
+@@ -68,6 +68,13 @@ Item {
+         }
+         return false
+     }
++    readonly property var holidayInfo: CalendarCn.getHolidayInfo(root.selectedDate)
++    readonly property var lunarInfo: CalendarCn.getLunarInfo(root.selectedDate)
++    readonly property string lunarLabel: CalendarCn.getLunarLabel(root.lunarInfo)
++    readonly property string workStatus: (Config.options?.calendar?.china?.showWorkStatus ?? true)
++        ? CalendarCn.getWorkStatusType(root.holidayInfo)
++        : ""
++    readonly property bool hasCnCalendarInfo: root.lunarLabel.length > 0 || root.workStatus.length > 0 || String(root.holidayInfo?.name ?? "").length > 0
+
+     function _buildTimeGroups(): var {
+         if (!root.selectedDate) return []
+@@ -199,6 +206,50 @@ Item {
+             }
+         }
+
++        RowLayout {
++            Layout.fillWidth: true
++            visible: root.hasCnCalendarInfo
++            spacing: 6
++
++            MaterialSymbol {
++                text: "calendar_month"
++                iconSize: 14
++                color: root.colSubtext
++                opacity: 0.8
++            }
++
++            StyledText {
++                Layout.fillWidth: true
++                text: {
++                    const parts = []
++                    if (root.lunarLabel.length > 0) parts.push(root.lunarLabel)
++                    const holidayName = String(root.holidayInfo?.name ?? "")
++                    if (holidayName.length > 0) parts.push(holidayName)
++                    return parts.join(" · ")
++                }
++                font.pixelSize: Appearance.font.pixelSize.smallest
++                color: root.colSubtext
++                elide: Text.ElideRight
++            }
++
++            Rectangle {
++                visible: root.workStatus.length > 0
++                Layout.preferredWidth: statusText.implicitWidth + 10
++                Layout.preferredHeight: 20
++                radius: root.cardRadius
++                color: ColorUtils.transparentize(root.workStatus === "休" ? root.colPrimary : root.colSubtext, 0.86)
++
++                StyledText {
++                    id: statusText
++                    anchors.centerIn: parent
++                    text: root.workStatus
++                    font.pixelSize: Appearance.font.pixelSize.smallest
++                    font.weight: Font.DemiBold
++                    color: root.workStatus === "休" ? root.colPrimary : root.colSubtext
++                }
++            }
++        }
++
+         // Time-grouped event list
+         Flickable {
+             Layout.fillWidth: true
+diff --git a/families/ii/sidebarRight/calendar/CalendarWidget.qml b/families/ii/sidebarRight/calendar/CalendarWidget.qml
+index 856b406c7c75fdda2dc42220ae5893721b20a038..a271b9105e34970d717bf58b1d3ca2c83923c1fd 100644
+--- a/families/ii/sidebarRight/calendar/CalendarWidget.qml
++++ b/families/ii/sidebarRight/calendar/CalendarWidget.qml
+@@ -115,19 +115,26 @@ Item {
+         return colors
+     }
+
++    function getHolidayInfoForDay(day: int, weekRow: int, dayIndex: int): var {
++        const targetDate = _getDateForCell(day, weekRow, dayIndex)
++        return CalendarCn.getHolidayInfo(targetDate)
++    }
++
++    function getLunarInfoForDay(day: int, weekRow: int, dayIndex: int): var {
++        const targetDate = _getDateForCell(day, weekRow, dayIndex)
++        return CalendarCn.getLunarInfo(targetDate)
++    }
++
+     // Resolve a calendar cell to a real Date object
+     function _getDateForCell(day: int, weekRow: int, dayIndex: int): var {
+         const cellData = root.calendarLayout[weekRow]?.[dayIndex]
+         if (!cellData) return null
+         const year = root.viewingDate.getFullYear()
+         const month = root.viewingDate.getMonth()
+-        let targetMonth = month
+-        let targetYear = year
+-        if (cellData.today === -1) {
+-            if (month === 0) { targetMonth = 11; targetYear = year - 1 }
+-            else targetMonth = month - 1
+-        }
+-        return new Date(targetYear, targetMonth, day)
++        const firstOfMonth = new Date(year, month, 1)
++        const firstDayOfWeek = root.locale?.firstDayOfWeek ?? 1
++        const offset = (firstOfMonth.getDay() - firstDayOfWeek + 7) % 7
++        return new Date(year, month, 1 - offset + (weekRow * 7) + dayIndex)
+     }
+
+     function openDayDetail(date: var): void {
+@@ -329,10 +336,22 @@ Item {
+                             delegate: CalendarDayButton {
+                                 required property int index
+                                 required property int modelData
++                                readonly property var cell: root.calendarLayout[modelData][index]
++                                readonly property var holidayInfo: root.getHolidayInfoForDay(cell.day, modelData, index)
++                                readonly property var lunarInfo: root.getLunarInfoForDay(cell.day, modelData, index)
++                                readonly property string workStatus: (Config.options?.calendar?.china?.showWorkStatus ?? true)
++                                    ? CalendarCn.getWorkStatusType(holidayInfo)
++                                    : ""
+                                 day: root.calendarLayout[modelData][index].day
+                                 isToday: root.calendarLayout[modelData][index].today
+                                 eventCount: root.getEventCountForDay(root.calendarLayout[modelData][index].day, modelData, index)
+                                 sourceColors: root.getSourceColorsForDay(root.calendarLayout[modelData][index].day, modelData, index)
++                                subLabel: CalendarCn.getLunarLabel(lunarInfo)
++                                statusLabel: workStatus
++                                statusColor: workStatus === "休"
++                                    ? root.colPrimary
++                                    : (Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
++                                        : Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext)
+                                 onClicked: {
+                                     const targetDate = root._getDateForCell(root.calendarLayout[modelData][index].day, modelData, index)
+                                     if (targetDate) {
+diff --git a/families/ii/sidebarRight/quickToggles/AndroidQuickPanel.qml b/families/ii/sidebarRight/quickToggles/AndroidQuickPanel.qml
+index 3907f446038e1450442ddda651042600bc83e0c8..c36c88359e070528bc73524f5125d35f14ed1383 100644
+--- a/families/ii/sidebarRight/quickToggles/AndroidQuickPanel.qml
++++ b/families/ii/sidebarRight/quickToggles/AndroidQuickPanel.qml
+@@ -29,7 +29,7 @@ AbstractQuickPanel {
+     readonly property real baseCellHeight: 56
+
+     // Toggles
+-    readonly property list<string> availableToggleTypes: ["network", "hotspot", "bluetooth", "idleInhibitor", "easyEffects", "nightLight", "darkMode", "cloudflareWarp", "gameMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "notifications", "powerProfile", "musicRecognition", "voiceSearch", "antiFlashbang"]
++    readonly property list<string> availableToggleTypes: ["network", "hotspot", "bluetooth", "idleInhibitor", "easyEffects", "nightLight", "darkMode", "cloudflareWarp", "gameMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "notifications", "powerProfile", "batteryProtection", "musicRecognition", "voiceSearch", "antiFlashbang"]
+     readonly property int columns: Config.options?.material?.sidebar?.quickToggles?.android?.columns ?? 4
+     readonly property list<var> toggles: Config.ready ? (Config.options?.material?.sidebar?.quickToggles?.android?.toggles ?? []) : []
+     readonly property list<var> toggleRows: toggleRowsForList(toggles)
+diff --git a/families/ii/sidebarRight/quickToggles/ClassicQuickPanel.qml b/families/ii/sidebarRight/quickToggles/ClassicQuickPanel.qml
+index 632f7446bb42418be03b4c7b219b8d508cfd89b5..46539773ef444c278fc4e8e4730cea86fb80a363 100644
+--- a/families/ii/sidebarRight/quickToggles/ClassicQuickPanel.qml
++++ b/families/ii/sidebarRight/quickToggles/ClassicQuickPanel.qml
+@@ -53,6 +53,8 @@ AbstractQuickPanel {
+         
+         GameMode {}
+         
++        BatteryProtectionToggle {}
++
+         CloudflareWarp {}
+     }
+ }
+diff --git a/families/ii/sidebarRight/quickToggles/androidStyle/AndroidBatteryProtectionToggle.qml b/families/ii/sidebarRight/quickToggles/androidStyle/AndroidBatteryProtectionToggle.qml
+new file mode 100644
+index 0000000000000000000000000000000000000000..4d4f88c3c6616a82de7191828e8e8c92ae934bc1
+--- /dev/null
++++ b/families/ii/sidebarRight/quickToggles/androidStyle/AndroidBatteryProtectionToggle.qml
+@@ -0,0 +1,32 @@
++import QtQuick
++import qs.modules.common
++import qs.modules.common.widgets
++import qs.services
++
++AndroidQuickToggleButton {
++    id: root
++
++    visible: Battery.available
++    name: Translation.tr("Battery Protection")
++    toggled: Config.options?.battery?.chargeLimit?.enable ?? false
++    enabled: Battery.chargeLimitSupported && !Battery.chargeLimitBusy
++    buttonIcon: toggled ? "battery_saver" : "battery_full"
++    statusText: !Battery.chargeLimitSupported
++        ? Translation.tr("Unsupported")
++        : toggled
++            ? Translation.tr("Limit %1").arg(Battery.chargeLimitStartSupported
++                ? `${Config.options?.battery?.chargeLimit?.startThreshold ?? 60}/${Config.options?.battery?.chargeLimit?.threshold ?? 80}`
++                : `${Config.options?.battery?.chargeLimit?.threshold ?? 80}`)
++            : Translation.tr("Full charge")
++
++    mainAction: () => {
++        if (!Battery.chargeLimitSupported || Battery.chargeLimitBusy) return;
++        Config.setNestedValue("battery.chargeLimit.enable", !(Config.options?.battery?.chargeLimit?.enable ?? false));
++    }
++
++    StyledToolTip {
++        text: Battery.chargeLimitSupported
++            ? Translation.tr("Battery protection\nCurrent: %1\nClick to toggle").arg(Battery.chargeLimitModeText)
++            : Translation.tr("Battery protection unsupported")
++    }
++}
+diff --git a/families/ii/sidebarRight/quickToggles/androidStyle/AndroidToggleDelegateChooser.qml b/families/ii/sidebarRight/quickToggles/androidStyle/AndroidToggleDelegateChooser.qml
+index 0bdbac2587e5f64d322d9f2de26df8e48e920e70..d7fba9cdb1288f10f5608ff9d6174390aba31cac 100644
+--- a/families/ii/sidebarRight/quickToggles/androidStyle/AndroidToggleDelegateChooser.qml
++++ b/families/ii/sidebarRight/quickToggles/androidStyle/AndroidToggleDelegateChooser.qml
+@@ -247,6 +247,19 @@ DelegateChooser {
+         cellSize: modelData.size
+     } }
+
++    DelegateChoice { roleValue: "batteryProtection"; AndroidBatteryProtectionToggle {
++        required property int index
++        required property var modelData
++        buttonIndex: root.startingIndex + index
++        buttonData: modelData
++        editMode: root.editMode
++        expandedSize: modelData.size > 1
++        baseCellWidth: root.baseCellWidth
++        baseCellHeight: root.baseCellHeight
++        cellSpacing: root.spacing
++        cellSize: modelData.size
++    } }
++
+     DelegateChoice { roleValue: "musicRecognition"; AndroidMusicRecognition {
+         required property int index
+         required property var modelData
+diff --git a/families/ii/sidebarRight/quickToggles/androidStyle/qmldir b/families/ii/sidebarRight/quickToggles/androidStyle/qmldir
+index d89fef12dc2067a9e0a73170da1a4bdda13113f1..765654374185bf1fd0273420d4b9717e6b529cb5 100644
+--- a/families/ii/sidebarRight/quickToggles/androidStyle/qmldir
++++ b/families/ii/sidebarRight/quickToggles/androidStyle/qmldir
+@@ -1,6 +1,7 @@
+ module qs.modules.ii.sidebarRight.quickToggles.androidStyle
+ AndroidAntiFlashbangToggle 1.0 AndroidAntiFlashbangToggle.qml
+ AndroidAudioToggle 1.0 AndroidAudioToggle.qml
++AndroidBatteryProtectionToggle 1.0 AndroidBatteryProtectionToggle.qml
+ AndroidBluetoothToggle 1.0 AndroidBluetoothToggle.qml
+ AndroidCloudflareWarpToggle 1.0 AndroidCloudflareWarpToggle.qml
+ AndroidColorPickerToggle 1.0 AndroidColorPickerToggle.qml
+diff --git a/families/ii/sidebarRight/quickToggles/classicStyle/BatteryProtectionToggle.qml b/families/ii/sidebarRight/quickToggles/classicStyle/BatteryProtectionToggle.qml
+new file mode 100644
+index 0000000000000000000000000000000000000000..44be0a4cfefe3c99324bda46b9ea169e5e7138cb
+--- /dev/null
++++ b/families/ii/sidebarRight/quickToggles/classicStyle/BatteryProtectionToggle.qml
+@@ -0,0 +1,24 @@
++import QtQuick
++import qs.modules.common
++import qs.modules.common.widgets
++import qs.services
++
++QuickToggleButton {
++    id: root
++
++    visible: Battery.available
++    toggled: Config.options?.battery?.chargeLimit?.enable ?? false
++    enabled: Battery.chargeLimitSupported && !Battery.chargeLimitBusy
++    buttonIcon: toggled ? "battery_saver" : "battery_full"
++
++    onClicked: {
++        if (!Battery.chargeLimitSupported || Battery.chargeLimitBusy) return;
++        Config.setNestedValue("battery.chargeLimit.enable", !(Config.options?.battery?.chargeLimit?.enable ?? false));
++    }
++
++    StyledToolTip {
++        text: Battery.chargeLimitSupported
++            ? Translation.tr("Battery protection\nCurrent: %1\nClick to toggle").arg(Battery.chargeLimitModeText)
++            : Translation.tr("Battery protection unsupported")
++    }
++}
+diff --git a/families/ii/sidebarRight/quickToggles/classicStyle/qmldir b/families/ii/sidebarRight/quickToggles/classicStyle/qmldir
+index 22035934a33a934e6413c81c73b8309b5775d1c1..a8bd92a283acbe63f31fabcfd8dc0ca105bcfe33 100644
+--- a/families/ii/sidebarRight/quickToggles/classicStyle/qmldir
++++ b/families/ii/sidebarRight/quickToggles/classicStyle/qmldir
+@@ -1,4 +1,5 @@
+ module qs.modules.ii.sidebarRight.quickToggles.classicStyle
++BatteryProtectionToggle 1.0 BatteryProtectionToggle.qml
+ BluetoothToggle 1.0 BluetoothToggle.qml
+ CloudflareWarp 1.0 CloudflareWarp.qml
+ EasyEffectsToggle 1.0 EasyEffectsToggle.qml
+diff --git a/families/ii/translations/en_US.json b/families/ii/translations/en_US.json
+index e16155088f0e0b1889f8ca4e1e6c7e9404b7b9ea..b5f47932977105c65f9d3b0b07bfe1f0785de697 100644
+--- a/families/ii/translations/en_US.json
++++ b/families/ii/translations/en_US.json
+@@ -2061,6 +2061,7 @@
+   "Secondary accents, surfaces, borders and status colors": "Secondary accents, surfaces, borders and status colors",
+   "Selected zone: %1": "Selected zone: %1",
+   "Send": "Send",
++  "Set a city name or coordinates for precise location. Leave empty to auto-detect from IP. Weather from Open-Meteo with wttr.in fallback; air quality from Open-Meteo.": "Set a city name or coordinates for precise location. Leave empty to auto-detect from IP. Weather from Open-Meteo with wttr.in fallback; air quality from Open-Meteo.",
+   "Set a city name or coordinates for precise location. Leave empty to auto-detect from IP. Weather from wttr.in with Open-Meteo fallback; air quality from Open-Meteo.": "Set a city name or coordinates for precise location. Leave empty to auto-detect from IP. Weather from wttr.in with Open-Meteo fallback; air quality from Open-Meteo.",
+   "She runs across the desktop, bonks widgets and rattles the bar": "She runs across the desktop, bonks widgets and rattles the bar",
+   "Shell configuration changes show a typed preview and require approval. Search appears only when the selected provider supports it.": "Shell configuration changes show a typed preview and require approval. Search appears only when the selected provider supports it.",
+diff --git a/families/ii/translations/zh_CN.json b/families/ii/translations/zh_CN.json
+index e31ecdfd31ecaeee6177b836e3d5290ff4cec8a9..803dffc443882e5676c6fcab139cf61962becf1a 100644
+--- a/families/ii/translations/zh_CN.json
++++ b/families/ii/translations/zh_CN.json
+@@ -2061,6 +2061,7 @@
+   "Secondary accents, surfaces, borders and status colors": "次要强调色、表面、边框和状态色",
+   "Selected zone: %1": "已选区域：%1",
+   "Send": "发送",
++  "Set a city name or coordinates for precise location. Leave empty to auto-detect from IP. Weather from Open-Meteo with wttr.in fallback; air quality from Open-Meteo.": "填写城市名或坐标以精确定位。留空则根据 IP 自动检测。天气来自 Open-Meteo，以 wttr.in 作为备用来源；空气质量数据来自 Open-Meteo。",
+   "Set a city name or coordinates for precise location. Leave empty to auto-detect from IP. Weather from wttr.in with Open-Meteo fallback; air quality from Open-Meteo.": "填写城市名或坐标以精确定位。留空则根据 IP 自动检测。天气来自 wttr.in，以 Open-Meteo 作为后备；空气质量来自 Open-Meteo。",
+   "She runs across the desktop, bonks widgets and rattles the bar": "她跑过桌面，撞击小部件并摇晃状态栏",
+   "Shell configuration changes show a typed preview and require approval. Search appears only when the selected provider supports it.": "更改shell配置会显示带类型的预览并需要批准。只有当所选供应商支持时，搜索才会出现。",
