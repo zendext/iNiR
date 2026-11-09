@@ -52,6 +52,7 @@ Scope { // Scope
 
         sourceComponent: PanelWindow {
             id: oskRoot
+            Component.onCompleted: screen = GlobalStates.primaryScreen
             // Brief unmap window used by restack() to recreate the wlr-layer-shell
             // surface, which puts it back on top of the Overlay layer.
             property bool _remapping: false
