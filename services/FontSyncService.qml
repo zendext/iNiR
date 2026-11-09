@@ -20,11 +20,9 @@ Singleton {
     }
 
     // Track the current font from config
-    readonly property string family: Config.options?.panelFamily ?? "ii"
-    readonly property string mainFont: root.family === "iris"
-        ? (String(Config.options?.iris?.appearance?.fontFamily ?? "") || "Inter")
-        : root.family === "waffle" ? (Config.options?.waffles?.theming?.font?.family ?? "Noto Sans")
-        : (Config.options?.appearance?.typography?.mainFont ?? "Roboto Flex")
+    // The active family's own font when it keeps one (plugin.json setting `font`), Material's typography otherwise.
+    readonly property string mainFont: String(Plugins.setting(Plugins.active, "font",
+        Config.options?.appearance?.typography?.mainFont ?? "Roboto Flex"))
     readonly property string monoFont: Config.options?.appearance?.typography?.monospaceFont ?? "JetBrainsMono Nerd Font"
     readonly property real sizeScale: Config.options?.appearance?.typography?.sizeScale ?? 1.0
 
@@ -100,6 +98,27 @@ Singleton {
                 root._rerunAfterExit = false
                 Qt.callLater(() => root._doSync())
             }
+        }
+    }
+
+    // Bitmap families (X11 misc .pcf, Arabic Newspaper) have no metrics Qt can measure: drawing their name in their
+    // own face logs "Failed to compute left/right minimum bearings" per font, and they look broken in a picker anyway
+    property var bitmapFamilies: []
+    function pickableFamilies(): var {
+        const bitmap = root.bitmapFamilies
+        const seen = {}
+        return Qt.fontFamilies().filter(family => {
+            if (family.startsWith(".") || seen[family] || bitmap.includes(family)) return false
+            seen[family] = true
+            return true
+        })
+    }
+
+    Process {
+        running: true
+        command: ["fc-list", ":scalable=false", "family"]
+        stdout: StdioCollector {
+            onStreamFinished: root.bitmapFamilies = text.split("\n").join(",").split(",").map(f => f.trim()).filter(f => f.length > 0)
         }
     }
 

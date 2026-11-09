@@ -16,15 +16,6 @@ let
       (builtins.hasAttr "qt6" pkgs && builtins.hasAttr name pkgs.qt6)
       (builtins.getAttr name pkgs.qt6);
 
-  # InnerTube and browser-cookie extraction must share one closed Python
-  # environment; putting the yt-dlp executable in PATH does not expose its
-  # module or SecretStorage backend to this interpreter on Nix.
-  pythonRuntime = pkgs.python3.withPackages (ps: [
-    ps.ytmusicapi
-    ps.yt-dlp
-    ps.secretstorage
-  ]);
-
   runtimeDeps =
     with pkgs; [
       bash
@@ -39,12 +30,13 @@ let
       gnused
       jq
       procps
-      pythonRuntime
+      python3
       ripgrep
       rsync
       systemd
       xdg-user-dirs
       xdg-utils
+      yt-dlp
 
       quickshell
       wl-clipboard
@@ -59,6 +51,7 @@ let
       wireplumber
       yt-dlp
     ]
+    ++ optionalTop "adw-gtk3"
     ++ optionalTop "brightnessctl"
     ++ optionalTop "cava"
     ++ optionalTop "ddcutil"
@@ -132,7 +125,7 @@ pkgs.stdenvNoCC.mkDerivation {
     filter = import ./runtime-source-filter.nix { inherit lib; root = ../.; };
   };
 
-  nativeBuildInputs = [ pkgs.makeWrapper pkgs.python3 pkgs.rsync ];
+  nativeBuildInputs = [ pkgs.makeWrapper pkgs.jq pkgs.rsync ];
 
   # Prevent patchShebangs from attempting to rewrite Python scripts;
   # non-executable files are skipped during fixupPhase.
@@ -150,7 +143,7 @@ pkgs.stdenvNoCC.mkDerivation {
     runtime="$out/share/quickshell/inir"
     mkdir -p "$runtime" "$out/bin"
 
-    python3 sdata/lib/runtime-payload.py copy --root . --target "$runtime"
+    bash -c 'source sdata/lib/runtime-payload.sh && runtime_payload copy --root . --target "$1"' _ "$runtime"
 
     chmod +x "$runtime/setup" "$runtime/scripts/inir"
     find "$runtime/scripts" -type f \( -name '*.sh' -o -name '*.fish' -o -name '*.py' \) -exec chmod +x {} \;
@@ -158,7 +151,7 @@ pkgs.stdenvNoCC.mkDerivation {
     # The source tree intentionally targets Arch, where helpers live under
     # /usr/bin. NixOS does not provide that layout. Patch only the packaged
     # copy and keep shebang lines intact.
-    find "$runtime/modules" "$runtime/services" "$runtime/defaults" "$runtime/scripts" \
+    find "$runtime" \
       -type f \( -name '*.qml' -o -name '*.js' -o -name '*.sh' -o -name '*.py' \) \
       -exec sed -i '1!s#/usr/bin/##g' {} +
 

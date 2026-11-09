@@ -12,19 +12,27 @@ Item {
     property font font
     property bool extraVisibleCondition: true
     property bool alternativeVisibleCondition: false
-    property int delay: 16
+    // At rest; once a tooltip is up its neighbours skip it (ToolTipWarmth). 0 shows at once, always.
+    property int delay: ToolTipWarmth.coldDelay
+    readonly property int _wait: root.alternativeVisibleCondition || ToolTipWarmth.warm ? 0 : root.delay
+    property bool _shown: false
+    // One gone while up must still let the row cool down.
+    Component.onDestruction: if (root._shown) ToolTipWarmth.left()
     property real horizontalPadding: 10
     property real verticalPadding: 5
     property real horizontalMargin: horizontalPadding
     property real verticalMargin: verticalPadding
 
     function setContentShown(shown: bool): void {
-        if (root.contentItem && root.contentItem.shown !== undefined)
-            root.contentItem.shown = shown
+        if (root._content && root._content.shown !== undefined)
+            root._content.shown = shown
+        if (shown) ToolTipWarmth.shown()
+        else if (root._shown) ToolTipWarmth.left()
+        root._shown = shown
     }
     
     function updateAnchor() {
-        tooltipLoader.item?.anchor?.updateAnchor();
+        if (root._canUsePopupWindow) shownLoader.item?.anchor?.updateAnchor();
     }
 
     readonly property bool parentHoverState: {
@@ -42,44 +50,54 @@ Item {
     property var anchorEdges: Edges.Top
     property var anchorGravity: anchorEdges
 
-    property Item contentItem: StyledToolTipContent {
-        id: contentItem
-        anchors.centerIn: parent
-        text: root.text
-        shown: false
-        position: root.anchorEdges === Edges.Top ? "top"
-                : root.anchorEdges === Edges.Left ? "left"
-                : root.anchorEdges === Edges.Right ? "right"
-                : "bottom"
-        horizontalPadding: root.horizontalPadding
-        verticalPadding: root.verticalPadding
+    // The tooltip body is built when the tooltip shows, not with its owner: the shell
+    // declares ~800 tooltips and almost none are ever hovered. A prebuilt Item still
+    // works through contentItem (it then lives as long as its owner).
+    property Item contentItem: null
+    property Component contentComponent: Component {
+        StyledToolTipContent {
+            anchors.centerIn: parent
+            text: root.text
+            shown: false
+            position: root.anchorEdges === Edges.Top ? "top"
+                    : root.anchorEdges === Edges.Left ? "left"
+                    : root.anchorEdges === Edges.Right ? "right"
+                    : "bottom"
+            horizontalPadding: root.horizontalPadding
+            verticalPadding: root.verticalPadding
+        }
+    }
+    readonly property Item _content: root.contentItem ?? contentLoader.item
+
+    Loader {
+        id: contentLoader
+        active: root.contentItem === null && shownLoader.active
+        sourceComponent: root.contentComponent
     }
 
     // Whether we can use PopupWindow (requires QsWindow, i.e. PanelWindow context)
     readonly property bool _canUsePopupWindow: root.QsWindow.window !== null
 
-    Timer {
-        id: _showDelayTimer
-        interval: root.delay
-        onTriggered: root.setContentShown(true)
+    // One Loader for the shown tooltip, its path picked by the window it lives in; the show delay lives in what it
+    // loads. Two Loaders and a Timer per tooltip, for the ~800 the shell declares, were mostly never used.
+    Loader {
+        id: shownLoader
+        active: root.visible && root.internalVisibleCondition
+        onActiveChanged: root.setContentShown(false)
+        sourceComponent: root._canUsePopupWindow ? popupTooltip : itemTooltip
     }
 
     // Primary path: PopupWindow for shell overlay contexts (PanelWindow)
-    Loader {
-        id: tooltipLoader
-        anchors.fill: parent
-        active: root._canUsePopupWindow && root.visible && root.internalVisibleCondition
-        onActiveChanged: {
-            if (active) {
-                root.setContentShown(false)
-                _showDelayTimer.restart()
-            } else {
-                _showDelayTimer.stop()
-                root.setContentShown(false)
-            }
-        }
-        sourceComponent: PopupWindow {
+    Component {
+        id: popupTooltip
+        PopupWindow {
             visible: true
+            // A property, not a child: `data` below is bound and would drop it.
+            readonly property Timer showDelay: Timer {
+                interval: root._wait
+                running: true
+                onTriggered: root.setContentShown(true)
+            }
             readonly property real _gap: 4
             anchor {
                 window: root.QsWindow.window
@@ -96,36 +114,26 @@ Item {
             }
 
             color: "transparent"
-            implicitWidth: root.contentItem.implicitWidth + root.horizontalMargin * 2
-            implicitHeight: root.contentItem.implicitHeight + root.verticalMargin * 2
+            implicitWidth: (root._content?.implicitWidth ?? 0) + root.horizontalMargin * 2
+            implicitHeight: (root._content?.implicitHeight ?? 0) + root.verticalMargin * 2
 
-            data: [root.contentItem]
+            data: root._content ? [root._content] : []
         }
     }
 
     // Fallback path: Item-based tooltip for ApplicationWindow contexts
     // Reparents to the Window's contentItem so the tooltip escapes all
     // clipping containers (Flickable, clip:true parents, etc.).
-    Loader {
-        id: fallbackLoader
-        active: !root._canUsePopupWindow && root.visible && root.internalVisibleCondition
-        onActiveChanged: {
-            if (active) {
-                root.setContentShown(false)
-                _showDelayTimer.restart()
-            } else {
-                _showDelayTimer.stop()
-                root.setContentShown(false)
-            }
-        }
-        sourceComponent: Item {
+    Component {
+        id: itemTooltip
+        Item {
             id: fallbackItem
             // Reparent to Window.contentItem to escape clipped containers
             parent: root.Window.window?.contentItem ?? root.parent ?? root
             z: 1000
 
-            readonly property real tooltipW: root.contentItem.implicitWidth + root.horizontalMargin * 2
-            readonly property real tooltipH: root.contentItem.implicitHeight + root.verticalMargin * 2
+            readonly property real tooltipW: (root._content?.implicitWidth ?? 0) + root.horizontalMargin * 2
+            readonly property real tooltipH: (root._content?.implicitHeight ?? 0) + root.verticalMargin * 2
 
             width: tooltipW
             height: tooltipH
@@ -161,7 +169,13 @@ Item {
             y: Math.max(viewportMargin, Math.min(preferredY,
                 Math.max(viewportMargin, (parent?.height ?? tooltipH) - tooltipH - viewportMargin)))
 
-            data: [root.contentItem]
+            // A property, not a child: `data` below is bound and would drop it.
+            readonly property Timer showDelay: Timer {
+                interval: root._wait
+                running: true
+                onTriggered: root.setContentShown(true)
+            }
+            data: root._content ? [root._content] : []
         }
     }
 }

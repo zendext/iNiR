@@ -9,8 +9,7 @@ import qs.services
 Singleton {
     id: root
 
-    readonly property bool sortingEnabled:
-        (Config.options?.panelFamily ?? "ii") === "waffle"
+    readonly property bool sortingEnabled: Plugins.flag(Plugins.active, "taskbarSorting")
     property int _identityRulesRevision: 0
     readonly property var apps: _apps
     property var _apps: []
@@ -24,9 +23,9 @@ Singleton {
     }
 
     Connections {
-        target: Config.options?.dock
-        function onPinnedAppsChanged() { root.scheduleAppsRebuild() }
-        function onIgnoredAppRegexesChanged() { root.scheduleAppsRebuild() }
+        target: Config.options?.apps
+        function onPinnedChanged() { root.scheduleAppsRebuild() }
+        function onIgnoredRegexesChanged() { root.scheduleAppsRebuild() }
     }
 
     Connections {
@@ -76,11 +75,11 @@ Singleton {
         if (id.length === 0)
             return
         const lower = id.toLowerCase()
-        const pinned = Config.options?.dock?.pinnedApps ?? []
+        const pinned = Config.options?.apps?.pinned ?? []
         const exists = pinned.some(p => String(p).toLowerCase() === lower)
         const next = exists ? pinned.filter(p => String(p).toLowerCase() !== lower)
             : pinned.concat([AppSearch.lookupDesktopEntry(id)?.id || id])
-        Config.setNestedValue(["dock", "pinnedApps"], next)
+        Config.setNestedValue(["apps", "pinned"], next)
     }
 
     function _buildApps(): var {
@@ -88,7 +87,7 @@ Singleton {
         var map = new Map();
 
         // Pinned apps
-        const pinnedApps = Config.options?.dock?.pinnedApps ?? [];
+        const pinnedApps = Config.options?.apps?.pinned ?? [];
         for (const appId of pinnedApps) {
             // Skip pinned apps with no desktop entry installed
             if (!AppSearch.lookupDesktopEntry(appId))
@@ -105,7 +104,7 @@ Singleton {
         }
 
         // Ignored apps
-        const ignoredRegexStrings = Config.options?.dock?.ignoredAppRegexes ?? [];
+        const ignoredRegexStrings = Config.options?.apps?.ignoredRegexes ?? [];
         const systemIgnored = [
             "^$", "^portal$", "^x-run-dialog$", "^kdialog$",
             "^xembedsniproxy$",

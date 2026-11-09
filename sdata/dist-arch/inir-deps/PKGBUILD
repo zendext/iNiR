@@ -6,7 +6,7 @@
 # Safe to remove with: sudo pacman -R inir-deps
 
 pkgname=inir-deps
-pkgver=2.33.0
+pkgver=3.0.1
 pkgrel=1
 pkgdesc='iNiR desktop shell - dependency tracker (meta-package)'
 url='https://github.com/snowarch/inir'
@@ -61,8 +61,8 @@ depends=(
   curl
   ripgrep
   jq
-  go
   python
+  unzip
   rsync
   git
   fish
@@ -98,6 +98,7 @@ depends=(
   pavucontrol
   cava
   easyeffects
+  lsp-plugins-lv2
   mpv
   mpv-mpris
   yt-dlp
@@ -119,6 +120,7 @@ depends=(
   #--- Desktop integration ---
   polkit
   networkmanager
+  nm-connection-editor
   gnome-keyring
   nautilus
   kitty
@@ -137,8 +139,6 @@ depends=(
   blueman
   kconfig
   hyprpicker
-  python-evdev
-  python-pillow
   translate-shell
 
   #--- Media / image processing ---
@@ -158,7 +158,6 @@ depends=(
   tesseract-data-chi_tra
   tesseract-data-chi_tra_vert
   libqalculate
-  uv
 
   #--- Login manager ---
   sddm

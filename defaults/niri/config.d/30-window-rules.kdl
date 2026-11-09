@@ -11,9 +11,22 @@
 // ── Global defaults ─────────────────────────────────────────────────────────
 // Round every window's corners and clip content to match.
 // Works best with prefer-no-csd (set in config.kdl).
+// Borders and the focus ring follow that shape instead of filling in behind
+// the window: a see-through app that draws its own title bar stays see-through.
 window-rule {
     geometry-corner-radius 16
     clip-to-geometry true
+    draw-border-with-background false
+}
+
+// iNiR Settings as a window (iRiS "iNiR Settings", Material and Waffle "Settings — iNiR"): two thirds of the screen,
+// room for the sidebar beside a page that keeps its answers in a column, instead of half a column. The shell and the
+// Settings window carry app id "inir-settings" (its desktop entry and icon), the welcome "inir"; org.quickshell is what
+// a shell older than that carries.
+window-rule {
+    match app-id=r#"^(inir|inir-settings|org\.quickshell)$"# title="^iNiR Settings$"
+    match app-id=r#"^(inir|inir-settings|org\.quickshell)$"# title="^Settings — iNiR$"
+    default-column-width { proportion 0.66667; }
 }
 
 // Gaming surfaces: avoid client clipping so fullscreen games remain eligible
@@ -39,13 +52,10 @@ window-rule {
     default-column-width {}
 }
 
-// Firefox / Zen: picture-in-picture window opens floating.
+// Picture-in-picture opens floating: Firefox and Zen title it "Picture-in-Picture", Chromium browsers
+// "Picture in picture" and, before Brave 1.96, with no app-id at all, so the title alone decides.
 window-rule {
-    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
-    open-floating true
-}
-window-rule {
-    match app-id=r#"zen$"# title="^Picture-in-Picture$"
+    match title=r#"(?i)^picture.in.picture$"#
     open-floating true
 }
 

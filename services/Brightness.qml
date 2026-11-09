@@ -10,6 +10,7 @@ import qs.services
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Wayland
 import QtQuick
 import "brightnessPolicy.js" as BrightnessPolicy
 
@@ -101,7 +102,7 @@ Singleton {
 
     function _queueWake(names): void {
         root._wakePendingOutputs = BrightnessPolicy.mergeOutputNames([], names)
-        root._enqueueNiri(BrightnessPolicy.niriPowerOnMonitorsArgs(), "wake")
+        root._enqueueNiri(BrightnessPolicy.niriPowerOnMonitorsArgs(CompositorService.isUmbriel), "wake")
         root._tryWakeOutputs()
         if (root._wakePendingOutputs.length > 0)
             wakeRetryTimer.restart()
@@ -133,7 +134,7 @@ Singleton {
             root._sleepDisabledOutputs, connected, root.asleep)
         root._wakePendingOutputs = []
         root.asleep = true
-        const cmds = BrightnessPolicy.sleepCommandQueue(connected)
+        const cmds = BrightnessPolicy.sleepCommandQueue(connected, CompositorService.isUmbriel)
         for (let i = 0; i < cmds.length; ++i)
             root._enqueueNiri(cmds[i], "sleep", "", true)
     }
@@ -141,7 +142,7 @@ Singleton {
     function _tryWakeOutputs(): void {
         const names = root._wakePendingOutputs
         for (let i = 0; i < names.length; ++i)
-            root._enqueueNiri(BrightnessPolicy.niriOutputOnArgs(names[i]), "wake", names[i])
+            root._enqueueNiri(BrightnessPolicy.niriOutputOnArgs(names[i], CompositorService.isUmbriel), "wake", names[i])
     }
 
     function restoreAfterWake(): void {
@@ -221,7 +222,19 @@ Singleton {
     }
 
     function getMonitorForScreen(screen: ShellScreen): var {
-        return monitors.find(m => m.screen === screen);
+        if (!screen)
+            return null;
+        return monitors.find(m => m.screen === screen)
+            ?? monitors.find(m => m.screen?.name && m.screen.name === screen.name)
+            ?? null;
+    }
+
+    // Wheel and key steps from a surface. Its window may not know its screen yet (or
+    // ever, on a runtime that registers windows late), so the focused output answers.
+    function stepBrightness(screen: var, delta: real): void {
+        const monitor = root.getMonitorForScreen(screen) ?? root._focusedMonitor();
+        if (monitor)
+            monitor.setBrightness(Math.max(0, Math.min(1, monitor.brightness + delta)));
     }
 
     function _focusedMonitor(): var {
@@ -236,17 +249,13 @@ Singleton {
     }
 
     function increaseBrightness(): void {
-        const focusedName = CompositorService.isNiri ? NiriService.currentOutput : Hyprland.focusedMonitor?.name;
-        if (!focusedName) return;
-        const monitor = monitors.find(m => focusedName === m.screen.name);
+        const monitor = root._focusedMonitor();
         if (monitor)
             monitor.setBrightness(monitor.brightness + 0.05);
     }
 
     function decreaseBrightness(): void {
-        const focusedName = CompositorService.isNiri ? NiriService.currentOutput : Hyprland.focusedMonitor?.name;
-        if (!focusedName) return;
-        const monitor = monitors.find(m => focusedName === m.screen.name);
+        const monitor = root._focusedMonitor();
         if (monitor)
             monitor.setBrightness(monitor.brightness - 0.05);
     }
@@ -653,6 +662,13 @@ Singleton {
         // Division by 100 is to normalize to [0, 1]
         return (6.600135 + 216.360356 * Math.pow(Math.E, -0.0811129189 * x)) / 100.0;
     }
+    // qs-rs samples the screen in process (mean Rec. 709 luma of one capture, the number
+    // `grim | magick -colorspace Gray` gives); Quickshell keeps the grim pipeline.
+    readonly property bool inProcessLightness: SystemInfo.runtimeHas(["screencopy-luminance"])
+    function applyLightness(screen: var, lightness: real): void {
+        if (isNaN(lightness) || lightness < 0) return;
+        root.getMonitorForScreen(screen)?.setBrightnessMultiplier(root.brightnessMultiplierForLightness(lightness));
+    }
     Variants {
         model: Quickshell.screens
         Scope {
@@ -660,6 +676,7 @@ Singleton {
             required property var modelData
             property string screenName: modelData.name
             property string screenshotPath: `${root.screenshotDir}/screenshot-${screenName}.png`
+            readonly property bool antiFlashbangActive: (Config.options?.light?.antiFlashbang?.enable ?? false) && Appearance.m3colors.darkmode
             Connections {
                 enabled: (Config.options?.light?.antiFlashbang?.enable ?? false) && Appearance.m3colors.darkmode && CompositorService.isHyprland
                 target: CompositorService.isHyprland ? Hyprland : null
@@ -692,8 +709,29 @@ Singleton {
                 id: screenshotTimer
                 interval: 700 // This is what I have for a Hyprland ws anim
                 onTriggered: {
+                    if (sampler.item) {
+                        sampler.item.sample();
+                        return;
+                    }
                     screenshotProc.running = false;
                     screenshotProc.running = true;
+                }
+            }
+
+            // One capture per sample, dropped as soon as it is read (no frame kept around).
+            LazyLoader {
+                id: sampler
+                active: root.inProcessLightness && screenScope.antiFlashbangActive
+                component: ScreencopyView {
+                    function sample(): void {
+                        captureSource = null;
+                        captureSource = screenScope.modelData;
+                    }
+                    onHasContentChanged: {
+                        if (!hasContent) return;
+                        root.applyLightness(screenScope.modelData, meanLuminance() * 100);
+                        captureSource = null;
+                    }
                 }
             }
 
@@ -708,9 +746,7 @@ Singleton {
                     id: lightnessCollector
                     onStreamFinished: {
                         // No cleanup needed - we pipe directly to magick without saving file
-                        const lightness = lightnessCollector.text
-                        const newMultiplier = root.brightnessMultiplierForLightness(parseFloat(lightness))
-                        Brightness.getMonitorForScreen(screenScope.modelData).setBrightnessMultiplier(newMultiplier)
+                        root.applyLightness(screenScope.modelData, parseFloat(lightnessCollector.text))
                     }
                 }
             }
@@ -719,21 +755,26 @@ Singleton {
 
     // External trigger points
 
+    /// Display brightness control.
     IpcHandler {
         target: "brightness"
 
+        /// Increase brightness
         function increment(): void {
             root.increaseBrightness();
         }
 
+        /// Decrease brightness
         function decrement(): void {
             root.decreaseBrightness();
         }
 
+        /// Re-read every output's level from the hardware (after the monitor's own buttons moved it)
         function refresh(): void {
             root.monitors.forEach(m => m.refresh())
         }
 
+        /// Set the focused output's brightness, the same path as the sliders; prints the result
         function set(percent: string): string {
             const value = Number(percent)
             const monitor = root._focusedMonitor()
@@ -743,14 +784,18 @@ Singleton {
             return root.describe(monitor)
         }
 
+        /// Each output: how it is driven (DDC bus or backlight), the shell's level and the last hardware level
+        /// written (`-1` until the first write)
         function status(): string {
             return root.monitors.map(m => root.describe(m)).join("\n")
         }
 
+        /// Turn every output off for sleep, keeping the level each one had
         function sleepBegin(): void {
             root.sleepBegin();
         }
 
+        /// Turn the outputs back on after sleep, each at its last level
         function restoreAfterWake(): void {
             root.restoreAfterWake();
         }

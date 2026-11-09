@@ -158,11 +158,22 @@ Singleton {
         return Qt.rect(left, top, right - left, bottom - top)
     }
 
-    // Wallpaper path resolution for aurora/backdrop
-    readonly property bool isWaffleFamily: (Config.options?.panelFamily ?? "ii") === "waffle"
-    readonly property bool useBackdropWallpaper: isWaffleFamily
-        ? ((Config.options?.waffles?.background?.backdrop?.enable ?? false) && (Config.options?.waffles?.background?.backdrop?.hideWallpaper ?? false))
-        : ((Config.options?.background?.backdrop?.enable ?? false) && (Config.options?.background?.backdrop?.hideWallpaper ?? false))
+    // A family can keep a wallpaper and backdrop of its own apart from the main ones (plugin.json setting `wallpaper`,
+    // shaped like `background`); its selection targets are its id and "<id>-backdrop".
+    function _ownBackground(id: string): var {
+        const key = Plugins.settingKey(id, "wallpaper")
+        return key.length > 0 ? (Config.getNestedValue(key, null) ?? ({})) : null
+    }
+    readonly property var activeOwnBackground: root._ownBackground(Plugins.active)
+    readonly property bool useBackdropWallpaper: {
+        const backdrop = (root.activeOwnBackground ?? Config.options?.background)?.backdrop
+        return (backdrop?.enable ?? false) && (backdrop?.hideWallpaper ?? false)
+    }
+    function isBackdropTarget(target: string): bool { return target === "backdrop" || String(target).endsWith("-backdrop") }
+    // The target a plain pick lands on: the active family's own wallpaper while it keeps one apart from the main.
+    function familyTarget(): string {
+        return root.activeOwnBackground && !(root.activeOwnBackground.useMainWallpaper ?? true) ? Plugins.active : "main"
+    }
     readonly property bool backdropOnlyShadowOverrideWanted: Config.ready && CompositorService.isNiri && useBackdropWallpaper
     property bool _backdropShadowSyncQueued: false
 
@@ -187,13 +198,16 @@ Singleton {
         interval: 80
         repeat: false
         onTriggered: {
+            // A Niri config edit: Umbriel's overview draws its own backdrop.
+            if (!CompositorService.niriNative)
+                return
             if (backdropShadowSyncProcess.running) {
                 root._backdropShadowSyncQueued = true
                 return
             }
             backdropShadowSyncProcess.command = [
-                "/usr/bin/python3",
-                Quickshell.shellPath("scripts/niri-config.py"),
+                Quickshell.shellPath("scripts/lib/accel-run"),
+                "niri-config",
                 "sync-backdrop-overview-shadow",
                 root.backdropOnlyShadowOverrideWanted ? "on" : "off"
             ]
@@ -210,6 +224,82 @@ Singleton {
                 root._backdropShadowSyncQueued = false
                 backdropShadowSyncTimer.restart()
             }
+        }
+    }
+
+    // A wallpaper moved or deleted outside iNiR left every surface reading a missing file: no colours, hundreds of
+    // "Cannot open" warnings. The main path is checked when it changes; a missing one is replaced by the first image
+    // of the wallpapers folder (else a bundled one) and the person is told once.
+    readonly property string _mainWallpaperPathSetting: Config.ready ? (Config.options?.background?.wallpaperPath ?? "") : ""
+    property string _missingWallpaperNotified: ""
+    on_MainWallpaperPathSettingChanged: {
+        _missingWallpaperCheckTimer.restart()
+        root._remember(root._mainWallpaperPathSetting)
+    }
+
+    // The last wallpapers set, newest first, kept in the state dir: Settings' Home lays them out to go back in one click.
+    property var recentWallpapers: []
+    readonly property int recentWallpapersMost: 8
+    function _remember(raw: string): void {
+        const path = FileUtils.trimFileProtocol(String(raw ?? ""))
+        if (path.length === 0 || root.recentWallpapers[0] === path) return
+        root.recentWallpapers = [path].concat(root.recentWallpapers.filter(entry => entry !== path)).slice(0, root.recentWallpapersMost)
+        if (_recentWallpapersFile.loadedOnce) _recentWallpapersFile.setText(JSON.stringify(root.recentWallpapers))
+    }
+    FileView {
+        id: _recentWallpapersFile
+        property bool loadedOnce: false
+        path: Directories.stateUserPath + "/recent-wallpapers.json"
+        printErrors: false // missing on first run; onLoadFailed writes it
+        onLoaded: {
+            let list = []
+            try { const read = JSON.parse(text()); if (Array.isArray(read)) list = read.map(String) } catch (e) {}
+            // what was set before the file came in leads
+            root.recentWallpapers = root.recentWallpapers.concat(list.filter(entry => !root.recentWallpapers.includes(entry))).slice(0, root.recentWallpapersMost)
+            loadedOnce = true
+            // later: stock Quickshell forgets a write started inside its own load signal
+            Qt.callLater(() => root._remember(root._mainWallpaperPathSetting))
+        }
+        onLoadFailed: { loadedOnce = true; Qt.callLater(() => _recentWallpapersFile.setText(JSON.stringify(root.recentWallpapers))) }
+    }
+
+    Timer {
+        id: _missingWallpaperCheckTimer
+        interval: 400
+        onTriggered: {
+            const path = FileUtils.trimFileProtocol(root._mainWallpaperPathSetting)
+            if (path.length === 0 || _missingWallpaperProc.running)
+                return
+            _missingWallpaperProc.checkedPath = path
+            // exit 0: present; 1: missing, stdout = replacement (may be empty)
+            _missingWallpaperProc.exec(["sh", "-c",
+                '[ -e "$1" ] && exit 0; shift; for d do '
+                + 'find "$d" -maxdepth 1 -type f \\( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \\) '
+                + '2>/dev/null | sort | head -n 1 | grep . && exit 1; done; exit 1',
+                "sh", path, FileUtils.trimFileProtocol(Directories.wallpapersPath),
+                FileUtils.trimFileProtocol(Directories.assetsPath) + "/wallpapers"])
+        }
+    }
+
+    Process {
+        id: _missingWallpaperProc
+        property string checkedPath: ""
+        stdout: StdioCollector { id: _missingWallpaperOut }
+        onExited: (exitCode) => {
+            const current = FileUtils.trimFileProtocol(root._mainWallpaperPathSetting)
+            if (exitCode !== 1 || checkedPath !== current)
+                return
+            const replacement = (_missingWallpaperOut.text ?? "").trim()
+            console.warn(`[Wallpapers] wallpaper not found: ${checkedPath}` + (replacement ? `, using ${replacement}` : ""))
+            if (root._missingWallpaperNotified !== checkedPath) {
+                root._missingWallpaperNotified = checkedPath
+                Quickshell.execDetached(["notify-send", "-a", "iNiR", "-i", "image-missing",
+                    Translation.tr("Wallpaper not found"),
+                    Translation.tr("%1 was moved or deleted. Pick another one in the wallpaper selector.")
+                        .arg(FileUtils.fileNameForPath(checkedPath))])
+            }
+            if (replacement.length > 0)
+                root.select(replacement)
         }
     }
 
@@ -232,12 +322,12 @@ Singleton {
     function currentThemingWallpaperPath(monitorName = ""): string {
         const targetMonitor = monitorName || (WallpaperListener.multiMonitorEnabled ? WallpaperListener.getFocusedMonitor() : "")
         const mainPath = currentMainWallpaperPath(targetMonitor)
-        const waffleMainPath = currentWaffleWallpaperPath(targetMonitor)
+        const familyMainPath = currentFamilyWallpaperPath(Plugins.active, targetMonitor)
 
         if (root.useBackdropWallpaper || root.useBackdropForColors) {
-            if (root.isWaffleFamily) {
-                const waffleBackdrop = Config.options?.waffles?.background?.backdrop ?? {}
-                return (waffleBackdrop.useMainWallpaper ?? true) ? waffleMainPath : (waffleBackdrop.wallpaperPath || waffleMainPath)
+            if (root.activeOwnBackground) {
+                const ownBackdrop = root.activeOwnBackground.backdrop ?? {}
+                return (ownBackdrop.useMainWallpaper ?? true) ? familyMainPath : (ownBackdrop.wallpaperPath || familyMainPath)
             }
 
             const iiBackdrop = Config.options?.background?.backdrop ?? {}
@@ -251,7 +341,7 @@ Singleton {
             return iiBackdrop.wallpaperPath || mainPath
         }
 
-        return root.isWaffleFamily ? waffleMainPath : mainPath
+        return familyMainPath
     }
 
     readonly property string effectiveWallpaperPath: {
@@ -322,29 +412,28 @@ Singleton {
 
     property var _ffPending: ({})
 
-    function ensureVideoFirstFrame(videoPath: string) {
-        if (!videoPath || !isVideoFile(videoPath)) return
-        if (root.videoFirstFrames[videoPath]) return
-        if (root._ffPending[videoPath]) return
+    // The one still a video has, wherever it shows: switchwall writes the same file for theming.
+    function videoFramePath(videoPath: string): string {
+        const clean = FileUtils.trimFileProtocol(String(videoPath ?? ""))
+        return clean ? root._videoThumbDir + "/" + MD5.hash(clean) + ".jpg" : ""
+    }
 
-        // Check config thumbnailPath (global wallpaper match)
-        const configWp = Config.options?.background?.wallpaperPath ?? ""
-        const configThumb = Config.options?.background?.thumbnailPath ?? ""
-        if (configWp === videoPath && configThumb) {
-            const expected = root._videoThumbDir + "/" + MD5.hash(videoPath) + ".jpg"
-            const thumbPath = FileUtils.trimFileProtocol(configThumb)
-            if (thumbPath === expected) {
-                _cacheFirstFrame(videoPath, expected)
-                return
-            }
+    function ensureVideoFirstFrame(videoPath: string, replace = false) {
+        if (!videoPath || !isVideoFile(videoPath)) return
+        if (root._ffPending[videoPath]) return
+        if (replace) {
+            const copy = Object.assign({}, root.videoFirstFrames)
+            delete copy[videoPath]
+            root.videoFirstFrames = copy
+        } else if (root.videoFirstFrames[videoPath]) {
+            return
         }
 
-        // Queue async check → generate (with dedup)
+        // A video that would not give a frame is not asked again this session, unless replaced.
+        if (root._ffFailed[videoPath] && !replace) return
+
         root._ffPending[videoPath] = true
-        // Use md5 hash of full path to match switchwall.sh and avoid basename collisions
-        const hash = MD5.hash(videoPath)
-        const expectedPath = root._videoThumbDir + "/" + hash + ".jpg"
-        root._ffQueue.push({ videoPath: videoPath, outputPath: expectedPath })
+        root._ffQueue.push({ videoPath: videoPath, outputPath: root.videoFramePath(videoPath), replace: replace })
         if (!_ffGenProc.running) _processNextFF()
     }
 
@@ -359,6 +448,7 @@ Singleton {
     }
 
     property var _ffQueue: []
+    property var _ffFailed: ({})
 
     function _processNextFF() {
         if (root._ffQueue.length === 0) return
@@ -368,10 +458,10 @@ Singleton {
         // Wallpaper loops usually fade in from black, so frame 0 gives this file a nearly black
         // palette, and this frame is what theming quantizes: pick a representative one.
         _ffGenProc.command = ["sh", "-c",
-            '[ -s "$2" ] && exit 0; mkdir -p "$(dirname "$2")" || exit 1; '
+            '[ "$3" != 1 ] && [ -s "$2" ] && exit 0; mkdir -p "$(dirname "$2")" || exit 1; '
             + 'ffmpeg -hide_banner -loglevel error -y -ss 1 -i "$1" -vf thumbnail=n=30 -frames:v 1 -update 1 -q:v 2 "$2" '
             + '|| ffmpeg -hide_banner -loglevel error -y -i "$1" -vframes 1 -update 1 -q:v 2 "$2"',
-            "sh", item.videoPath, item.outputPath]
+            "sh", item.videoPath, item.outputPath, item.replace ? "1" : "0"]
         _ffGenProc.running = true
     }
 
@@ -380,8 +470,15 @@ Singleton {
         property string _videoPath
         property string _outputPath
         onExited: (exitCode) => {
+            const videoPath = _ffGenProc._videoPath
+            delete root._ffPending[videoPath]
             if (exitCode === 0) {
-                root._cacheFirstFrame(_ffGenProc._videoPath, _ffGenProc._outputPath)
+                delete root._ffFailed[videoPath]
+                root._cacheFirstFrame(videoPath, _ffGenProc._outputPath)
+                root.rememberThumbnail(_ffGenProc._outputPath)
+                root.thumbnailGeneratedFile(videoPath)
+            } else {
+                root._ffFailed[videoPath] = true
             }
             root._processNextFF()
         }
@@ -493,6 +590,17 @@ Singleton {
     property alias directory: folderModel.folder
     readonly property string effectiveDirectory: FileUtils.trimFileProtocol(folderModel.folder.toString())
     property url defaultFolder: Qt.resolvedUrl(Directories.wallpapersPath)
+    // Qt lists the working directory for a folder that isn't there: the model starts on the shipped wallpapers and
+    // moves to the person's folder once setDirectory finds it
+    onDefaultFolderChanged: defaultFolderMove.restart()
+    Component.onCompleted: defaultFolderMove.restart()
+
+    // one validateDirProc runs at a time: the start and Config's first load must not race it
+    Timer {
+        id: defaultFolderMove
+        interval: 50
+        onTriggered: root.setDirectory(root.defaultFolder)
+    }
     property alias folderModel: folderModel
     property bool _folderModelTransitioning: false
     readonly property bool folderModelReady: !root._folderModelTransitioning
@@ -619,9 +727,17 @@ Singleton {
             folderModelTransitionTimer.restart()
     }
 
+    property bool _atStart: true
+
     function _setFolderModelDirectory(path: url): void {
         root._beginFolderModelTransition()
         root.directory = path
+        if (root._atStart) {
+            // Back never returns to the folder the model started on
+            folderModel.folderHistory = [folderModel.folder]
+            folderModel.currentFolderHistoryIndex = 0
+            root._atStart = false
+        }
         root._scheduleFolderModelTransitionEnd()
     }
 
@@ -655,16 +771,16 @@ Singleton {
         return Config.options?.background?.wallpaperPath ?? ""
     }
 
-    function currentWaffleWallpaperPath(monitorName = ""): string {
+    function currentFamilyWallpaperPath(id: string, monitorName = ""): string {
         const mainPath = currentMainWallpaperPath(monitorName)
-        const waffleBackground = Config.options?.waffles?.background ?? {}
-        return (waffleBackground.useMainWallpaper ?? true) ? mainPath : (waffleBackground.wallpaperPath || mainPath)
+        const own = root._ownBackground(id)
+        return !own || (own.useMainWallpaper ?? true) ? mainPath : (own.wallpaperPath || mainPath)
     }
 
     // The image the desktop actually shows on an output: the backdrop's when it replaces the wallpaper
     // ("show only the backdrop", ii and iRiS), the main wallpaper otherwise. Glass and Lume read this one,
     // or they sample a wallpaper nobody sees.
-    readonly property bool desktopShowsBackdrop: !root.isWaffleFamily && root.useBackdropWallpaper
+    readonly property bool desktopShowsBackdrop: !root.activeOwnBackground && root.useBackdropWallpaper
     readonly property real desktopDim: root.desktopShowsBackdrop
         ? Math.max(0, Math.min(1, Number(Config.options?.background?.backdrop?.dim ?? 35) / 100)) : 0
     readonly property real desktopSaturation: root.desktopShowsBackdrop ? Number(Config.options?.background?.backdrop?.saturation ?? 0) : 0
@@ -692,23 +808,24 @@ Singleton {
             }
             return iiBackdrop.wallpaperPath || mainPath
         }
-        case "waffle": {
-            return currentWaffleWallpaperPath(monitorName)
-        }
-        case "waffle-backdrop": {
-            const waffleBackdrop = Config.options?.waffles?.background?.backdrop ?? {}
-            const waffleMain = currentWaffleWallpaperPath(monitorName)
-            if (waffleBackdrop.useMainWallpaper ?? true)
-                return waffleMain
+        default: {
+            const family = normalizedTarget.replace(/-backdrop$/, "")
+            const own = root._ownBackground(family)
+            if (!own)
+                return mainPath
+            const familyMain = currentFamilyWallpaperPath(family, monitorName)
+            if (family === normalizedTarget)
+                return familyMain
+            const ownBackdrop = own.backdrop ?? {}
+            if (ownBackdrop.useMainWallpaper ?? true)
+                return familyMain
             if (WallpaperListener.multiMonitorEnabled && monitorName) {
                 const monitorData = WallpaperListener.effectivePerMonitor[monitorName] ?? null
                 if (monitorData && monitorData.backdropPath)
                     return monitorData.backdropPath
             }
-            return waffleBackdrop.wallpaperPath || waffleMain
+            return ownBackdrop.wallpaperPath || familyMain
         }
-        default:
-            return mainPath
         }
     }
 
@@ -854,46 +971,35 @@ Singleton {
                 Quickshell.execDetached([Directories.wallpaperSwitchScriptPath, "--noswitch"])
             root.changed()
             return
-        case "waffle":
-            const waffleVisible = (Config.options?.panelFamily ?? "ii") === "waffle"
-            const adoptedWafflePreview = waffleVisible
-                ? root._adoptVisiblePreview(normalizedPath, monitorName)
-                : false
-            if (waffleVisible && !adoptedWafflePreview)
+        default: {
+            const family = normalizedTarget.replace(/-backdrop$/, "")
+            const key = Plugins.settingKey(family, "wallpaper")
+            if (key.length === 0)
+                break
+            const backdrop = family !== normalizedTarget
+            const shown = family === Plugins.active
+            const prefix = backdrop ? key + ".backdrop" : key
+            const adopted = !backdrop && shown ? root._adoptVisiblePreview(normalizedPath, monitorName) : false
+            if (!backdrop && shown && !adopted)
                 root.requestWallpaperBlurTransition("")
-            Config.setNestedValue("waffles.background.useMainWallpaper", false)
-            Config.setNestedValue("waffles.background.wallpaperPath", normalizedPath)
-            Config.setNestedValue("waffles.background.thumbnailPath", thumbnailPath)
-            if (adoptedWafflePreview)
+            Config.setNestedValue(prefix + ".useMainWallpaper", false)
+            Config.setNestedValue(prefix + ".wallpaperPath", normalizedPath)
+            Config.setNestedValue(prefix + ".thumbnailPath", thumbnailPath)
+            if (adopted)
                 root._clearInternalPreview()
             if (needsThumbnail)
                 root.ensureThumbnailForPath(normalizedPath, "large")
-            // Regen colors from this wallpaper when waffle is active
-            if ((Config.options?.panelFamily ?? "ii") === "waffle") {
+            // Colours follow the family's own picture while it is the one on screen.
+            if (shown && (!backdrop || (Config.options?.appearance?.wallpaperTheming?.useBackdropForColors ?? false))) {
                 root._applyInProgress = true
                 _applySuppressTimer.restart()
                 root._queueWallpaperScript(normalizedPath, darkMode, true)
             }
             root.changed()
-            return
-        case "waffle-backdrop":
-            Config.setNestedValue("waffles.background.backdrop.useMainWallpaper", false)
-            Config.setNestedValue("waffles.background.backdrop.wallpaperPath", normalizedPath)
-            Config.setNestedValue("waffles.background.backdrop.thumbnailPath", thumbnailPath)
-            if (needsThumbnail)
-                root.ensureThumbnailForPath(normalizedPath, "large")
-            if ((Config.options?.panelFamily ?? "ii") === "waffle"
-                    && (Config.options?.appearance?.wallpaperTheming?.useBackdropForColors ?? false)) {
-                root._applyInProgress = true
-                _applySuppressTimer.restart()
-                root._queueWallpaperScript(normalizedPath, darkMode, true)
-            }
-            root.changed()
-            return
-        default:
-            root.apply(normalizedPath, darkMode, monitorName)
             return
         }
+        }
+        root.apply(normalizedPath, darkMode, monitorName)
     }
 
     function apply(path, darkMode = Appearance.m3colors.darkmode, monitorName = "") {
@@ -1054,10 +1160,7 @@ Singleton {
         if (globalTarget && globalTarget !== "main")
             return globalTarget
 
-        if ((Config.options?.panelFamily ?? "ii") === "waffle")
-            return (Config.options?.waffles?.background?.useMainWallpaper ?? true) ? "main" : "waffle"
-
-        return "main"
+        return root.familyTarget()
     }
 
     function select(filePath, darkMode = Appearance.m3colors.darkmode, monitorName = "", target = "") {
@@ -1123,6 +1226,7 @@ Singleton {
             if (exitCode === 0) {
                 root._setFolderModelDirectory(Qt.resolvedUrl(FileUtils.parentDirectory(validateDirProc.nicePath)))
             } else {
+                root._atStart = false
                 root._scheduleFolderModelTransitionEnd()
             }
         }
@@ -1150,7 +1254,7 @@ Singleton {
 
     FolderListModelWithHistory {
         id: folderModel
-        folder: Qt.resolvedUrl(root.defaultFolder)
+        folder: Qt.resolvedUrl(Quickshell.shellPath("assets/wallpapers"))
         caseSensitive: false
         nameFilters: {
             const query = root.searchQuery.trim().toLowerCase()
@@ -1208,33 +1312,6 @@ Singleton {
         root._pendingThumbnailSize = size
         root._pendingThumbnailDir = FileUtils.trimFileProtocol(root.directory)
         thumbgenDebounce.restart()
-    }
-
-    // A still frame owned by iNiR, not the shared freedesktop thumbnail cache.
-    // Both write to ~/.cache/thumbnails/<size>/<md5>.png, and the desktop's own
-    // video thumbnailer decorates its output with a film-strip border — whoever
-    // wrote first won, so a surface that wants a clean frame could not rely on
-    // that path. The generator here is the same ffmpeg call, private location.
-    function videoStillPath(filePath: string): string {
-        const clean = FileUtils.trimFileProtocol(String(filePath ?? ""))
-        if (!clean) return ""
-        return `${Directories.stateUserPath}/generated/wallpaper/still-${MD5.hash(clean)}.png`
-    }
-
-    function ensureVideoStill(filePath: string, replace = false): void {
-        const clean = FileUtils.trimFileProtocol(String(filePath ?? ""))
-        if (!clean || !root.isVideoFile(clean)) return
-        const outputPath = root.videoStillPath(clean)
-        if (!outputPath || (!replace && root.thumbnailFailed(outputPath))) return
-
-        const key = `still:${clean}`
-        if (root._singleThumbPending[key]) return
-        const pending = Object.assign({}, root._singleThumbPending)
-        pending[key] = true
-        root._singleThumbPending = pending
-        root._singleThumbQueue.push({ key: key, filePath: clean, size: "large", outputPath: outputPath, replace: replace })
-        if (!_singleThumbProc.running)
-            _processNextSingleThumb()
     }
 
     function ensureThumbnailForPath(filePath: string, size = "large", replace = false) {
@@ -1303,10 +1380,6 @@ Singleton {
         id: thumbgenProc
         property string directory
         property string _size: ""
-        environment: ({
-            "INIR_VENV": Quickshell.env("INIR_VENV") || Quickshell.env("HOME") + "/.local/state/quickshell/.venv",
-            "ILLOGICAL_IMPULSE_VIRTUAL_ENV": Quickshell.env("INIR_VENV") || Quickshell.env("HOME") + "/.local/state/quickshell/.venv"
-        })
         stdout: SplitParser {
             onRead: data => {
                 let match = data.match(/PROGRESS (\d+)\/(\d+)/)
@@ -1356,6 +1429,12 @@ Singleton {
     readonly property bool autoWallpaperGenerateColors: Config.options?.background?.autoWallpaper?.generateColors ?? true
     readonly property string autoWallpaperFolder: Config.options?.background?.autoWallpaper?.folder ?? ""
     readonly property int shuffleCount: shuffleModel.count
+    // The first files of the wallpapers folder, for a strip that has fewer recent ones than it can show.
+    function folderSample(count: int): var {
+        const out = []
+        for (let i = 0; i < shuffleModel.count && out.length < count; i++) out.push(String(shuffleModel.get(i, "filePath")))
+        return out
+    }
     readonly property string shuffleFolder: {
         const own = FileUtils.trimFileProtocol(root.autoWallpaperFolder).replace(/^~(?=\/|$)/, Directories.homePath)
         if (own.length > 0) return own
@@ -1420,4 +1499,56 @@ Singleton {
         }
     }
     // ── End auto wallpaper cycling ──────────────────────────────────────
+
+    // Favourites: wallpapers someone hearted, from their folders or from the web. A web one keeps what it takes to
+    // show and fetch it again (preview, file, page) and its local copy once downloaded. State dir, newest first.
+    property var favorites: []
+    readonly property var favoriteKeys: root.favorites.reduce((set, entry) => { set[entry.key] = true; return set }, ({}))
+    function isFavorite(key: string): bool { return root.favoriteKeys[key] === true }
+    function toggleFavorite(entry: var): bool {
+        const key = String(entry?.key ?? "")
+        if (key.length === 0) return false
+        if (root.isFavorite(key)) { root.removeFavorite(key); return false }
+        root._saveFavorites([{
+            key: key,
+            web: entry.web === true,
+            path: String(entry.path ?? ""),
+            provider: String(entry.provider ?? ""),
+            id: String(entry.id ?? ""),
+            title: String(entry.title ?? ""),
+            preview: String(entry.preview ?? ""),
+            file: String(entry.file ?? ""),
+            file4k: String(entry.file4k ?? ""),
+            motion: String(entry.motion ?? ""),
+            page: String(entry.page ?? ""),
+            width: Number(entry.width ?? 0),
+            height: Number(entry.height ?? 0),
+            video: entry.video === true,
+            added: Date.now()
+        }].concat(root.favorites))
+        return true
+    }
+    function removeFavorite(key: string): void {
+        root._saveFavorites(root.favorites.filter(entry => entry.key !== key))
+    }
+    // A web favourite that was downloaded remembers where, so it applies at once next time.
+    function favoriteLanded(key: string, path: string): void {
+        if (root.isFavorite(key))
+            root._saveFavorites(root.favorites.map(entry => entry.key === key ? Object.assign({}, entry, { path: path }) : entry))
+    }
+    function _saveFavorites(next: var): void {
+        root.favorites = next
+        favoritesFile.setText(JSON.stringify(next))
+    }
+    FileView {
+        id: favoritesFile
+        path: Directories.statePath + "/user/wallpaper-favorites.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const list = JSON.parse(favoritesFile.text())
+                if (Array.isArray(list)) root.favorites = list.filter(entry => entry && typeof entry.key === "string")
+            } catch (e) {}
+        }
+    }
 }

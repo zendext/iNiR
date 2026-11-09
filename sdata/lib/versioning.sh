@@ -455,7 +455,9 @@ write_version_info_json() {
     local package_manager="${INIR_PACKAGE_MANAGER:-}"
     local package_name="${INIR_PACKAGE_NAME:-}"
     local package_update_hint="${INIR_PACKAGE_UPDATE_HINT:-}"
+    local dependencies="${INIR_DEPENDENCIES:-}"
 
+    [[ -n "$dependencies" ]] || dependencies="$(read_installed_version_field '.dependencies' setup)"
     repo_path="$(get_version_repo_path)"
     install_mode="$(get_install_mode)"
     update_strategy="$(get_update_strategy)"
@@ -474,6 +476,7 @@ write_version_info_json() {
             --arg pm "$package_manager" \
             --arg pn "$package_name" \
             --arg ph "$package_update_hint" \
+            --arg d "$dependencies" \
             '{
                 version: $v,
                 commit: $c,
@@ -491,7 +494,8 @@ write_version_info_json() {
                 package_name: $pn,
                 packageName: $pn,
                 package_update_hint: $ph,
-                packageUpdateHint: $ph
+                packageUpdateHint: $ph,
+                dependencies: $d
             }' > "$file"
     else
         cat > "$file" << EOF
@@ -512,7 +516,8 @@ write_version_info_json() {
   "package_name": "$package_name",
   "packageName": "$package_name",
   "package_update_hint": "$package_update_hint",
-  "packageUpdateHint": "$package_update_hint"
+  "packageUpdateHint": "$package_update_hint",
+  "dependencies": "$dependencies"
 }
 EOF
     fi

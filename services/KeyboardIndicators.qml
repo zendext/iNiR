@@ -20,7 +20,7 @@ Singleton {
     property bool _destroying: false
     property bool _numLockReliable: false
     property var _lastRawNumLockState: null
-    property string lockStateDaemonPath: Quickshell.shellPath("scripts/daemon/keyboard_lock_state_daemon.py")
+    property string lockStateDaemonPath: Quickshell.shellPath("scripts/lib/accel-run")
 
     property bool capsLock: false
     property bool numLock: false
@@ -267,7 +267,7 @@ Singleton {
     Process {
         id: evdevProbeProc
         running: false
-        command: ["/usr/bin/python3", root.lockStateDaemonPath, "--once"]
+        command: [root.lockStateDaemonPath, "keyboard-lock-daemon", "--once"]
 
         stdout: SplitParser {
             onRead: line => root._handleEvdevOutput(line)
@@ -303,7 +303,7 @@ Singleton {
     Process {
         id: evdevMonitorProc
         running: false
-        command: ["/usr/bin/python3", "-u", root.lockStateDaemonPath]
+        command: [root.lockStateDaemonPath, "keyboard-lock-daemon"]
 
         stdout: SplitParser {
             onRead: line => root._handleEvdevOutput(line)
@@ -318,7 +318,8 @@ Singleton {
                 return;
 
             root._log("evdev monitor exited", exitCode, exitStatus);
-            if (root.usingEvdev) {
+            // 127: accel-run found no inir-accel, retrying every second won't bring it back
+            if (root.usingEvdev && exitCode !== 127) {
                 evdevRestartTimer.restart();
                 return;
             }

@@ -46,19 +46,27 @@ Singleton {
     }
     property real autoContentTransparency: 0.9
     
+    // The global style's settings the active family wears (`material.style` for Material, and for Waffle while its
+    // "Take style from Material" is on; plugin.json settings.globalStyle). A family without them gets every default:
+    // Material's style choice never reaches a family that didn't take it.
+    readonly property var styleConfig: Plugins.setting(Plugins.active, "globalStyle", null)
+
     // Transparency - respects enable toggle
-    readonly property bool _transparencyEnabled: Config?.options?.appearance?.transparency?.enable ?? false
-    readonly property bool _transparencyAutomatic: Config?.options?.appearance?.transparency?.automatic ?? true
+    readonly property bool _transparencyEnabled: root.styleConfig?.transparency?.enable ?? false
+    readonly property bool _transparencyAutomatic: root.styleConfig?.transparency?.automatic ?? true
     property real backgroundTransparency: _transparencyEnabled 
-        ? (_transparencyAutomatic ? autoBackgroundTransparency : (Config?.options?.appearance?.transparency?.backgroundTransparency ?? 0)) 
+        ? (_transparencyAutomatic ? autoBackgroundTransparency : (root.styleConfig?.transparency?.backgroundTransparency ?? 0)) 
         : 0
     property real contentTransparency: _transparencyEnabled 
-        ? (_transparencyAutomatic ? autoContentTransparency : (Config?.options?.appearance?.transparency?.contentTransparency ?? 0)) 
+        ? (_transparencyAutomatic ? autoContentTransparency : (root.styleConfig?.transparency?.contentTransparency ?? 0)) 
         : 0
 
     // Global style - centralized style detection (reactive bindings)
-    readonly property string globalStyle: Config?.options?.appearance?.globalStyle ?? "material"
-    readonly property string iiMotionProfile: Config?.options?.appearance?.iiMotionProfile ?? "classic"
+    readonly property string globalStyle: root.styleConfig?.globalStyle ?? "material"
+    // Material's island skin (islands bar, island dock and sidebars, search, desktop plates): shared surfaces take it
+    // from here, never from the config.
+    readonly property var island: root.styleConfig?.island ?? null
+    readonly property string iiMotionProfile: root.styleConfig?.iiMotionProfile ?? "classic"
     readonly property bool contextualMotionProfile: iiMotionProfile === "contextual"
     readonly property bool inirEverywhere: globalStyle === "inir"
     // angelEverywhere - flagship neo-brutalism glass style (superset of aurora)
@@ -97,7 +105,7 @@ Singleton {
 
     Process {
         id: nativeBlurVersionProbe
-        running: CompositorService?.isNiri ?? false
+        running: CompositorService?.niriNative ?? false
         command: ["niri", "--version"]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -163,7 +171,7 @@ Singleton {
             return "wallpaper"
         if (editorialEverywhere && editorial.glassActive)
             return "wallpaper"
-        if (zzzEverywhere && (Config.options?.appearance?.zzz?.glass ?? true))
+        if (zzzEverywhere && (root.styleConfig?.zzz?.glass ?? true))
             return "wallpaper"
         return "off"
     }
@@ -178,7 +186,7 @@ Singleton {
 
     // ── Shell desaturation effect ──────────────────────────────────────────
     // User-toggled visual effect that desaturates/dims shell components
-    readonly property var _desatConfig: Config.options?.appearance?.desaturation ?? ({})
+    readonly property var _desatConfig: root.styleConfig?.desaturation ?? ({})
     readonly property bool desaturationEnabled: Boolean(_desatConfig.enable)
     readonly property real desaturationSaturation: Number(_desatConfig.saturation ?? -0.7)
     readonly property real desaturationBrightness: Number(_desatConfig.brightness ?? -0.15)
@@ -291,10 +299,10 @@ Singleton {
     // 1.0 = default speed. Kept separate from raw calcEffectiveDuration(ms) call sites
     // elsewhere in the shell, which stay untouched at multiplier 1.0.
     readonly property QtObject animationSpeed: QtObject {
-        readonly property real movement: Config.options?.appearance?.animationSpeed?.movement ?? 1.0
-        readonly property real enterExit: Config.options?.appearance?.animationSpeed?.enterExit ?? 1.0
-        readonly property real clickBounce: Config.options?.appearance?.animationSpeed?.clickBounce ?? 1.0
-        readonly property real scroll: Config.options?.appearance?.animationSpeed?.scroll ?? 1.0
+        readonly property real movement: root.styleConfig?.animationSpeed?.movement ?? 1.0
+        readonly property real enterExit: root.styleConfig?.animationSpeed?.enterExit ?? 1.0
+        readonly property real clickBounce: root.styleConfig?.animationSpeed?.clickBounce ?? 1.0
+        readonly property real scroll: root.styleConfig?.animationSpeed?.scroll ?? 1.0
     }
 
     // Named, pickable curves for the per-category override below. Reuses the same
@@ -315,7 +323,7 @@ Singleton {
         linear:            { type: Easing.Linear, curve: [] }
     })
     function _curveOverride(category) {
-        const name = Config.options?.appearance?.animationCurve?.[category] ?? "default"
+        const name = root.styleConfig?.animationCurve?.[category] ?? "default"
         return (name !== "default" && animationCurveLibrary[name]) ? animationCurveLibrary[name] : null
     }
     // defaultType/defaultCurve are what the preset would use with no override — the
@@ -455,6 +463,19 @@ Singleton {
         readonly property color _inkPrimary: "#2b2622"      // Warm charcoal - main text
         readonly property color _inkSecondary: "#5c534a"    // Warm gray - secondary text
         readonly property color _inkMuted: "#8a7f73"        // Warm taupe - inactive/disabled
+        // Light glass is only as light as the wallpaper under it lets it be; its floor is the overlay over the pressed
+        // backdrop of a black one (aurora.backdropFloor). An accent used as ink drops to the tone that reads 4.5:1
+        // there (Fluent: no accent text on acrylic; M3's medium-contrast light scheme moves primary from tone 40 to 30).
+        readonly property color _glassFloor: ColorUtils.mix(colLayer0Base,
+            Qt.rgba(root.aurora.backdropFloor, root.aurora.backdropFloor, root.aurora.backdropFloor, 1),
+            1 - (root.angelEverywhere ? root.angel.overlayOpacity : root.aurora.overlayTransparentize))
+        readonly property real _glassInkTone: {
+            const y = Math.max(0.0001, (ColorUtils.relativeLuminance(_glassFloor) + 0.05) / 4.5 - 0.05)
+            return y <= 0.008856 ? y * 903.2963 : 116 * Math.pow(y, 1 / 3) - 16
+        }
+        function _glassInk(accent: color): color {
+            return root._auroraLightMode && ColorUtils.toneOf(accent) > _glassInkTone ? ColorUtils.atTone(accent, _glassInkTone) : accent
+        }
 
         // Aurora Mode Contrast Boost Logic
         // If we are in Aurora Dark mode (glass), we CANNOT use dark variants for text.
@@ -474,12 +495,12 @@ Singleton {
             : (_needsHighContrast ? _baseOnSurface : (root._auroraLightMode ? _inkSecondary : _baseOnSurfaceVariant))
         property color colSubtext: ColorUtils.ensureReadable(
             ColorUtils.mix(_semanticSubtextBase, root.colSecondaryActionIcon, 0.84),
-            colLayer1Base,
-            5.5
+            root._auroraLightMode ? _glassFloor : colLayer1Base,
+            root._auroraLightMode ? 4.5 : 5.5
         )
             
         // Layer 0
-        property color colLayer0Base: root.editorialEverywhere ? root.editorial.paper : root.regaliaEverywhere ? root.regalia.bg0 : root.cookieEverywhere ? root.cookie.bg0 : root.zzzEverywhere ? root.zzz.bg0 : (m3colors.transparent ? "transparent" : ColorUtils.mix(m3colors.m3background, m3colors.m3primary, Config?.options?.appearance?.extraBackgroundTint ? 0.99 : 1))
+        property color colLayer0Base: root.editorialEverywhere ? root.editorial.paper : root.regaliaEverywhere ? root.regalia.bg0 : root.cookieEverywhere ? root.cookie.bg0 : root.zzzEverywhere ? root.zzz.bg0 : (m3colors.transparent ? "transparent" : ColorUtils.mix(m3colors.m3background, m3colors.m3primary, root.styleConfig?.extraBackgroundTint ? 0.99 : 1))
         property color colLayer0: root.editorialEverywhere ? colLayer0Base : root.regaliaEverywhere ? colLayer0Base
             : ColorUtils.transparentize(colLayer0Base, root.backgroundTransparency)
         property color colOnLayer0: root.editorialEverywhere ? root.editorial.ink : root.regaliaEverywhere ? root.regalia.onColor : root.cookieEverywhere ? root.cookie.onColor : root.zzzEverywhere ? root.zzz.onColor : ColorUtils.ensureReadable(
@@ -552,7 +573,7 @@ Singleton {
         )
         // Primary
         property color colPrimary: root.editorialEverywhere ? root.editorial.accent
-            : root.regaliaEverywhere ? root.regalia.hardwarePrimary : root.zzzEverywhere ? root.zzz.accent : m3colors.m3primary
+            : root.regaliaEverywhere ? root.regalia.hardwarePrimary : root.zzzEverywhere ? root.zzz.accent : _glassInk(m3colors.m3primary)
         property color colOnPrimary: root.editorialEverywhere ? root.editorial.accentInk
             : root.regaliaEverywhere ? root.regalia.hardwarePrimaryInk : root.zzzEverywhere ? root.zzz.onAccent : m3colors.m3onPrimary
         property color colPrimaryHover: root.editorialEverywhere ? root.editorial.accentHover : root.regaliaEverywhere ? root.regalia.hardwarePrimaryHover : ColorUtils.mix(colors.colPrimary, colLayer1Hover, 0.87)
@@ -562,7 +583,7 @@ Singleton {
         property color colPrimaryContainerActive: root.editorialEverywhere ? root.editorial.selectionPressed : root.regaliaEverywhere ? root.regalia.primaryPlateActive : ColorUtils.mix(colors.colPrimaryContainer, colors.colOnPrimaryContainer, 0.8)
         property color colOnPrimaryContainer: root.editorialEverywhere ? root.editorial.fieldInk : root.regaliaEverywhere ? root.regalia.primaryPlateInk : root.cookieEverywhere ? root.cookie.onFace : root.zzzEverywhere ? root.zzz.onColor : m3colors.m3onPrimaryContainer
         // Secondary
-        property color colSecondary: root.editorialEverywhere ? root.editorial.accent : root.regaliaEverywhere ? root.regalia.hardwareSecondary : root.zzzEverywhere ? root.zzz.secondary : m3colors.m3secondary
+        property color colSecondary: root.editorialEverywhere ? root.editorial.accent : root.regaliaEverywhere ? root.regalia.hardwareSecondary : root.zzzEverywhere ? root.zzz.secondary : _glassInk(m3colors.m3secondary)
         property color colSecondaryHover: root.regaliaEverywhere ? root.regalia.hardwareSecondaryHover : ColorUtils.mix(colSecondary, colLayer1Hover, 0.85)
         property color colSecondaryActive: root.regaliaEverywhere ? root.regalia.hardwareSecondaryActive : ColorUtils.mix(colSecondary, colLayer1Active, 0.4)
         property color colOnSecondary: root.editorialEverywhere ? root.editorial.accentInk : root.regaliaEverywhere ? root.regalia.hardwareSecondaryInk : root.zzzEverywhere ? root.zzz.onSecondary : m3colors.m3onSecondary
@@ -624,22 +645,22 @@ Singleton {
     }
 
     editorial: QtObject {
-        readonly property string paperMode: Config.options?.appearance?.editorial?.paperMode ?? "theme"
+        readonly property string paperMode: root.styleConfig?.editorial?.paperMode ?? "theme"
         readonly property bool dark: paperMode === "dark" || (paperMode !== "light" && root.m3colors.darkmode)
-        readonly property string paperTone: Config.options?.appearance?.editorial?.paperTone ?? "neutral"
-        readonly property real paperTint: Math.max(0, Math.min(1, Number(Config.options?.appearance?.editorial?.paperTint ?? 0.35)))
-        readonly property color paperColor: Config.options?.appearance?.editorial?.paperColor ?? "#b8c4b0"
+        readonly property string paperTone: root.styleConfig?.editorial?.paperTone ?? "neutral"
+        readonly property real paperTint: Math.max(0, Math.min(1, Number(root.styleConfig?.editorial?.paperTint ?? 0.35)))
+        readonly property color paperColor: root.styleConfig?.editorial?.paperColor ?? "#b8c4b0"
         readonly property color tintSource: paperTone === "primary" ? root.m3colors.m3primary
             : paperTone === "secondary" ? root.m3colors.m3secondary
             : paperTone === "tertiary" ? root.m3colors.m3tertiary : paperColor
         readonly property real tintAmount: paperTone === "neutral" ? 0 : paperTint
-        readonly property real titleScale: Math.max(0.8, Math.min(1.3, Number(Config.options?.appearance?.editorial?.titleScale ?? 1.0)))
-        readonly property real warmth: Math.max(0, Math.min(1, Number(Config.options?.appearance?.editorial?.warmth ?? 0.55)))
-        readonly property real accentStrength: Math.max(0, Math.min(1, Number(Config.options?.appearance?.editorial?.accentStrength ?? 0.55)))
-        readonly property real spacing: Math.max(0.8, Math.min(1.2, Number(Config.options?.appearance?.editorial?.spacing ?? 1.0)))
-        readonly property real radiusScale: Math.max(0.5, Math.min(1.5, Number(Config.options?.appearance?.editorial?.radiusScale ?? 1.0)))
-        readonly property bool ornaments: Config.options?.appearance?.editorial?.ornaments ?? true
-        readonly property real motionScale: Math.max(0.6, Math.min(1.4, Number(Config.options?.appearance?.editorial?.motionScale ?? 1.0)))
+        readonly property real titleScale: Math.max(0.8, Math.min(1.3, Number(root.styleConfig?.editorial?.titleScale ?? 1.0)))
+        readonly property real warmth: Math.max(0, Math.min(1, Number(root.styleConfig?.editorial?.warmth ?? 0.55)))
+        readonly property real accentStrength: Math.max(0, Math.min(1, Number(root.styleConfig?.editorial?.accentStrength ?? 0.55)))
+        readonly property real spacing: Math.max(0.8, Math.min(1.2, Number(root.styleConfig?.editorial?.spacing ?? 1.0)))
+        readonly property real radiusScale: Math.max(0.5, Math.min(1.5, Number(root.styleConfig?.editorial?.radiusScale ?? 1.0)))
+        readonly property bool ornaments: root.styleConfig?.editorial?.ornaments ?? true
+        readonly property real motionScale: Math.max(0.6, Math.min(1.4, Number(root.styleConfig?.editorial?.motionScale ?? 1.0)))
         readonly property color paperNeutral: dark ? "#191918" : "#f5f2eb"
         readonly property color paperBase: dark === root.m3colors.darkmode
             ? ColorUtils.mix(paperNeutral, root.m3colors.m3background, 0.82) : paperNeutral
@@ -652,8 +673,8 @@ Singleton {
             ColorUtils.mix(inkBase, tintSource, 1 - tintAmount * (dark ? 0.38 : 0.18)), paper, 7)
         readonly property color paperOnInk: ColorUtils.ensureReadable(paper, ink, 7)
         readonly property color muted: ColorUtils.ensureReadable(root.m3colors.m3onSurfaceVariant, paper, 4.5)
-        readonly property string accentRole: Config.options?.appearance?.editorial?.accentRole ?? "primary"
-        readonly property color accentColor: Config.options?.appearance?.editorial?.accentColor ?? "#b5a0c8"
+        readonly property string accentRole: root.styleConfig?.editorial?.accentRole ?? "primary"
+        readonly property color accentColor: root.styleConfig?.editorial?.accentColor ?? "#b5a0c8"
         readonly property color accentSource: accentRole === "secondary" ? root.m3colors.m3secondary
             : accentRole === "tertiary" ? root.m3colors.m3tertiary
             : accentRole === "custom" ? accentColor : root.m3colors.m3primary
@@ -680,18 +701,18 @@ Singleton {
         readonly property color selectionHover: ColorUtils.mix(field, ink, 0.94)
         readonly property color selectionPressed: ColorUtils.mix(field, ink, 0.88)
         readonly property color focusRing: ColorUtils.readableAccentInk(accent, paper, 3, ink)
-        readonly property int labelWeight: Math.max(400, Math.min(700, Number(Config.options?.appearance?.editorial?.labelWeight ?? 600)))
-        readonly property real metadataTracking: Math.max(0, Math.min(1.5, Number(Config.options?.appearance?.editorial?.metadataTracking ?? 0.8)))
+        readonly property int labelWeight: Math.max(400, Math.min(700, Number(root.styleConfig?.editorial?.labelWeight ?? 600)))
+        readonly property real metadataTracking: Math.max(0, Math.min(1.5, Number(root.styleConfig?.editorial?.metadataTracking ?? 0.8)))
         readonly property color rail: ColorUtils.mix(layer(1), field, 0.72)
-        readonly property bool paperStack: Config.options?.appearance?.editorial?.paperStack ?? false
-        readonly property real paperDepth: Math.max(2, Math.min(6, Number(Config.options?.appearance?.editorial?.paperDepth ?? 3)))
+        readonly property bool paperStack: root.styleConfig?.editorial?.paperStack ?? false
+        readonly property real paperDepth: Math.max(2, Math.min(6, Number(root.styleConfig?.editorial?.paperDepth ?? 3)))
         readonly property color paperBacking: ColorUtils.mix(rail, accent, 0.48)
-        readonly property bool glass: Config.options?.appearance?.editorial?.glass ?? false
+        readonly property bool glass: root.styleConfig?.editorial?.glass ?? false
         readonly property bool glassActive: glass && root.effectsEnabled
-        readonly property bool sidebarGlassBackground: Config.options?.appearance?.editorial?.sidebarGlassBackground ?? true
+        readonly property bool sidebarGlassBackground: root.styleConfig?.editorial?.sidebarGlassBackground ?? true
         readonly property bool sidebarFullGlass: glassActive && sidebarGlassBackground
-        readonly property real glassOpacity: Math.max(0.55, Math.min(0.9, Number(Config.options?.appearance?.editorial?.glassOpacity ?? 0.72)))
-        readonly property real glassBlur: Math.max(0.25, Math.min(1, Number(Config.options?.appearance?.editorial?.glassBlur ?? 0.85)))
+        readonly property real glassOpacity: Math.max(0.55, Math.min(0.9, Number(root.styleConfig?.editorial?.glassOpacity ?? 0.72)))
+        readonly property real glassBlur: Math.max(0.25, Math.min(1, Number(root.styleConfig?.editorial?.glassBlur ?? 0.85)))
         readonly property real glassBackingOpacity: Math.min(0.96, glassOpacity + 0.12)
         readonly property real glassLayerOpacity: Math.min(0.92, glassOpacity + 0.10)
         readonly property color glassPaper: Qt.alpha(paper, glassOpacity)
@@ -707,7 +728,7 @@ Singleton {
         readonly property int radius: Math.max(4, Math.round(10 * radiusScale))
         // Poster is deliberately sans; reading/quote composition keeps an
         // explicit Source Serif 4 choice with a generic serif fallback.
-        readonly property string typography: Config.options?.appearance?.editorial?.typography === "reading"
+        readonly property string typography: root.styleConfig?.editorial?.typography === "reading"
             ? "reading" : "poster"
         readonly property string serifFamily: {
             const families = Qt.fontFamilies()
@@ -716,8 +737,8 @@ Singleton {
             }
             return "serif"
         }
-        readonly property int titleWeight: Math.max(400, Math.min(900, Number(Config.options?.appearance?.editorial?.titleWeight ?? 650)))
-        readonly property real titleTracking: Math.max(-1.5, Math.min(1.5, Number(Config.options?.appearance?.editorial?.titleTracking ?? -0.6)))
+        readonly property int titleWeight: Math.max(400, Math.min(900, Number(root.styleConfig?.editorial?.titleWeight ?? 650)))
+        readonly property real titleTracking: Math.max(-1.5, Math.min(1.5, Number(root.styleConfig?.editorial?.titleTracking ?? -0.6)))
         readonly property string displayFamily: typography === "reading"
             ? serifFamily : (Config.options?.appearance?.typography?.mainFont ?? "Roboto Flex")
         function layer(level: int): color {
@@ -737,6 +758,8 @@ Singleton {
         property int normal: root.editorialEverywhere ? Math.max(5, Math.round(10 * root.editorial.radiusScale)) : root.regaliaEverywhere ? root.regalia.roundNormal : root.cookieEverywhere ? root.cookie.roundNormal : root.zzzEverywhere ? root.zzz.roundNormal : Math.max(0, Math.round(17 * scale))
         property int large: root.editorialEverywhere ? Math.max(7, Math.round(14 * root.editorial.radiusScale)) : root.regaliaEverywhere ? root.regalia.roundLarge : root.cookieEverywhere ? root.cookie.roundLarge : root.zzzEverywhere ? root.zzz.roundLarge : Math.max(0, Math.round(23 * scale))
         property int verylarge: root.editorialEverywhere ? Math.max(9, Math.round(18 * root.editorial.radiusScale)) : root.regaliaEverywhere ? root.regalia.panelRadius : root.cookieEverywhere ? root.cookie.panelRadius : root.zzzEverywhere ? root.zzz.panelRadius : Math.max(0, Math.round(30 * scale))
+        // M3's extra-large (28): cards and desktop widgets, the plate Lucid gives every widget.
+        property int extralarge: root.editorialEverywhere ? Math.max(9, Math.round(18 * root.editorial.radiusScale)) : root.regaliaEverywhere ? root.regalia.roundLarge : root.cookieEverywhere ? root.cookie.roundLarge : root.zzzEverywhere ? root.zzz.roundLarge : Math.max(0, Math.round(28 * scale))
         property int full: root.zzzEverywhere ? (root.zzz.round ? 9999 : root.zzz.controlRadius) : 9999
         property int screenRounding: large
         property int windowRounding: root.editorialEverywhere ? Math.max(7, Math.round(14 * root.editorial.radiusScale)) : root.regaliaEverywhere ? root.regalia.panelRadius : root.zzzEverywhere ? root.zzz.panelRadius : Math.max(0, Math.round(18 * scale))
@@ -774,7 +797,7 @@ Singleton {
                                 : (Config.options?.appearance?.typography?.mainFont ?? "Roboto Flex")
             property string numbers: root._useZzzFont ? root._zzzFont
                                 : root._useAngelFont ? root._angelFont
-                                : root._useRegaliaFont ? root._regaliaTechFont : "Rubik"
+                                : root._useRegaliaFont ? root._regaliaTechFont : "Google Sans Flex"
             property string title: root.editorialEverywhere ? root.editorial.displayFamily : root._useZzzFont ? root._zzzFont
                                  : root._useAngelFont ? root._angelFont
                                  : root._useRegaliaFont ? root._regaliaFont
@@ -790,7 +813,7 @@ Singleton {
             // Roboto Flex is customized to feel geometric, unserious yet not overly kiddy
             property var main: root.editorialEverywhere ? ({}) : root.regaliaEverywhere ? ({
                 "wght": 430,
-            }) : ({
+            }) : root.font.family.main === "Google Sans Flex" ? ({}) : ({
                 "YTUC": 716,
                 "YTFI": 716,
                 "YTAS": 716,
@@ -801,8 +824,17 @@ Singleton {
                 "wght": Math.max(100, Math.min(1000, Config.options?.appearance?.typography?.variableAxes?.wght ?? 300)),
             })
             property var numbers: ({
-                "wght": 400,
+                "ROND": 100,
             })
+            // Figures in Google Sans Flex round out as they grow (Lucid's display roles): a big reading is soft, a small
+            // one stays plain, and the optical size snaps to a few stops so each size doesn't build its own glyphs.
+            function numbersAt(px: real): var {
+                const stops = [9, 13, 18, 28, 48, 96]
+                let opsz = stops[0]
+                for (const stop of stops)
+                    if (Math.abs(stop - px) < Math.abs(opsz - px)) opsz = stop
+                return ({ "ROND": px >= 28 ? 100 : px >= 20 ? 40 : 0, "opsz": opsz })
+            }
             property var title: ({
                 "wght": root.editorialEverywhere ? root.editorial.titleWeight : root.regaliaEverywhere ? 650 : 900,
             })
@@ -1009,12 +1041,25 @@ Singleton {
         // Transparency levels — read from Config with revision dependency for live reactivity
         // Config.revision forces re-evaluation when setNestedValue writes (JS bracket notation
         // on nested JsonObjects doesn't trigger QML property notifications)
-        readonly property var _cfg: { Config.revision; return Config.options?.appearance?.aurora?.transparency ?? null }
+        readonly property var _cfg: { Config.revision; return root.styleConfig?.aurora?.transparency ?? null }
         readonly property real overlayTransparentize: (_cfg?.overlay ?? 0.30) * _lightFactor
         readonly property real subSurfaceTransparentize: (_cfg?.subSurface ?? 0.42) * _lightFactor
         readonly property real popupTransparentize: (_cfg?.popup ?? 0.32) * _lightFactor
         readonly property real tooltipTransparentize: (_cfg?.tooltip ?? 0.28) * _lightFactor
         readonly property real layerTransparentize: (_cfg?.layer ?? 0.32) * _lightFactor
+        // The blurred wallpaper under the glass, toned toward grey: a vivid wallpaper boosted 20 % turned every panel
+        // into its colour (a hot pink sidebar on a pink wallpaper, 10-25).
+        // Acrylic's luminosity layer, done with what MultiEffect has: the backdrop's tonal range is pressed into a band
+        // near the glass's own tone, so the glass keeps one tone over any wallpaper (light glass went mid grey over a
+        // dark one and dark glass vanished into it, 10-29). Saturation gives back the colour the press takes.
+        // Angel's glass too: its light panels went mid grey over a dark wallpaper (Settings subtext 1.4:1, 10-30).
+        readonly property bool _tonedBackdrop: root.auroraEverywhere && root.effectsEnabled
+        readonly property real backdropContrast: _tonedBackdrop ? (root._auroraLightMode ? -0.45 : -0.4) : 0
+        readonly property real backdropBrightness: _tonedBackdrop ? (root._auroraLightMode ? 0.2 : -0.15) : 0
+        readonly property real wallpaperColor: { Config.revision; return Math.max(0, Math.min(1, root.styleConfig?.aurora?.wallpaperColor ?? 0.55)) }
+        readonly property real backdropSaturation: wallpaperColor / (1 + backdropContrast) - 1
+        // The darkest the pressed backdrop gets (black under it).
+        readonly property real backdropFloor: Math.max(0, -0.5 * backdropContrast + backdropBrightness)
 
         readonly property color colInactiveControlSurface: ColorUtils.transparentize(
             root.colors.colLayer0Base, Math.max(0.12, subSurfaceTransparentize - 0.14))
@@ -1203,12 +1248,12 @@ Singleton {
         id: regaliaStyle
 
         readonly property bool dark: root.m3colors.darkmode
-        readonly property bool glass: Config.options?.appearance?.regalia?.glass ?? true
-        readonly property real glassBlur: Math.max(0.15, Math.min(1.0, Config.options?.appearance?.regalia?.glassBlur ?? 0.72))
-        readonly property real glassTintTransparency: Math.max(0.20, Math.min(0.80, Config.options?.appearance?.regalia?.glassTintTransparency ?? 0.52))
-        readonly property real glassSurfaceOpacity: Math.max(0.0, Math.min(1.0, Config.options?.appearance?.regalia?.glassSurfaceOpacity ?? 0.60))
-        readonly property real glassSaturation: Math.max(0.0, Math.min(0.60, Config.options?.appearance?.regalia?.glassSaturation ?? 0.12))
-        readonly property real radiusScale: Math.max(0.80, Math.min(1.20, Config.options?.appearance?.regalia?.radiusScale ?? 1.0))
+        readonly property bool glass: root.styleConfig?.regalia?.glass ?? true
+        readonly property real glassBlur: Math.max(0.15, Math.min(1.0, root.styleConfig?.regalia?.glassBlur ?? 0.72))
+        readonly property real glassTintTransparency: Math.max(0.20, Math.min(0.80, root.styleConfig?.regalia?.glassTintTransparency ?? 0.52))
+        readonly property real glassSurfaceOpacity: Math.max(0.0, Math.min(1.0, root.styleConfig?.regalia?.glassSurfaceOpacity ?? 0.60))
+        readonly property real glassSaturation: Math.max(0.0, Math.min(0.60, root.styleConfig?.regalia?.glassSaturation ?? 0.12))
+        readonly property real radiusScale: Math.max(0.80, Math.min(1.20, root.styleConfig?.regalia?.radiusScale ?? 1.0))
 
         readonly property color chassis0: root.m3colors.m3surfaceContainerLowest
         readonly property color chassis1: root.m3colors.m3surfaceContainerLow
@@ -1254,7 +1299,8 @@ Singleton {
         readonly property color signalHardwareHover: ColorUtils.mix(root.m3colors.m3error, root.m3colors.m3onError, 0.86)
         readonly property color signalHardwareInk: root.m3colors.m3onError
 
-        readonly property color primaryPlate: ColorUtils.mix(chassis2, root.m3colors.m3primaryContainer, dark ? 0.70 : 0.56)
+        // the chosen key has to read at a glance beside its neighbours: at 0.70/0.56 it measured 1.2:1 (10-30)
+        readonly property color primaryPlate: ColorUtils.mix(chassis2, root.m3colors.m3primaryContainer, dark ? 0.40 : 0.22)
         readonly property color primaryPlateHover: ColorUtils.mix(primaryPlate, root.m3colors.m3primary, 0.86)
         readonly property color primaryPlateActive: ColorUtils.mix(primaryPlate, root.m3colors.m3shadow, dark ? 0.88 : 0.94)
         readonly property color primaryPlateInk: ColorUtils.ensureReadable(root.m3colors.m3primary, primaryPlate, 4.5)
@@ -1345,19 +1391,20 @@ Singleton {
         // Do NOT use intermediate var references — QML can't detect nested var changes.
 
         // ─── BLUR SYSTEM ───
-        readonly property real blurIntensity: Config.options?.appearance?.angel?.blur?.intensity ?? 0.35
-        readonly property real blurSaturation: Config.options?.appearance?.angel?.blur?.saturation ?? 0.20
-        readonly property real overlayOpacity: Config.options?.appearance?.angel?.blur?.overlayOpacity ?? 0.45
-        readonly property real noiseOpacity: Config.options?.appearance?.angel?.blur?.noiseOpacity ?? 0.15
-        readonly property real vignetteStrength: Config.options?.appearance?.angel?.blur?.vignetteStrength ?? 0.4
+        readonly property real blurIntensity: root.styleConfig?.angel?.blur?.intensity ?? 0.35
+        readonly property real blurSaturation: root.styleConfig?.angel?.blur?.saturation ?? 0.20
+        // light glass as dense as aurora's (~220 over black); angel's see-through stays in dark
+        readonly property real overlayOpacity: (root.styleConfig?.angel?.blur?.overlayOpacity ?? 0.45) * (root._auroraLightMode ? 0.5 : 1)
+        readonly property real noiseOpacity: root.styleConfig?.angel?.blur?.noiseOpacity ?? 0.15
+        readonly property real vignetteStrength: root.styleConfig?.angel?.blur?.vignetteStrength ?? 0.4
 
         // ─── GLASS TRANSPARENCY (higher = more see-through) ───
         // Light mode: reduce glass transparency for better contrast on light wallpapers
         readonly property real _lightFactor: root._auroraLightMode ? 0.75 : 1.0
-        readonly property real panelTransparentize: (Config.options?.appearance?.angel?.transparency?.panel ?? 0.28) * _lightFactor
-        readonly property real cardTransparentize: (Config.options?.appearance?.angel?.transparency?.card ?? 0.40) * _lightFactor
-        readonly property real popupTransparentize: (Config.options?.appearance?.angel?.transparency?.popup ?? 0.28) * _lightFactor
-        readonly property real tooltipTransparentize: (Config.options?.appearance?.angel?.transparency?.tooltip ?? 0.25) * _lightFactor
+        readonly property real panelTransparentize: (root.styleConfig?.angel?.transparency?.panel ?? 0.28) * _lightFactor
+        readonly property real cardTransparentize: (root.styleConfig?.angel?.transparency?.card ?? 0.40) * _lightFactor
+        readonly property real popupTransparentize: (root.styleConfig?.angel?.transparency?.popup ?? 0.28) * _lightFactor
+        readonly property real tooltipTransparentize: (root.styleConfig?.angel?.transparency?.tooltip ?? 0.25) * _lightFactor
 
         // ─── LAYER SYSTEM (glass variants derived from m3colors) ───
         readonly property color colGlassPanel: ColorUtils.transparentize(
@@ -1384,16 +1431,16 @@ Singleton {
             ColorUtils.mix(root.colors.colLayer2Base, root.colors.colOnLayer2, 0.92), cardTransparentize * 0.9)
 
         // ─── COLOR STRENGTH (multiplier for accent tint intensity) ───
-        readonly property real colorStrength: Math.max(0.01, Config.options?.appearance?.angel?.colorStrength ?? 1.0)
+        readonly property real colorStrength: Math.max(0.01, root.styleConfig?.angel?.colorStrength ?? 1.0)
 
         // ─── ESCALONADO SYSTEM (StyledRectangularShadow — 52+ usages, simple offset) ───
-        readonly property int escalonadoOffsetX: Config.options?.appearance?.angel?.escalonado?.offsetX ?? 2
-        readonly property int escalonadoOffsetY: Config.options?.appearance?.angel?.escalonado?.offsetY ?? 2
-        readonly property int escalonadoHoverOffsetX: Config.options?.appearance?.angel?.escalonado?.hoverOffsetX ?? 7
-        readonly property int escalonadoHoverOffsetY: Config.options?.appearance?.angel?.escalonado?.hoverOffsetY ?? 7
-        readonly property real escalonadoOpacity: Config.options?.appearance?.angel?.escalonado?.opacity ?? 0.40
-        readonly property real escalonadoBorderOpacity: Config.options?.appearance?.angel?.escalonado?.borderOpacity ?? 0.60
-        readonly property real escalonadoHoverOpacity: Config.options?.appearance?.angel?.escalonado?.hoverOpacity ?? 0.60
+        readonly property int escalonadoOffsetX: root.styleConfig?.angel?.escalonado?.offsetX ?? 2
+        readonly property int escalonadoOffsetY: root.styleConfig?.angel?.escalonado?.offsetY ?? 2
+        readonly property int escalonadoHoverOffsetX: root.styleConfig?.angel?.escalonado?.hoverOffsetX ?? 7
+        readonly property int escalonadoHoverOffsetY: root.styleConfig?.angel?.escalonado?.hoverOffsetY ?? 7
+        readonly property real escalonadoOpacity: root.styleConfig?.angel?.escalonado?.opacity ?? 0.40
+        readonly property real escalonadoBorderOpacity: root.styleConfig?.angel?.escalonado?.borderOpacity ?? 0.60
+        readonly property real escalonadoHoverOpacity: root.styleConfig?.angel?.escalonado?.hoverOpacity ?? 0.60
         readonly property color colEscalonado: ColorUtils.transparentize(
             root.m3colors.m3primary, Math.min(1, escalonadoOpacity / colorStrength))
         readonly property color colEscalonadoBorder: ColorUtils.transparentize(
@@ -1402,16 +1449,16 @@ Singleton {
             root.m3colors.m3primary, Math.min(1, escalonadoHoverOpacity / colorStrength))
 
         // ─── ESCALONADO SHADOW (EscalonadoShadow — glass-backed, settings cards) ───
-        readonly property int shadowOffsetX: Config.options?.appearance?.angel?.escalonadoShadow?.offsetX ?? 4
-        readonly property int shadowOffsetY: Config.options?.appearance?.angel?.escalonadoShadow?.offsetY ?? 4
-        readonly property int shadowHoverOffsetX: Config.options?.appearance?.angel?.escalonadoShadow?.hoverOffsetX ?? 10
-        readonly property int shadowHoverOffsetY: Config.options?.appearance?.angel?.escalonadoShadow?.hoverOffsetY ?? 10
-        readonly property real shadowOpacity: Config.options?.appearance?.angel?.escalonadoShadow?.opacity ?? 0.30
-        readonly property real shadowBorderOpacity: Config.options?.appearance?.angel?.escalonadoShadow?.borderOpacity ?? 0.50
-        readonly property real shadowHoverOpacity: Config.options?.appearance?.angel?.escalonadoShadow?.hoverOpacity ?? 0.50
-        readonly property bool shadowGlass: Config.options?.appearance?.angel?.escalonadoShadow?.glass ?? true
-        readonly property real shadowGlassBlur: Config.options?.appearance?.angel?.escalonadoShadow?.glassBlur ?? 0.15
-        readonly property real shadowGlassOverlay: Config.options?.appearance?.angel?.escalonadoShadow?.glassOverlay ?? 0.50
+        readonly property int shadowOffsetX: root.styleConfig?.angel?.escalonadoShadow?.offsetX ?? 4
+        readonly property int shadowOffsetY: root.styleConfig?.angel?.escalonadoShadow?.offsetY ?? 4
+        readonly property int shadowHoverOffsetX: root.styleConfig?.angel?.escalonadoShadow?.hoverOffsetX ?? 10
+        readonly property int shadowHoverOffsetY: root.styleConfig?.angel?.escalonadoShadow?.hoverOffsetY ?? 10
+        readonly property real shadowOpacity: root.styleConfig?.angel?.escalonadoShadow?.opacity ?? 0.30
+        readonly property real shadowBorderOpacity: root.styleConfig?.angel?.escalonadoShadow?.borderOpacity ?? 0.50
+        readonly property real shadowHoverOpacity: root.styleConfig?.angel?.escalonadoShadow?.hoverOpacity ?? 0.50
+        readonly property bool shadowGlass: root.styleConfig?.angel?.escalonadoShadow?.glass ?? true
+        readonly property real shadowGlassBlur: root.styleConfig?.angel?.escalonadoShadow?.glassBlur ?? 0.15
+        readonly property real shadowGlassOverlay: root.styleConfig?.angel?.escalonadoShadow?.glassOverlay ?? 0.50
         readonly property color colShadow: ColorUtils.transparentize(
             root.m3colors.m3primary, Math.min(1, shadowOpacity / colorStrength))
         readonly property color colShadowBorder: ColorUtils.transparentize(
@@ -1420,14 +1467,14 @@ Singleton {
             root.m3colors.m3primary, Math.min(1, shadowHoverOpacity / colorStrength))
 
         // ─── PARTIAL BORDER SYSTEM ───
-        readonly property real borderWidth: Config.options?.appearance?.angel?.border?.width ?? 1.5
-        readonly property int accentBarHeight: Config.options?.appearance?.angel?.border?.accentBarHeight ?? 0
-        readonly property int accentBarWidth: Config.options?.appearance?.angel?.border?.accentBarWidth ?? 0
-        readonly property real borderCoverage: Config.options?.appearance?.angel?.border?.coverage ?? 0.0
+        readonly property real borderWidth: root.styleConfig?.angel?.border?.width ?? 1.5
+        readonly property int accentBarHeight: root.styleConfig?.angel?.border?.accentBarHeight ?? 0
+        readonly property int accentBarWidth: root.styleConfig?.angel?.border?.accentBarWidth ?? 0
+        readonly property real borderCoverage: root.styleConfig?.angel?.border?.coverage ?? 0.0
         readonly property color colAccentBar: root.m3colors.m3primary
-        readonly property real borderOpacity: Config.options?.appearance?.angel?.border?.opacity ?? 0.0
-        readonly property real borderHoverOpacity: Config.options?.appearance?.angel?.border?.hoverOpacity ?? 0.0
-        readonly property real borderActiveOpacity: Config.options?.appearance?.angel?.border?.activeOpacity ?? 0.0
+        readonly property real borderOpacity: root.styleConfig?.angel?.border?.opacity ?? 0.0
+        readonly property real borderHoverOpacity: root.styleConfig?.angel?.border?.hoverOpacity ?? 0.0
+        readonly property real borderActiveOpacity: root.styleConfig?.angel?.border?.activeOpacity ?? 0.0
         readonly property color colBorder: ColorUtils.transparentize(
             root.m3colors.m3primary, Math.min(1, (0.99 - borderOpacity) / colorStrength))
         readonly property color colBorderHover: ColorUtils.transparentize(
@@ -1438,24 +1485,24 @@ Singleton {
             root.m3colors.m3outlineVariant, 0.82)
 
         // ─── SURFACE BORDERS (panel/card inner borders) ───
-        readonly property int panelBorderWidth: Config.options?.appearance?.angel?.surface?.panelBorderWidth ?? 0
-        readonly property int cardBorderWidth: Config.options?.appearance?.angel?.surface?.cardBorderWidth ?? 1
-        readonly property real panelBorderOpacity: Config.options?.appearance?.angel?.surface?.panelBorderOpacity ?? 0.0
-        readonly property real cardBorderOpacity: Config.options?.appearance?.angel?.surface?.cardBorderOpacity ?? 0.30
+        readonly property int panelBorderWidth: root.styleConfig?.angel?.surface?.panelBorderWidth ?? 0
+        readonly property int cardBorderWidth: root.styleConfig?.angel?.surface?.cardBorderWidth ?? 1
+        readonly property real panelBorderOpacity: root.styleConfig?.angel?.surface?.panelBorderOpacity ?? 0.0
+        readonly property real cardBorderOpacity: root.styleConfig?.angel?.surface?.cardBorderOpacity ?? 0.30
         readonly property color colPanelBorder: ColorUtils.transparentize(
             root.m3colors.m3primary, Math.min(1, (0.99 - panelBorderOpacity) / colorStrength))
         readonly property color colCardBorder: ColorUtils.transparentize(
             root.m3colors.m3primary, Math.min(1, (0.99 - cardBorderOpacity) / colorStrength))
 
         // Inset glow — light-from-above effect on top edge
-        readonly property real insetGlowOpacity: Config.options?.appearance?.angel?.border?.insetGlowOpacity ?? 0.0
+        readonly property real insetGlowOpacity: root.styleConfig?.angel?.border?.insetGlowOpacity ?? 0.0
         readonly property color colInsetGlow: ColorUtils.transparentize(
             root.m3colors.m3primary, Math.min(1, (1.0 - insetGlowOpacity) / colorStrength))
-        readonly property int insetGlowHeight: Config.options?.appearance?.angel?.border?.insetGlowHeight ?? 0
+        readonly property int insetGlowHeight: root.styleConfig?.angel?.border?.insetGlowHeight ?? 0
 
         // ─── GLOW SYSTEM ───
-        readonly property real glowOpacity: Config.options?.appearance?.angel?.glow?.opacity ?? 0.80
-        readonly property real glowStrongOpacity: Config.options?.appearance?.angel?.glow?.strongOpacity ?? 0.65
+        readonly property real glowOpacity: root.styleConfig?.angel?.glow?.opacity ?? 0.80
+        readonly property real glowStrongOpacity: root.styleConfig?.angel?.glow?.strongOpacity ?? 0.65
         readonly property color colGlow: ColorUtils.transparentize(
             root.m3colors.m3primary, Math.min(1, glowOpacity / colorStrength))
         readonly property color colGlowStrong: ColorUtils.transparentize(
@@ -1478,9 +1525,9 @@ Singleton {
         readonly property color colTertiary: root.m3colors.m3tertiary
 
         // ─── ROUNDING ───
-        readonly property int roundingSmall: Config.options?.appearance?.angel?.rounding?.small ?? 10
-        readonly property int roundingNormal: Config.options?.appearance?.angel?.rounding?.normal ?? 15
-        readonly property int roundingLarge: Config.options?.appearance?.angel?.rounding?.large ?? 25
+        readonly property int roundingSmall: root.styleConfig?.angel?.rounding?.small ?? 10
+        readonly property int roundingNormal: root.styleConfig?.angel?.rounding?.normal ?? 15
+        readonly property int roundingLarge: root.styleConfig?.angel?.rounding?.large ?? 25
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1664,7 +1711,7 @@ Singleton {
         // tiny manufactured radii and a cut-corner chamfer (classic ZZZ).
         // "round" = softer anime UI — pill controls, rounded panels, no chamfer.
         // Driven from config so the user flips the whole shell from settings.
-        readonly property bool  round: (Config.options?.appearance?.zzz?.shape ?? "square") === "round"
+        readonly property bool  round: (root.styleConfig?.zzz?.shape ?? "square") === "round"
         // ── Shape morph axis (cookie-clock feel, applied shell-wide) ──
         // `round` is the boolean source of truth from config; `shapeT` is its
         // ANIMATED real mirror in [0,1]. Every geometric token below is bound
@@ -1848,10 +1895,10 @@ Singleton {
          property real spacingSmall: Math.round(8 * root.fontSizeScale)
          property real spacingMedium: Math.round(12 * root.fontSizeScale)
          property real spacingLarge: Math.round(16 * root.fontSizeScale)
-        property real baseBarHeight: Math.round(Math.max(24, Math.min(80, (Config.options?.bar?.height ?? 40))) * root.fontSizeScale)
-        property real barHeight: (((Config.options?.bar?.cornerStyle ?? 0) === 1) || ((Config.options?.bar?.cornerStyle ?? 0) === 3)) ? 
+        property real baseBarHeight: Math.round(Math.max(24, Math.min(80, (Config.family?.bar?.height ?? 40))) * root.fontSizeScale)
+        property real barHeight: (((Config.family?.bar?.cornerStyle ?? 0) === 1) || ((Config.family?.bar?.cornerStyle ?? 0) === 3)) ? 
             (baseBarHeight + root.sizes.hyprlandGapsOut * 2) : baseBarHeight
-        property real barCenterSideModuleWidth: (Config.options?.bar?.verbose ?? true) ? Math.round(360 * root.fontSizeScale) : Math.round(140 * root.fontSizeScale)
+        property real barCenterSideModuleWidth: (Config.family?.bar?.verbose ?? true) ? Math.round(360 * root.fontSizeScale) : Math.round(140 * root.fontSizeScale)
         property real barCenterSideModuleWidthShortened: Math.round(280 * root.fontSizeScale)
         property real barCenterSideModuleWidthHellaShortened: Math.round(190 * root.fontSizeScale)
         property real barShortenScreenWidthThreshold: 1200 // Shorten if screen width is at most this value
@@ -1869,7 +1916,7 @@ Singleton {
         property real sidebarWidth: Math.round(460 * root.fontSizeScale)
         property real sidebarWidthExtended: Math.round(750 * root.fontSizeScale)
         property real baseVerticalBarWidth: Math.round(46 * root.fontSizeScale)
-        property real verticalBarWidth: (((Config.options?.bar?.cornerStyle ?? 0) === 1) || ((Config.options?.bar?.cornerStyle ?? 0) === 3)) ? 
+        property real verticalBarWidth: (((Config.family?.bar?.cornerStyle ?? 0) === 1) || ((Config.family?.bar?.cornerStyle ?? 0) === 3)) ? 
             (baseVerticalBarWidth + root.sizes.hyprlandGapsOut * 2) : baseVerticalBarWidth
         // Legacy selector fixed-card sizing (kept for compatibility; skwd-wall selector computes layout internally)
         property real wallpaperSelectorWidth: 1200

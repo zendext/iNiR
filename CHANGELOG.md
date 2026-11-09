@@ -5,6 +5,114 @@ All notable changes to iNiR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-11-08
+
+A small release right after 3.0: `inir update` finishes on Void again, the shell keeps its windows when it reloads, and a notice on the iRiS Island leaves the frame's corner bubbles where they are.
+
+### Fixed
+- **Updating on Void**: `inir update` checks the dependencies of the distro it runs on, so a package xbps refuses (such as `niri-session`) no longer stops the update halfway.
+- **Reloads keep your windows**: installing or updating a Hub item reloads the shell without tearing down and rebuilding every window (qs-rs 0.1.4); a part that really fails to load, even at the first start, still gets fresh windows.
+- **iRiS Island notices**: a notice, an event or a level on the Island no longer pulls the frame's corner bubbles down with it for its seconds (iRiS 2.33.62, from the Hub).
+
+## [3.0.0] - 2026-11-07
+
+iNiR 3.0 rebuilds the shell from the ground up: a small base with every family as a plugin, its own prebuilt runtime, a home at inir.space, and a new Settings for iRiS. It is the work of 1,131 commits to the base and more than 1,300 across the Hub, the runtime and the `inir` command. One `inir update` brings all of it, compiles nothing on your machine, and keeps your config.
+
+### Added
+
+#### The new base
+- **Families are plugins**: Material, Waffle and iRiS install from the iNiR Hub and update on their own; the welcome wizard offers them, and only the family you wear compiles at start.
+- **iNiR Hub**: families, iRiS Designs, components, desktop widgets, colour themes and web apps in one catalogue, browsed in each family's Settings as a store (list or grid, sort, what's new per version) and at inir.space/hub.
+- **Votes and reactions**: like any Hub item, react with any emoji from a small search ("pregnant" finds 🫃) and see how many installed it; what others give shows live, with no account and without your name, and one switch turns it off.
+- **Components with a panel**: a Hub component can bring a surface of its own, with its own IPC and its own options file, without touching a family or your settings.
+- **qs-rs**: the shell runs on Quickshell rebuilt in Rust with its own Qt, prebuilt and checked by sha256; Quickshell stays as the fallback.
+- **inir-accel**: one Rust binary takes over the shell's Python and Go helpers: wallpaper colours, the iRiS palette, app themes, thumbnails, lyrics and screenshot regions.
+- **The `inir` command**: rewritten in Go with shell completions; `inir doctor` runs setup's checks and repairs, `inir update` shows each stage and the release notes, plus `inir deps`, `inir hub`, `inir run` and `inir look export|import`.
+- **inir.space**: the website, every guide at inir.space/docs, the Hub catalogue and this changelog in one place.
+- **Umbriel**: iNiR runs on Umbriel, the Noctalia team's compositor, next to Niri; the first login there brings your keybinds and keyboard layout along.
+- **NixOS**: a lean NixOS module with its Python environment and a Niri config to start from.
+
+#### iRiS
+- **Prism**: iRiS Settings built new, and the one it opens with: every option as a numbered row under a hero of light broken into its spectrum, search that opens as you type, your recent changes and the music beside it, Ctrl+Z for any change.
+- **Every option in one place**: Display, Colour, Wallpaper, Sources, Widgets, Screenshots & Recording and the rest moved out of Material's pages into iRiS Settings, each area with a live scene of what it changes; Classic and Folio remain as other layouts, and the v2.33 design is one key away.
+- **Designs**: another look over the same engine, picked in Settings › Style; AIRISU, the first, is coloured lacquer with its own Island, lock, Spotlight, Control Center, notifications, OSD, menus, dock and widgets.
+- **Live activities**: the Island carries music, timers, calls and replies, charging, screenshots and camera or mic in use, like a dynamic island, each with its own switch and order.
+- **Island designs**: Halo, Ledger, Tiles, Dial, Marquee, Duo, Headline, Rings, Aura, Status, Forecast, World, Comet, Lumen, Glyph and Tide, each with its own options.
+- **Bar layouts**: the Island alone, docked into a corner, rising from a full Shelf, split into Pods, or as a menu bar that names the app and numbers workspaces.
+- **The shelf**: the Island keeps what you copy, capture and drop, ready to drag out again.
+- **Looks and textures**: Nothing OS, Synth and Gel looks beside Apple; Flat is the factory texture, with Light leak and Light streak as new ones; a Glyph icon pack with its own shape, fill and weight.
+- **Wallpaper picker**: three layouts, favourites, local folders and web sources, with colours shown as paint strips.
+
+#### Desktop widgets
+- **Edit mode**: the desktop recedes into a card where widgets snap with magnets and guides, a shelf holds every widget, and Undo takes back any move; in iRiS and in Material.
+- **Saved desktops**: Glance, Dashboard, Focus, Listening and Bare from the factory, and any desktop of your own saved as a preset.
+- **Sizes**: small, medium and large for every widget, each with its own layout; content widgets still take any width and height.
+- **New widgets**: lyrics, palette, photo, world clock, vitals, timers and screen time, with Countdown and Shell Line from the Hub.
+- **Faces per family**: Material widgets speak Material 3 Expressive, iRiS has its own faces, and every widget says something useful when there is nothing to show.
+
+#### Material
+- **Settings**: two panes and a home of shaped tiles, global styles as a gallery, changed settings marked with their way back; the v2.33 window returns as Classic, one click away.
+- **Hub page**: a dense store, as a list or a grid.
+- **Type and motion**: Google Sans Flex with figures that round out by size, dock icons that swell under the pointer, and a bar and dock that wait for a rest before they hide.
+- **Wallpaper picker**: a skewed deck with a full screen preview.
+
+#### Waffle
+- **Settings**: Windows 11 cards and categories, expanders that carry their switch, and keyboard focus as WinUI draws it.
+- **Take style from Material**: one switch borrows Material's global style.
+- **Welcome and Hub**: Waffle's own welcome steps and the Hub as a store library.
+
+#### Everywhere
+- **Live window previews**: the overview, Orbit, the dock, Alt+Tab, taskbars and task view show the real windows moving, not old stills.
+- **Live pins**: pin part of a window to the screen and it keeps updating.
+- **Notifications**: typed replies to apps that take one, and quiet delivery chosen per app.
+- **Undo over confirm**: removals happen at once with an Undo, instead of asking first.
+- **Picture-in-picture**: a PiP window from any browser floats on its own.
+- **Web apps**: Qt WebEngine is a one-time download of about 110 MB, started from the Web Apps tab.
+- **Fonts**: Geist, Geist Mono and Geist Pixel ship with the shell.
+
+### Changed
+- `inir update` brings the whole new iNiR: the base, your families from the Hub, qs-rs, inir-accel and the `inir` command, all prebuilt. Hub items update even when the base is current, and a version that won't load is rolled back to the one you had.
+- Migrations are gone: the update itself sets right whatever an older iNiR left behind, so `inir migrate` and `./setup migrate` retired.
+- The base keeps one wallpaper; the rest come with the iNiR-Walls pack setup offers, and a wallpaper you had set from the shell's own pictures is copied to your Wallpapers folder first.
+- The docs live at inir.space/docs, and every family's About page points there.
+- Under iRiS, Material's Settings pages keep only what iRiS Settings has no row for.
+- iRiS opens flat and black from the factory, with glass and glows yours to turn on.
+- Menus open on press, a press that closed one stays closed, and tooltips warm up once, then show at once beside each other.
+- Only the family in use compiles at start, panels opened all day are built once and kept, and the wallpaper arrives with the first frame.
+- The shell runs as `inir-shell`, out of reach of ananicy's `qs` rule, and Settings shows in docks and taskbars as iNiR Settings with its own icon.
+- A live wallpaper pauses under a maximized window, and a web wallpaper plays on every monitor.
+- `go`, OpenCV and numpy left the dependencies: inir-accel does their work.
+- Debian builds Niri from its v26.04 tag with its session files, and takes prebuilt Niri and Quickshell where they exist.
+- The welcome wizard names no family until you pick one, and Skip lands on the recommended setup.
+
+### Fixed
+- A laptop with a charge limit is no longer taken for unplugged, and a low battery notice waits for the reading to hold instead of firing on a 0 % blip.
+- The night light comes back after a charger change resets the screen on some Intel laptops.
+- Desktop widgets keep the sizes and plates they had in v2.33, and a family switch never rewrites their positions.
+- A setting changed in Prism or any Settings no longer stalls the shell, and search no longer lags.
+- Settings buttons, labels and segmented controls grow with their text, so long translations fit.
+- Dates, days, months and place names follow the shell's language, and `LC_ALL` wins over `LC_TIME`.
+- An edit to the config from outside wins over a save in flight, and a write that changes nothing is skipped.
+- Notifications, to-dos and events saved right as they load are no longer lost.
+- Notifications are no longer swallowed while the shell restarts: the Settings window stops holding a notification server of its own.
+- A moved or deleted wallpaper is replaced instead of stared at.
+- Text over the wallpaper reads in light and dark schemes, and widget glass blurs the picture under it.
+- Borders keep see-through windows see-through.
+- Brightness keys skip a monitor whose screen went away, and the wheel finds the right one.
+- A fast drag on a volume slider no longer stalls it, and the mixer lists every app.
+- YouTube's skip brings you back to where you were, and a resting song keeps its title.
+- An app icon your theme lacks takes a clean fallback instead of a checkerboard.
+- Power profile controls show only where a daemon runs, and setup installs one where nothing manages power.
+- Void: a login no longer hangs when D-Bus starts elogind before its own service does.
+- Debian: a Niri built from source gets niri-session and its service, so the shell starts at login.
+- The iNiR block in `.bashrc` and `.zshrc` prints colours only in interactive shells.
+- A reinstall keeps your settings, Niri config and dotfiles, every download retries a dropped connection, and Python packages below their minimum get upgraded.
+- Machines without Bluetooth, Tailscale or a saved game mode state no longer log warnings about them.
+- Waffle: a desktop renamed in Task View keeps its name.
+
+### Contributors
+Thanks to everyone who ran the prerelease every day for a month and told us what broke: this release is better for each report.
+
 ## [2.33.0] - 2026-10-08
 
 **iRiS 0.3**

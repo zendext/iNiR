@@ -19,6 +19,8 @@ Singleton {
     property bool sloppySearch: Config.options?.search.sloppy ?? false
     property real scoreThreshold: 0.2
     property list<string> entries: []
+    // Read at least once: an empty list before that says nothing.
+    property bool listed: false
     property int _readAttempts: 0
     property bool _refreshQueued: false
     readonly property var preparedEntries: entries.map(a => ({
@@ -65,7 +67,7 @@ Singleton {
     // hold it, and they outlive the fix — so clean on the way out as well. The
     // filter forwards anything that is not a browser text/html payload byte for
     // byte, which keeps images intact.
-    readonly property string _markupFilter: `'${Directories.scriptsPath}/clipboard-store.py' --filter`
+    readonly property string _markupFilter: `'${Directories.scriptsPath}/lib/accel-run' clipboard-store --filter`
 
     function decodeCommand(entry): string {
         if (root.cliphistBinary.includes("cliphist")) {
@@ -137,8 +139,28 @@ Singleton {
         }
     }
 
+    // Copied aside first (the runtime dir, gone at logout), so Undo can store it back.
     function deleteEntry(entry) {
-        deleteProc.deleteEntry(entry);
+        // A second delete while the first is still being copied aside goes without an Undo.
+        if (keepProc.running) { deleteProc.deleteEntry(entry); return }
+        keepProc.entry = entry
+        keepProc.exec(["bash", "-c", 'd="${XDG_RUNTIME_DIR:-/tmp}/inir-undo"; mkdir -p "$d" && f="$(mktemp -p "$d" clip-XXXXXX)" '
+            + '&& printf "%s\n" "$1" | "$2" decode > "$f" && echo "$f"', "keep", String(entry), root.cliphistBinary])
+    }
+
+    Process {
+        id: keepProc
+        property string entry: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const kept = (text ?? "").trim()
+                deleteProc.deleteEntry(keepProc.entry)
+                if (kept.length === 0) return
+                Undo.offer(Translation.tr("Removed from clipboard history"),
+                    () => Quickshell.execDetached(["bash", "-c", '"$2" store < "$1"; rm -f -- "$1"', "restore", kept, root.cliphistBinary]),
+                    () => Quickshell.execDetached(["rm", "-f", "--", kept]))
+            }
+        }
     }
 
     Process {
@@ -225,7 +247,7 @@ Singleton {
     // Two wrappers mark a text/html payload: Firefox's content-type meta tag and
     // the CF_HTML fragment markers Chromium and Electron apps emit. They are the
     // only reliable sign that the content is markup rather than text that happens
-    // to contain tags. Kept in sync with scripts/clipboard-store.py.
+    // to contain tags. Kept in sync with inir-accel clipboard-store.
     function isBrowserMarkup(str): bool {
         return str.startsWith('<meta http-equiv="content-type" content="text/html')
             || str.indexOf("<!--StartFragment-->") !== -1
@@ -297,11 +319,15 @@ Singleton {
                 readProc.buffer.push(line)
             }
         }
+        stderr: StdioCollector { id: readErr }
 
         onExited: (exitCode, exitStatus) => {
-            if (exitCode === 0) {
+            // A history nothing was copied into yet: cliphist exits 1 with "please store something first" (every new install logged an ERROR).
+            const empty = exitCode === 1 && String(readErr.text ?? "").includes("store something first")
+            if (exitCode === 0 || empty) {
                 // Cap the number of entries we keep to avoid heavy models
                 root.entries = readProc.buffer.slice(0, root.maxEntries)
+                root.listed = true
                 root._readAttempts = 0
                 if (root._refreshQueued) {
                     root._refreshQueued = false
@@ -320,9 +346,12 @@ Singleton {
         }
     }
 
+    /// Clipboard history service. The backend that makes clipboard panel work. You probably don't need to call this
+    /// directly.
     IpcHandler {
         target: "cliphistService"
 
+        /// Refresh clipboard history
         function update(): void {
             root.refresh()
         }

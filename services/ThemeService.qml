@@ -23,22 +23,29 @@ Singleton {
     readonly property var wallpaperThemingCfg: Config.options?.appearance?.wallpaperTheming ?? null
     readonly property var terminalAdjCfg: wallpaperThemingCfg?.terminalColorAdjustments ?? null
     readonly property string panelFamily: Config.options?.panelFamily ?? "ii"
-    readonly property bool waffleUsesMainWallpaper: Config.options?.waffles?.background?.useMainWallpaper ?? true
-    // What iRiS asks of the system's mode and of the apps' surfaces: both are read by switchwall.sh, so a change regenerates.
-    readonly property string irisSchemeChoice: panelFamily === "iris" ? String(Config.options?.iris?.appearance?.scheme ?? "auto") : "auto"
-    readonly property bool irisMaterialApps: panelFamily === "iris" && (Config.options?.iris?.appearance?.materialForApps ?? true)
+    readonly property bool familyUsesMainWallpaper: {
+        const key = Plugins.settingKey(panelFamily, "wallpaper")
+        return key.length === 0 || (Config.getNestedValue(key + ".useMainWallpaper", true) ?? true)
+    }
+    // What the active family asks of the system's mode and of the apps' surfaces (its plugin.json settings `scheme`,
+    // `appsSurface`): both are read by switchwall.sh, so a change regenerates.
+    readonly property string familySchemeChoice: String(Plugins.setting(panelFamily, "scheme", "auto"))
+    readonly property bool familyAppsSurface: Boolean(Plugins.setting(panelFamily, "appsSurface", false))
     property string appsSurfaceSeed: ""
     // A scheme the person picks is also their saved preference, so Auto keeps what they last saw instead of an older toggle.
-    onIrisSchemeChoiceChanged: {
-        if (!Config.ready || irisSchemeChoice === "auto") return
-        const wantDark = irisSchemeChoice === "dark"
+    // After the change has gone out: written from inside it, the config write woke this very binding (a binding loop on
+    // every scheme switch).
+    onFamilySchemeChoiceChanged: Qt.callLater(root.keepSchemePreference)
+    function keepSchemePreference(): void {
+        if (!Config.ready || root.familySchemeChoice === "auto") return
+        const wantDark = root.familySchemeChoice === "dark"
         if ((Config.options?.appearance?.customTheme?.darkmode ?? true) !== wantDark)
             Config.setNestedValue("appearance.customTheme.darkmode", wantDark)
     }
     readonly property string liveRegenSignature: JSON.stringify({
         theme: currentTheme,
         panelFamily: root.panelFamily,
-        waffleUsesMainWallpaper: root.waffleUsesMainWallpaper,
+        familyUsesMainWallpaper: root.familyUsesMainWallpaper,
         paletteType: Config.options?.appearance?.palette?.type ?? "auto",
         themingWallpaperPath: Wallpapers.effectiveWallpaperPath ?? "",
         enableAppsAndShell: wallpaperThemingCfg?.enableAppsAndShell ?? true,
@@ -57,8 +64,9 @@ Singleton {
         termBackgroundBrightness: terminalAdjCfg?.backgroundBrightness ?? 0.5,
         softenColors: Config.options?.appearance?.softenColors ?? true,
         autoDarkLightMode: wallpaperThemingCfg?.autoDarkLightMode ?? false,
-        irisScheme: root.irisSchemeChoice === "ink" ? "light" : root.irisSchemeChoice,
-        irisMaterialApps: root.irisMaterialApps,
+        // Light schemes by another name (iRiS's ink) regenerate nothing.
+        familyScheme: ["auto", "dark"].includes(root.familySchemeChoice) ? root.familySchemeChoice : "light",
+        familyAppsSurface: root.familyAppsSurface,
     })
     property string _lastLiveRegenSignature: ""
     property string _lastPanelFamily: ""
@@ -112,6 +120,21 @@ Singleton {
         root._log("[ThemeService] setTheme completed");
     }
 
+    // A saved or Hub colour theme: its colours become the custom theme. ThemesConfig and the Hub
+    // pages of every family apply through here, so a theme looks the same wherever it was chosen.
+    function applyCustomColors(colors: var): void {
+        const current = Config.options?.appearance?.customTheme ?? ({})
+        const updates = ({})
+        for (const key in colors) {
+            if (current.hasOwnProperty(key))
+                updates[`appearance.customTheme.${key}`] = colors[key]
+        }
+        Config.setNestedValues(updates)
+        ThemePresets.applyPreset("custom")
+        if (root.currentTheme !== "custom")
+            root.setTheme("custom")
+    }
+
     // ── Global style ────────────────────────────────────────────────────
     // Single owner of "what does selecting style X write to config". This
     // lived in three places (both settings families and the action registry)
@@ -120,7 +143,7 @@ Singleton {
     // silently inherited material's corner style.
 
     function cornerStyleForGlobalStyle(styleId: string): int {
-        const styles = Config.options?.appearance?.globalStyleCornerStyles
+        const styles = Appearance.styleConfig?.globalStyleCornerStyles
         switch (styleId) {
         case "cards": return styles?.cards ?? 3
         case "aurora": return styles?.aurora ?? 1
@@ -141,18 +164,31 @@ Singleton {
         // Hug (0) leaves no float gap for angel's escalonado shadows to land in.
         if (styleId === "angel" && cornerStyle === 0)
             cornerStyle = 1
-        Config.setNestedValues({
-            "appearance.globalStyle": styleId,
-            "dock.cardStyle": cards,
-            "sidebar.cardStyle": cards,
-            "bar.cornerStyle": cornerStyle
-        })
+        // The style lives where the active family keeps it (plugin.json settings.globalStyle); its cards and corner
+        // presets go to the bar, dock and sidebars of the family that owns that style.
+        const styleKey = Plugins.settingKey(Plugins.active, "globalStyle")
+        if (styleKey.length === 0)
+            return
+        const owner = styleKey.split(".")[0]
+        const values = {}
+        values[`${styleKey}.globalStyle`] = styleId
+        values[`${owner}.dock.cardStyle`] = cards
+        values[`${owner}.sidebar.cardStyle`] = cards
+        values[`${owner}.bar.cornerStyle`] = cornerStyle
+        Config.setNestedValues(values)
     }
 
     readonly property var globalStyles: ["material", "cards", "aurora", "inir", "angel", "regalia", "zzz", "cookie", "editorial"]
 
+    /// The Global Style every Material surface and desktop widget follows: material, cards, aurora, inir, angel,
+    /// regalia, zzz, cookie or editorial.
+    ///
+    /// ```kdl
+    /// Mod+Alt+S { spawn "inir" "globalStyle" "set" "aurora"; }
+    /// ```
     IpcHandler {
         target: "globalStyle"
+        /// Switch to a style by name, with its bar corner and card defaults
         function set(style: string): string {
             const id = String(style ?? "").trim().toLowerCase()
             if (!root.globalStyles.includes(id))
@@ -160,12 +196,21 @@ Singleton {
             root.setGlobalStyle(id)
             return id
         }
-        function get(): string { return Config.options?.appearance?.globalStyle ?? "material" }
+        /// Return the active style
+        function get(): string { return Appearance.globalStyle }
+        /// List the styles
         function list(): string { return root.globalStyles.join(", ") }
     }
 
+    /// The system's light or dark mode, the one the shell and your apps share. With iRiS keeping a scheme (Dark, Ink
+    /// or Light), `set` moves that scheme too.
+    ///
+    /// ```kdl
+    /// Mod+Alt+L { spawn "inir" "colorMode" "set" "toggle"; }
+    /// ```
     IpcHandler {
         target: "colorMode"
+        /// `dark`, `light` or `toggle`
         function set(mode: string): string {
             const wanted = String(mode ?? "").trim().toLowerCase()
             if (wanted === "toggle") { Appearance.toggleDarkMode(); return "toggled" }
@@ -174,13 +219,16 @@ Singleton {
             else if (Appearance.m3colors.darkmode !== (wanted === "dark")) Appearance.toggleDarkMode()
             return wanted
         }
+        /// JSON: the mode in use, the colour theme, the saved choice, whether the wallpaper decides and iRiS's scheme
         function get(): string {
             return JSON.stringify({
                 mode: Appearance.m3colors.darkmode ? "dark" : "light",
                 colourTheme: root.currentTheme,
                 saved: (Config.options?.appearance?.customTheme?.darkmode ?? true) ? "dark" : "light",
                 fromWallpaper: wallpaperThemingCfg?.autoDarkLightMode ?? false,
-                irisScheme: root.irisSchemeChoice
+                familyScheme: root.familySchemeChoice,
+                // v2.33's name for it: scripts written against it keep reading.
+                irisScheme: root.familySchemeChoice
             })
         }
     }

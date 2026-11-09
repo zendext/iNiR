@@ -60,6 +60,7 @@ Singleton {
     FileView {
         id: persistentStatesFileView
         path: root.filePath
+        printErrors: false
 
         watchChanges: true
         onFileChanged: fileReloadTimer.restart()
@@ -265,6 +266,17 @@ Singleton {
 
             property JsonObject screenCast: JsonObject {
                 property bool active: false
+            }
+
+            // The song that played last, so Now Playing at rest shows it instead of an empty platter.
+            property JsonObject lastPlayed: JsonObject {
+                property string title: ""
+                property string artist: ""
+                property string source: ""
+                property string art: ""
+                // The player's desktop entry, so a tap at rest can open it again.
+                property string entry: ""
+                property real at: 0
             }
         }
     }

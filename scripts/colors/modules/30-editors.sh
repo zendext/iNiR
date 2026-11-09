@@ -9,7 +9,6 @@ APP_PALETTE_FILE="$STATE_DIR/user/generated/app-palette.json"
 PALETTE_FILE="$STATE_DIR/user/generated/palette.json"
 TERMINAL_FILE="$STATE_DIR/user/generated/terminal.json"
 LEGACY_COLORS_FILE="$STATE_DIR/user/generated/colors.json"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 VSCODE_THEMEGEN_BIN="$STATE_DIR/user/generated/bin/inir-vscode-themegen"
 OPENCODE_THEMEGEN_BIN="$STATE_DIR/user/generated/bin/inir-opencode-themegen"
 NEOVIM_CONFIG_DIR="$XDG_CONFIG_HOME/nvim"
@@ -18,21 +17,12 @@ NEOVIM_THEME_FILE="$NEOVIM_PLUGIN_DIR/neovim.lua"
 NEOVIM_OMARCHY_OVERRIDE_FILE="$NEOVIM_PLUGIN_DIR/zz-inir-omarchy.lua"
 NEOVIM_THEMEGEN="$SCRIPT_DIR/neovim_themegen.sh"
 
+# inir-accel's generators, linked into user/generated/bin by sdata/lib/prebuilt.sh
 ensure_vscode_themegen() {
-  command -v go &>/dev/null || return 1
-  mkdir -p "$STATE_DIR/user/generated/bin"
-  if [[ ! -x "$VSCODE_THEMEGEN_BIN" || "$REPO_ROOT/go.mod" -nt "$VSCODE_THEMEGEN_BIN" || "$SCRIPT_DIR/vscode_themegen/main.go" -nt "$VSCODE_THEMEGEN_BIN" || "$SCRIPT_DIR/themegencommon/common.go" -nt "$VSCODE_THEMEGEN_BIN" ]]; then
-    (cd "$REPO_ROOT" && go build -o "$VSCODE_THEMEGEN_BIN" ./scripts/colors/vscode_themegen) >/dev/null 2>&1 || return 1
-  fi
   [[ -x "$VSCODE_THEMEGEN_BIN" ]]
 }
 
 ensure_opencode_themegen() {
-  command -v go &>/dev/null || return 1
-  mkdir -p "$STATE_DIR/user/generated/bin"
-  if [[ ! -x "$OPENCODE_THEMEGEN_BIN" || "$REPO_ROOT/go.mod" -nt "$OPENCODE_THEMEGEN_BIN" || "$SCRIPT_DIR/opencode_themegen/main.go" -nt "$OPENCODE_THEMEGEN_BIN" || "$SCRIPT_DIR/themegencommon/common.go" -nt "$OPENCODE_THEMEGEN_BIN" ]]; then
-    (cd "$REPO_ROOT" && go build -o "$OPENCODE_THEMEGEN_BIN" ./scripts/colors/opencode_themegen) >/dev/null 2>&1 || return 1
-  fi
   [[ -x "$OPENCODE_THEMEGEN_BIN" ]]
 }
 
@@ -62,8 +52,6 @@ apply_code_editors() {
   local colors_file="$APP_PALETTE_FILE"
   [[ -f "$colors_file" ]] || colors_file="$PALETTE_FILE"
   [[ -f "$colors_file" ]] || colors_file="$LEGACY_COLORS_FILE"
-  local python_cmd
-  python_cmd=$(venv_python)
 
   local enable_vscode enable_neovim
   enable_vscode=$(config_json 'if .appearance.wallpaperTheming | has("enableVSCode") then .appearance.wallpaperTheming.enableVSCode else true end' true)
@@ -117,7 +105,7 @@ apply_code_editors() {
         done
         "${vscode_cmd[@]}" >> "$STATE_DIR/user/generated/code_editor_themes.log" 2>&1 || true
       else
-        "$python_cmd" "$SCRIPT_DIR/generate_terminal_configs.py" --scss "$SCSS_FILE" --colors "$colors_file" --terminal-json "$TERMINAL_FILE" --vscode --vscode-forks "${enabled_forks[@]}" >> "$STATE_DIR/user/generated/code_editor_themes.log" 2>&1 || true
+        echo "inir-accel is missing. Run: inir update" >> "$STATE_DIR/user/generated/code_editor_themes.log"
       fi
     fi
 
@@ -130,7 +118,7 @@ apply_code_editors() {
         done
         "${strip_cmd[@]}" >> "$STATE_DIR/user/generated/code_editor_themes.log" 2>&1 || true
       else
-        "$python_cmd" "$SCRIPT_DIR/vscode/theme_generator.py" --strip --forks "${disabled_forks[@]}" >> "$STATE_DIR/user/generated/code_editor_themes.log" 2>&1 || true
+        echo "inir-accel is missing. Run: inir update" >> "$STATE_DIR/user/generated/code_editor_themes.log"
       fi
     fi
   else
@@ -138,7 +126,7 @@ apply_code_editors() {
     if ensure_vscode_themegen; then
       "$VSCODE_THEMEGEN_BIN" --strip >> "$STATE_DIR/user/generated/code_editor_themes.log" 2>&1 || true
     else
-      "$python_cmd" "$SCRIPT_DIR/vscode/theme_generator.py" --strip >> "$STATE_DIR/user/generated/code_editor_themes.log" 2>&1 || true
+      echo "inir-accel is missing. Run: inir update" >> "$STATE_DIR/user/generated/code_editor_themes.log"
     fi
   fi
 
@@ -149,7 +137,7 @@ apply_code_editors() {
       if ensure_opencode_themegen; then
         "$OPENCODE_THEMEGEN_BIN" "$SCSS_FILE" "$colors_file" "$TERMINAL_FILE" >> "$STATE_DIR/user/generated/code_editor_themes.log" 2>&1 || true
       else
-        "$python_cmd" "$SCRIPT_DIR/opencode/theme_generator.py" "$SCSS_FILE" "$colors_file" "$TERMINAL_FILE" >> "$STATE_DIR/user/generated/code_editor_themes.log" 2>&1 || true
+        echo "inir-accel is missing. Run: inir update" >> "$STATE_DIR/user/generated/code_editor_themes.log"
       fi
     fi
   fi

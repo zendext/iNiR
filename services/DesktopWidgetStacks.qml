@@ -25,15 +25,22 @@ Singleton {
 
     readonly property var sharedKeys: ({
         "x": true, "y": true, "placementStrategy": true, "widgetScale": true, "locked": true,
-        "iris.size": true, "iris.material": true, "iris.opacity": true, "cornerRadius": true
+        "sizeClass": true, "iris.material": true, "iris.opacity": true, "cornerRadius": true
     })
     readonly property var sizeOrder: ["small", "medium", "large"]
     readonly property var intervals: [10, 20, 30, 60, 300]
     readonly property int defaultInterval: 20
     readonly property string prefix: "stack:"
 
-    readonly property bool live: (Config.options?.panelFamily ?? "ii") === "iris"
-        && !["material", "instrument", "readout"].includes(String(Config.options?.iris?.widgets?.design ?? "iris"))
+    // Stacks are a family's own faces, so they live while every widget wears them.
+    readonly property var _design: Plugins.manifests[Plugins.active]?.widgetDesign ?? ({})
+    readonly property bool live: {
+        void Config.revision
+        const face = root._design.face ?? ""
+        if (face.length === 0) return false
+        const shared = String(Config.getNestedValue(root._design.shared, face))
+        return shared === face || !root._design.choices.includes(shared)
+    }
 
     readonly property var stacks: {
         const raw = Config.options?.background?.widgets?.stacks ?? []
@@ -194,9 +201,9 @@ Singleton {
         }
         const key = root.prefix + id
         for (const record of (Config.options?.background?.widgets?.outputOverrides ?? [])) {
-            const size = record?.widgets?.[key]?.["iris.size"]
+            const size = record?.widgets?.[key]?.["sizeClass"]
             if (size !== undefined && fit(size) !== size)
-                DesktopWidgetLayout.setValue(String(record.output), key, "iris.size", fit(size))
+                DesktopWidgetLayout.setValue(String(record.output), key, "sizeClass", fit(size))
         }
         if (stack.size.length > 0 && fit(stack.size) !== stack.size)
             root._patch(id, { size: fit(stack.size) })
@@ -337,8 +344,8 @@ Singleton {
         const facts = root.reported[anchor]
         for (const output of root._outputs()) {
             const values = root._effective(output, anchor)
-            if (values["iris.size"] === undefined && facts?.size)
-                values["iris.size"] = facts.size
+            if (values["sizeClass"] === undefined && facts?.size)
+                values["sizeClass"] = facts.size
             DesktopWidgetLayout.setValues(output, root.prefix + id, values)
         }
         const list = root.stacks.slice()
@@ -351,17 +358,18 @@ Singleton {
         return id
     }
 
-    // A stack shows its pages in the iRiS design; a widget that chose another look for itself gives it up.
+    // A stack shows its pages in the family's design; a widget that chose another look for itself gives it up.
     function _ownDesign(key: string): void {
+        const own = String(root._design.key ?? "design")
         const updates = ({})
-        if (Config.getNestedValue("background.widgets." + key + ".iris.design", "auto") !== "auto")
-            updates["background.widgets." + key + ".iris.design"] = "auto"
+        if (Config.getNestedValue("background.widgets." + key + "." + own, "auto") !== "auto")
+            updates["background.widgets." + key + "." + own] = "auto"
         if (Object.keys(updates).length > 0)
             Config.setNestedValues(updates)
         for (const record of (Config.options?.background?.widgets?.outputOverrides ?? [])) {
-            const own = record?.widgets?.[key]?.["iris.design"]
-            if (own !== undefined && own !== "auto")
-                DesktopWidgetLayout.setValue(String(record.output), key, "iris.design", "auto")
+            const value = record?.widgets?.[key]?.[own]
+            if (value !== undefined && value !== "auto")
+                DesktopWidgetLayout.setValue(String(record.output), key, own, "auto")
         }
     }
 
@@ -524,35 +532,49 @@ Singleton {
         })
     }
 
+    /// iRiS widget stacks: several desktop widgets sharing one place, one page shown at a time. Service:
+    /// `services/DesktopWidgetStacks.qml`. Applies while the widgets wear the iRiS design.
     IpcHandler {
         target: "widgetStacks"
 
+        /// Returns JSON: whether stacks are live, each stack's id, pages in order, rotation, interval, the size
+        /// classes all its pages share and the page shown on each output
         function status(): string { return root.describe() }
+        /// Stack two or more iRiS widgets joined with `+` (`weather+monthCalendar`); the first one's place and size
+        /// become the stack's
         function create(widgets: string): string {
             const id = root.create(widgets.split("+").map(name => name.trim()).filter(name => name.length > 0))
             return id.length > 0 ? id : "needs two or more iRiS widgets on the desktop that are not in a stack"
         }
+        /// Add a widget as the last page
         function add(stack: string, widget: string): string {
             return root.add(stack, widget) ? "added" : "not added"
         }
+        /// Take a widget out; it stays where the stack is and the layout moves it beside. A stack left with one page
+        /// dissolves
         function remove(widget: string): string {
             return root.remove(widget) ? "left the stack" : "not in a stack"
         }
+        /// Split the stack back into single widgets
         function dissolve(stack: string): string {
             return root.dissolve(stack) ? "dissolved" : "no such stack"
         }
+        /// Show a page: a widget name, `next` or `previous`
         function page(stack: string, to: string): string {
             const output = String(GlobalStates.focusedScreen?.name ?? Quickshell.screens[0]?.name ?? "")
             if (to === "next" || to === "previous")
                 return root.step(output, stack, to === "next" ? 1 : -1) ? root.shownKey(output, stack) : "no such stack"
             return root.show(output, stack, to) ? to : "not a page of that stack"
         }
+        /// Move a page earlier (`-1`) or later (`1`) in the order
         function move(stack: string, widget: string, delta: int): string {
             return root.move(stack, widget, delta) ? "moved" : "not moved"
         }
+        /// `on` or `off`: the stack turns its own pages
         function rotate(stack: string, mode: string): string {
             return root.setRotate(stack, mode === "on") ? "rotation " + mode : "no such stack"
         }
+        /// Seconds between turns (5 to 3600)
         function interval(stack: string, seconds: int): string {
             return root.setSeconds(stack, seconds) ? seconds + " s" : "no such stack"
         }

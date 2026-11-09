@@ -68,7 +68,7 @@ Singleton {
     
     // React to controlNiriAnimations changes while active
     onControlNiriAnimationsChanged: {
-        if (active && CompositorService.isNiri) {
+        if (active && CompositorService.niriNative) {
             // When setting enabled AND gamemode active -> disable niri animations
             // When setting disabled -> re-enable niri animations
             setNiriAnimations(!active || !controlNiriAnimations)
@@ -130,11 +130,21 @@ Singleton {
     readonly property string _stateFile: Quickshell.env("HOME") + "/.local/state/quickshell/user/gamemode_active"
 
     // IPC handler for external control
+    /// Performance mode for gaming. Auto-detects fullscreen apps and disables animations/effects. Can also be toggled
+    /// manually for those stubborn games that don't go fullscreen properly.
+    ///
+    /// ```kdl
+    /// Super+F12 { spawn "inir" "gamemode" "toggle"; }
+    /// ```
     IpcHandler {
         target: "gamemode"
+        /// Toggle gamemode on/off
         function toggle(): void { root.toggle() }
+        /// Force enable gamemode
         function activate(): void { root.activate() }
+        /// Force disable gamemode
         function deactivate(): void { root.deactivate() }
+        /// Print current gamemode state (e.g. `active (manual)`, `inactive (off)`)
         function status(): string {
             const state = root.active ? "active" : "inactive";
             const detail = root._manualActive ? "manual" : root.autoActivated ? "auto" : "off";
@@ -244,6 +254,8 @@ Singleton {
     FileView {
         id: stateReader
         path: root._stateFile
+        // No file yet is the usual case, handled in onLoadFailed.
+        printErrors: false
 
         onLoaded: {
             const content = stateReader.text()
@@ -284,7 +296,7 @@ Singleton {
         interval: 200
         onTriggered: {
             root._loadState()
-            if (CompositorService.isNiri)
+            if (CompositorService.niriNative)
                 startupNiriSyncTimer.restart()
         }
     }
@@ -294,7 +306,7 @@ Singleton {
         interval: 900
         repeat: false
         onTriggered: {
-            if (!CompositorService.isNiri || !root.controlNiriAnimations)
+            if (!CompositorService.niriNative || !root.controlNiriAnimations)
                 return
             const shouldEnable = !root.active
             root._lastNiriAnimState = shouldEnable

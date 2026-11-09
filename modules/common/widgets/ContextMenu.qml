@@ -38,8 +38,6 @@ Loader {
     property int popupSide: 0  // For horizontal popup: Edges.Left or Edges.Right, 0 = vertical
     property real ambientShadowWidth: 1
     readonly property bool hasIcons: model.some(item => item.iconName !== undefined && item.iconName !== "")
-    readonly property var targetWindow: root.QsWindow.window
-    readonly property var targetScreen: root.targetWindow?.screen
 
     onFocusCleared: {
         if (!root.closeOnFocusLost) return;
@@ -98,7 +96,6 @@ Loader {
         // SysTrayMenu stacking order so outside clicks close without blocking buttons.
         PanelWindow {
             id: clickOutsideBackdrop
-            screen: root.targetScreen
             visible: CompositorService.isNiri && popupWindow.visible
                 && (root.closeOnFocusLost || root.closeOnOutsideClick)
             color: "transparent"
@@ -138,7 +135,6 @@ Loader {
         }
 
         anchor {
-            window: root.targetWindow
             adjustment: root.popupAdjustment ?? ((root.popupSide !== 0)
                 ? (PopupAdjustment.ResizeX | PopupAdjustment.SlideY)
                 : (PopupAdjustment.ResizeY | PopupAdjustment.SlideX))

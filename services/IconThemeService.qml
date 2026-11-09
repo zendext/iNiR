@@ -31,7 +31,7 @@ Singleton {
     function smartIconName(icon, appId) {
         if (!icon) {
             const guessed = AppSearch.lookupDesktopEntry(appId)?.icon ?? AppSearch.guessIcon(appId);
-            return guessed || appId || "application-x-executable";
+            return guessed || "application-x-executable";
         }
         
         if (icon.startsWith("/") || icon.startsWith("file://")) {
@@ -73,19 +73,67 @@ Singleton {
             return []
         }
         
+        // Once the theme is indexed, the answer is the one file that exists (or none, and
+        // the caller falls back to the system theme). Probing guessed paths through Image
+        // loads logged a "Cannot open" for every miss, on every delegate recycle.
+        if (root._dockIndexTheme === root.dockTheme) {
+            const hit = root._dockIndex[iconName]
+            return hit ? [`file://${hit}`] : []
+        }
+
+        return root._dockDirs(root.dockTheme).map(d => `file://${d}/${iconName}${d.endsWith("scalable") || d.endsWith("scalable/apps") ? ".svg" : ".png"}`)
+    }
+
+    // Where a dock theme keeps app icons, in the order they win.
+    function _dockDirs(theme: string): list<string> {
         const home = Quickshell.env("HOME")
-        const theme = root.dockTheme
-        
         return [
-            `file://${home}/.local/share/icons/${theme}/apps/scalable/${iconName}.svg`,
-            `file:///usr/share/icons/${theme}/apps/scalable/${iconName}.svg`,
-            `file://${home}/.local/share/icons/${theme}/scalable/apps/${iconName}.svg`,
-            `file:///usr/share/icons/${theme}/scalable/apps/${iconName}.svg`,
-            `file://${home}/.local/share/icons/${theme}/apps/256x256/${iconName}.png`,
-            `file:///usr/share/icons/${theme}/apps/256x256/${iconName}.png`,
-            `file://${home}/.local/share/icons/${theme}/256x256/apps/${iconName}.png`,
-            `file:///usr/share/icons/${theme}/256x256/apps/${iconName}.png`,
+            `${home}/.local/share/icons/${theme}/apps/scalable`,
+            `/usr/share/icons/${theme}/apps/scalable`,
+            `${home}/.local/share/icons/${theme}/scalable/apps`,
+            `/usr/share/icons/${theme}/scalable/apps`,
+            `${home}/.local/share/icons/${theme}/apps/256x256`,
+            `/usr/share/icons/${theme}/apps/256x256`,
+            `${home}/.local/share/icons/${theme}/256x256/apps`,
+            `/usr/share/icons/${theme}/256x256/apps`,
         ]
+    }
+
+    property var _dockIndex: ({})
+    property string _dockIndexTheme: ""
+    onDockThemeChanged: {
+        dockIndexProc.running = false
+        if (!root.dockTheme)
+            return
+        dockIndexProc.theme = root.dockTheme
+        dockIndexProc.command = ["sh", "-c", 'for d in "$@"; do [ -d "$d" ] && find -L "$d" -maxdepth 1 -type f \\( -name "*.svg" -o -name "*.png" \\) -printf "%h/%f\\n"; done', "sh", ...root._dockDirs(root.dockTheme)]
+        dockIndexProc.running = true
+    }
+
+    Process {
+        id: dockIndexProc
+        property string theme: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const index = {}
+                const dirs = root._dockDirs(dockIndexProc.theme)
+                const rank = path => dirs.indexOf(path.substring(0, path.lastIndexOf("/")))
+                for (const path of text.split("\n")) {
+                    if (!path)
+                        continue
+                    const file = path.substring(path.lastIndexOf("/") + 1)
+                    const ext = file.endsWith(".svg") ? ".svg" : ".png"
+                    // Same order as the guesses: svg dirs come first, then the 256 px pngs.
+                    if (ext === ".svg" && rank(path) > 3 || ext === ".png" && rank(path) < 4)
+                        continue
+                    const name = file.slice(0, -4)
+                    if (!(name in index) || rank(path) < rank(index[name]))
+                        index[name] = path
+                }
+                root._dockIndex = index
+                root._dockIndexTheme = dockIndexProc.theme
+            }
+        }
     }
 
     function ensureInitialized(): void {
@@ -169,7 +217,7 @@ Singleton {
         property string themeName: ""
         property bool skipRestart: false
         property string resolved: ""
-        command: ["/usr/bin/bash", Quickshell.shellPath("scripts/colors/icon-theme-for-mode.sh"),
+        command: [Quickshell.shellPath("scripts/lib/accel-run"), "icon-theme",
             variantProc.themeName, Appearance.m3colors.darkmode ? "dark" : "light"]
         onStarted: variantProc.resolved = ""
         stdout: SplitParser {
@@ -204,31 +252,8 @@ Singleton {
         id: kdeGlobalsUpdateProc
         property string themeName: ""
         property bool skipRestart: false
-        command: [
-            "/usr/bin/python3",
-            "-c",
-            `
-import configparser
-import os
-
-config_path = os.path.expanduser("~/.config/kdeglobals")
-theme = "${kdeGlobalsUpdateProc.themeName}"
-
-config = configparser.ConfigParser()
-config.optionxform = str  # Preserve case
-
-if os.path.exists(config_path):
-    config.read(config_path)
-
-if "Icons" not in config:
-    config["Icons"] = {}
-
-config["Icons"]["Theme"] = theme
-
-with open(config_path, "w") as f:
-    config.write(f, space_around_delimiters=False)
-`
-        ]
+        command: [Quickshell.shellPath("scripts/lib/accel-run"), "ini-set", Directories.homePath + "/.config/kdeglobals", "Icons", "Theme",
+            kdeGlobalsUpdateProc.themeName]
         onExited: (exitCode, exitStatus) => {
             // Also update plasma icon theme via kwriteconfig if available
             kwriteconfigProc.themeName = kdeGlobalsUpdateProc.themeName
@@ -273,31 +298,8 @@ with open(config_path, "w") as f:
     Process {
         id: qt5ctProc
         property string themeName: ""
-        command: [
-            "/usr/bin/python3",
-            "-c",
-            `
-import configparser
-import os
-
-theme = "${qt5ctProc.themeName}"
-config_path = os.path.expanduser("~/.config/qt5ct/qt5ct.conf")
-
-if not os.path.exists(config_path):
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    with open(config_path, "w") as f:
-        f.write("[Appearance]\\nicon_theme=" + theme + "\\n")
-else:
-    config = configparser.ConfigParser()
-    config.optionxform = str
-    config.read(config_path)
-    if "Appearance" not in config:
-        config["Appearance"] = {}
-    config["Appearance"]["icon_theme"] = theme
-    with open(config_path, "w") as f:
-        config.write(f, space_around_delimiters=False)
-`
-        ]
+        command: [Quickshell.shellPath("scripts/lib/accel-run"), "ini-set", Directories.homePath + "/.config/qt5ct/qt5ct.conf", "Appearance",
+            "icon_theme", qt5ctProc.themeName]
         onExited: (exitCode, exitStatus) => {
             _log("[IconThemeService] qt5ct updated:", exitCode === 0 ? "success" : "failed")
         }
@@ -307,31 +309,8 @@ else:
     Process {
         id: qt6ctProc
         property string themeName: ""
-        command: [
-            "/usr/bin/python3",
-            "-c",
-            `
-import configparser
-import os
-
-theme = "${qt6ctProc.themeName}"
-config_path = os.path.expanduser("~/.config/qt6ct/qt6ct.conf")
-
-if not os.path.exists(config_path):
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    with open(config_path, "w") as f:
-        f.write("[Appearance]\\nicon_theme=" + theme + "\\n")
-else:
-    config = configparser.ConfigParser()
-    config.optionxform = str
-    config.read(config_path)
-    if "Appearance" not in config:
-        config["Appearance"] = {}
-    config["Appearance"]["icon_theme"] = theme
-    with open(config_path, "w") as f:
-        config.write(f, space_around_delimiters=False)
-`
-        ]
+        command: [Quickshell.shellPath("scripts/lib/accel-run"), "ini-set", Directories.homePath + "/.config/qt6ct/qt6ct.conf", "Appearance",
+            "icon_theme", qt6ctProc.themeName]
         onExited: (exitCode, exitStatus) => {
             _log("[IconThemeService] qt6ct updated:", exitCode === 0 ? "success" : "failed")
             // Also sync to GTK settings.ini files
@@ -345,44 +324,9 @@ else:
     Process {
         id: gtkSettingsProc
         property string themeName: ""
-        command: [
-            "/usr/bin/python3",
-            "-c",
-            `
-import configparser
-import datetime
-import os
-import shutil
-
-theme = "${gtkSettingsProc.themeName}"
-
-for subdir in ["gtk-3.0", "gtk-4.0"]:
-    path = os.path.expanduser(f"~/.config/{subdir}/settings.ini")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-
-    config = configparser.ConfigParser(interpolation=None)
-    config.optionxform = str
-    valid = False
-    if os.path.isfile(path):
-        try:
-            config.read(path)
-            valid = config.has_section("Settings")
-        except configparser.Error:
-            valid = False
-
-    if not valid:
-        if os.path.isfile(path) and os.path.getsize(path) > 0:
-            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            shutil.copy2(path, f"{path}.corrupt-{stamp}.bak")
-        config = configparser.ConfigParser(interpolation=None)
-        config.optionxform = str
-        config["Settings"] = {}
-
-    config["Settings"]["gtk-icon-theme-name"] = theme
-    with open(path, "w") as f:
-        config.write(f, space_around_delimiters=False)
-`
-        ]
+        command: ["/usr/bin/bash", "-c",
+            "for d in gtk-3.0 gtk-4.0; do \"$1\" ini-set \"$2/.config/$d/settings.ini\" Settings gtk-icon-theme-name \"$3\" --replace-invalid || s=1; done; exit ${s:-0}",
+            "_", Quickshell.shellPath("scripts/lib/accel-run"), Directories.homePath, gtkSettingsProc.themeName]
         onExited: (exitCode, exitStatus) => {
             _log("[IconThemeService] GTK settings.ini updated:", exitCode === 0 ? "success" : "failed")
         }

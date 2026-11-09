@@ -1,4 +1,5 @@
 //@ pragma UseQApplication
+//@ pragma AppId inir
 //@ pragma Env QS_NO_RELOAD_POPUP=1
 //@ pragma Env INIR_STANDALONE_WINDOW=1
 //@ pragma Env QT_QUICK_CONTROLS_STYLE=Basic
@@ -97,7 +98,7 @@ ApplicationWindow {
             RippleButton {
                 colBackground: Appearance.colors.colLayer2
                 contentItem: StyledText {
-                    text: Translation.tr("Yes")
+                    text: Translation.tr("Stop")
                 }
                 onClicked: {
                     Quickshell.execDetached(["/usr/bin/killall", ...conflictGroup.programs])
@@ -107,7 +108,7 @@ ApplicationWindow {
             RippleButton {
                 colBackground: Appearance.colors.colLayer2
                 contentItem: StyledText {
-                    text: Translation.tr("No")
+                    text: Translation.tr("Keep")
                 }
                 onClicked: conflictGroup.visible = false
             }

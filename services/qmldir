@@ -1,5 +1,6 @@
 module qs.services
 singleton AwwwBackend 1.0 AwwwBackend.qml
+singleton Plugins 1.0 Plugins.qml
 singleton Ai 1.0 Ai.qml
 singleton AppCatalog 1.0 AppCatalog.qml
 singleton AppLauncher 1.0 AppLauncher.qml
@@ -12,7 +13,6 @@ singleton Booru 1.0 Booru.qml
 BooruResponseData 1.0 BooruResponseData.qml
 singleton Brightness 1.0 Brightness.qml
 singleton CalendarSync 1.0 CalendarSync.qml
-singleton CalendarCn 1.0 CalendarCn.qml
 singleton CavaTheme 1.0 CavaTheme.qml
 singleton CompositorService 1.0 CompositorService.qml
 singleton ConflictKiller 1.0 ConflictKiller.qml
@@ -21,6 +21,10 @@ DankSocket 1.0 DankSocket.qml
 singleton DateTime 1.0 DateTime.qml
 singleton DeviceEvents 1.0 DeviceEvents.qml
 singleton DesktopItems 1.0 DesktopItems.qml
+singleton DesktopArrange 1.0 DesktopArrange.qml
+singleton DesktopEditHistory 1.0 DesktopEditHistory.qml
+singleton DesktopPresets 1.0 DesktopPresets.qml
+singleton DesktopEditStage 1.0 DesktopEditStage.qml
 singleton DesktopWidgetLayout 1.0 DesktopWidgetLayout.qml
 singleton DesktopWidgetStacks 1.0 DesktopWidgetStacks.qml
 singleton DevNavigation 1.0 DevNavigation.qml
@@ -32,11 +36,13 @@ singleton GamePerformanceService 1.0 GamePerformanceService.qml
 singleton GlobalActions 1.0 GlobalActions.qml
 HyprlandData 1.0 HyprlandData.qml
 singleton Hyprsunset 1.0 Hyprsunset.qml
+singleton Hub 1.0 Hub.qml
 singleton IconThemeService 1.0 IconThemeService.qml
 singleton Idle 1.0 Idle.qml
 singleton KeyboardIndicators 1.0 KeyboardIndicators.qml
 singleton JapaneseDictionary 1.0 JapaneseDictionary.qml
 singleton LiveActivities 1.0 LiveActivities.qml
+singleton LivePins 1.0 LivePins.qml
 singleton LyricsService 1.0 LyricsService.qml
 singleton MaterialThemeLoader 1.0 MaterialThemeLoader.qml
 singleton MemoryPressureService 1.0 MemoryPressureService.qml
@@ -80,3 +86,4 @@ singleton WidgetPowerManager 1.0 WidgetPowerManager.qml
 singleton WindowPreviewService 1.0 WindowPreviewService.qml
 singleton WorldClock 1.0 WorldClock.qml
 singleton YtMusic 1.0 YtMusic.qml
+singleton Undo 1.0 Undo.qml

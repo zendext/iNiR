@@ -30,6 +30,8 @@ Singleton {
         id: eventsFileView
         path: Qt.resolvedUrl(root.filePath)
         watchChanges: true
+        // no events yet is the usual first state, handled in onLoadFailed: not a warning
+        printErrors: false
         onLoaded: {
             const fileContents = eventsFileView.text()
             if (!fileContents || fileContents.trim() === "") {
@@ -55,7 +57,8 @@ Singleton {
                 Quickshell.execDetached(["/usr/bin/mkdir", "-p", parentDir])
                 root.list = []
                 root.nextId = 1
-                root.saveToFile()
+                // later: stock Quickshell forgets a write started inside its own load signal
+                Qt.callLater(root.saveToFile)
             } else {
                 console.log("[Events] Error loading file:", error)
                 root.list = []
@@ -169,10 +172,17 @@ Singleton {
     function removeEvent(id) {
         const index = root.list.findIndex(e => e.id === id)
         if (index !== -1) {
-            root.list.splice(index, 1)
+            const gone = root.list.splice(index, 1)[0]
             root.list = root.list
             root.eventRemoved(id)
             root.saveToFile()
+            Undo.offer(Translation.tr("Removed %1").arg(gone.title), () => {
+                if (root.list.some(e => e.id === gone.id)) return
+                root.list.splice(Math.min(index, root.list.length), 0, gone)
+                root.list = root.list
+                root.eventAdded(gone)
+                root.saveToFile()
+            })
             return true
         }
         return false

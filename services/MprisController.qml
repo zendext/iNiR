@@ -10,7 +10,6 @@ import Quickshell.Services.Pipewire
 import qs
 import qs.modules.common
 import qs.modules.common.functions
-import qs.services.deferred
 
 Singleton {
 	id: root;
@@ -368,7 +367,7 @@ Singleton {
 	}
 
 	readonly property bool isYtMusicActive: {
-		if (!(Config.options?.sidebar?.ytmusic?.enable ?? false)) return false;
+		if (!(Config.options?.ytmusic?.enable ?? false)) return false;
 		if (activePlayer) return _isYtMusicMpv(activePlayer);
 		// Fallback only during transient gaps where activePlayer is momentarily null
 		// while YtMusic is still playing/initializing.
@@ -523,7 +522,7 @@ Singleton {
 		const name = player?.dbusName ?? "";
 		if (!name) return false;
 		
-		const ytMusicEnabled = Config.options?.sidebar?.ytmusic?.enable ?? false;
+		const ytMusicEnabled = Config.options?.ytmusic?.enable ?? false;
 		if (!ytMusicEnabled && _isYtMusicMpvRaw(player)) return false;
 
 		// Explicitly drop X/Twitter media noise early (url/title/album)
@@ -718,13 +717,22 @@ Singleton {
 	}
 
 	function _isYtMusicMpv(player): bool {
-		if (!(Config.options?.sidebar?.ytmusic?.enable ?? false)) return false;
+		if (!(Config.options?.ytmusic?.enable ?? false)) return false;
 		return _isYtMusicMpvRaw(player);
 	}
 	
 	function _normTitle(s): string {
 		return (s ?? "").toLowerCase().replace(/[\t\r\n|•·]+/g, " ").replace(/\s+/g, " ").trim();
 	}
+
+	// What played last, if a tap can bring it back: its player app. A browser's video closed with its tab, so it is not
+	// offered (Now Playing at rest showed a closed video that a tap could not reopen, his 10-30).
+	function lastPlayedApp(): var {
+		const id = String(Persistent.states.lastPlayed.entry ?? "");
+		if (id.length === 0 || /firefox|zen|chrom|brave|vivaldi|opera|edge|librewolf|floorp|browser/i.test(id)) return null;
+		return AppSearch.lookupDesktopEntry(id);
+	}
+	function resumeLast(): bool { return AppSearch.launchEntry(root.lastPlayedApp()); }
 
 	function _isBrowserPlayer(player): bool {
 		if (!player) return false;
@@ -813,23 +821,40 @@ Singleton {
 		if (!win)
 			return;
 
+		if (browserNavProcess.running)
+			return;
+		// The key only reaches a focused browser, so the person is taken there for a moment and brought back: to the
+		// window they had, or, from the desktop or an empty workspace (no window focused), to that workspace.
 		const restoreWindow = NiriService.activeWindow;
-		const restoreId = restoreWindow && restoreWindow.id !== win.id ? String(restoreWindow.id) : "";
-		const key = direction === "previous" ? "p" : "n";
-		Quickshell.execDetached(["/usr/bin/bash", "-c", `
-			target="$1"
-			restore="$2"
-			key="$3"
-			command -v niri >/dev/null 2>&1 || exit 0
+		root._browserNavRestore = {
+			window: restoreWindow && restoreWindow.id !== win.id ? restoreWindow.id : null,
+			workspace: NiriService.focusedWorkspaceId
+		};
+		// Niri focuses it in the same breath as the key; elsewhere the shell's own socket focuses it first.
+		const viaNiri = CompositorService.niriNative;
+		if (!viaNiri)
+			NiriService.focusWindow(win.id);
+		browserNavProcess.command = ["/usr/bin/bash", "-c", `
 			command -v wtype >/dev/null 2>&1 || exit 0
-			niri msg action focus-window --id "$target" >/dev/null 2>&1 || exit 0
+			if [ "$3" = niri ]; then niri msg action focus-window --id "$1" >/dev/null 2>&1 || exit 0; fi
 			sleep 0.08
-			wtype -M shift -k "$key" >/dev/null 2>&1 || true
+			wtype -M shift -k "$2" >/dev/null 2>&1 || true
 			sleep 0.05
-			if [ -n "$restore" ] && [ "$restore" != "$target" ]; then
-				niri msg action focus-window --id "$restore" >/dev/null 2>&1 || true
-			fi
-		`, "_", String(win.id), restoreId, key]);
+		`, "_", String(win.id), direction === "previous" ? "p" : "n", viaNiri ? "niri" : "socket"];
+		browserNavProcess.running = true;
+	}
+
+	property var _browserNavRestore: null
+	Process {
+		id: browserNavProcess
+		onExited: {
+			const back = root._browserNavRestore;
+			root._browserNavRestore = null;
+			if (back?.window !== null && back?.window !== undefined)
+				NiriService.focusWindow(back.window);
+			else if (String(back?.workspace ?? "").length > 0)
+				NiriService.switchToWorkspaceById(Number(back.workspace));
+		}
 	}
 
 	function canGoPreviousForPlayer(player): bool {
@@ -886,7 +911,7 @@ Singleton {
 	// Check if player is related to YtMusic (for duplicate filtering)
 	function _isYtMusicRelated(player): bool {
 		if (!player) return false;
-		if (!(Config.options?.sidebar?.ytmusic?.enable ?? false)) return false;
+		if (!(Config.options?.ytmusic?.enable ?? false)) return false;
 		if (_isYtMusicMpv(player)) return true;
 		// Only consider browser YouTube players as YtMusic-related if titles match closely
 		if (!YtMusic.currentVideoId && !YtMusic.currentTitle) return false;
@@ -1401,16 +1426,39 @@ Singleton {
 		return root._cleanDisplayName(props["application.name"] || node.description || node.name || Translation.tr("Unknown"));
 	}
 
+	// What a stream says beyond its app: the media name, unless it repeats the app ("Firefox • Firefox") or is a
+	// placeholder a toolkit sets for every stream ("AudioStream", "Playback").
+	function streamDetail(node): string {
+		const media = String(node?.properties?.["media.name"] ?? "").trim();
+		if (media.length === 0) return "";
+		const app = root.streamDisplayName(node).toLowerCase();
+		const lower = media.toLowerCase();
+		if (app.length > 0 && (lower.includes(app) || app.includes(lower))) return "";
+		if (/^(audio ?stream|playback|capture|record(ing)?|(rec|play) ?stream|output|input|alsa (playback|capture)|webrtc voiceengine|simple directmedia layer)$/i.test(media)) return "";
+		return media;
+	}
+
 	function streamIconName(node): string {
+		return root._streamIcon(node) || "application-x-executable";
+	}
+
+	// What a mixer row draws for a stream: AppSearch.iconSource, so an entry whose icon the theme lacks falls to the
+	// stream's own hints and then to the fallback, never to an empty or checkerboard square.
+	function streamIconSource(node, fallback): string {
+		return node ? AppSearch.iconSource([root._streamIcon(node)], fallback) : "";
+	}
+
+	function _streamIcon(node): string {
 		const entry = root.streamDesktopEntry(node);
-		if (entry?.icon) return String(entry.icon);
+		const declared = String(entry?.icon ?? "");
+		if (declared.startsWith("/") || AppSearch.iconExists(declared)) return declared;
 		const props = node?.properties ?? {};
-		const hints = [props["application.icon-name"], props["application.id"], props["application.process.binary"], props["node.name"]];
+		const hints = [props["application.icon-name"], entry?.id, props["application.id"], props["application.process.binary"], props["node.name"]];
 		for (const hint of hints) {
 			const icon = AppSearch.guessIcon(String(hint ?? ""));
 			if (AppSearch.iconExists(icon)) return icon;
 		}
-		return "application-x-executable";
+		return "";
 	}
 
 	function compactStreamDisplayName(node, maxChars: int): string {
@@ -1519,7 +1567,9 @@ Singleton {
 	function effectiveArtUrl(player): string {
 		const direct = root.artUrlOf(player);
 		if (direct.length > 0) return direct;
-		if (AnimeWatch.ownsPlayer(player) && AnimeWatch.playingCover.length > 0) return AnimeWatch.playingCover;
+		// A player the family itself runs can know its cover better (iRiS's anime: verb `media.cover`).
+		const familyCover = GlobalStates.familyVerb("media", "cover")?.(player) ?? "";
+		if (familyCover.length > 0) return familyCover;
 		const videoId = root._extractYoutubeVideoId(
 			player?.metadata?.["xesam:url"] ?? "");
 		if (videoId.length > 0)
@@ -1527,15 +1577,25 @@ Singleton {
 		return root.faviconArtUrl(player);
 	}
 
+	/// Media player control. Automatically detects and uses YtMusic controls when active, otherwise uses the active
+	/// MPRIS player.
+	///
+	/// ```kdl
+	/// Ctrl+Mod+Space { spawn "inir" "mpris" "playPause"; }
+	/// Mod+Alt+N { spawn "inir" "mpris" "next"; }
+	/// Mod+Alt+P { spawn "inir" "mpris" "previous"; }
+	/// ```
 	IpcHandler {
 		target: "mpris"
 
+		/// Pause all players
 		function pauseAll(): void {
 			for (const player of Mpris.players.values) {
 				if (player.canPause) player.pause();
 			}
 		}
 
+		/// Toggle play/pause (uses YtMusic if active)
 		function playPause(): void {
 			const wasPlaying = root.isPlaying
 			if (root.isYtMusicActive && YtMusic.currentVideoId) {
@@ -1547,12 +1607,15 @@ Singleton {
 				GlobalStates.showMediaAction(wasPlaying ? "pause" : "play");
 			}
 		}
+		/// Previous track (uses YtMusic if active)
 		function previous(): void {
 			root.previous();
 		}
+		/// Next track (uses YtMusic if active)
 		function next(): void {
 			root.next();
 		}
+		/// Hand the controls to another player: `next`, `prev`, or part of its name (`spotify`, `firefox`)
 		function select(which: string): string {
 			const list = (root.displayPlayers?.length ?? 0) > 0 ? root.displayPlayers : root.players;
 			if (list.length === 0) return "no players";

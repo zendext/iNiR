@@ -105,8 +105,48 @@ _show_privilege_instructions() {
   echo "  $(whoami) ALL=(ALL) NOPASSWD: ALL" >&2
 }
 
+# True when the command installs packages through a system package manager.
+pkg_command_installs() {
+  case "${1:-} ${2:-}" in
+    "pacman -S"*|"xbps-install "*|"apt install"|"apt-get install"|"dnf install"|"zypper in"|"zypper install") return 0 ;;
+  esac
+  return 1
+}
+
+# power_profiles_wanted: the profile buttons need a power profiles daemon; true where none is on the system bus and
+# nothing else manages power (TLP, tuned and auto-cpufreq conflict with it, so a machine with one keeps it)
+power_profiles_wanted() {
+  local m
+  for m in tuned-adm tlp auto-cpufreq system76-power; do
+    command -v "$m" &>/dev/null && return 1
+  done
+  ! power_profiles_on_bus
+}
+
+# power_profiles_on_bus: the name Quickshell asks for is owned or startable; without gdbus, an installed daemon counts
+power_profiles_on_bus() {
+  command -v gdbus &>/dev/null || { command -v powerprofilesctl &>/dev/null; return; }
+  local m
+  for m in ListNames ListActivatableNames; do
+    gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method "org.freedesktop.DBus.$m"
+  done 2>/dev/null | grep -q "'org.freedesktop.UPower.PowerProfiles'"
+}
+
+# power_profiles_enable UNIT...: on right after the install: Arch enables nothing it installs, and Quickshell asks
+# for a bus name only the running daemon owns
+power_profiles_enable() {
+  [[ -d /run/systemd/system ]] || return 0
+  pkg_sudo systemctl enable --now "$@"
+}
+
 # Use elevate() when USE_ELEVATE is set (graphical mode), otherwise use sudo
 pkg_sudo() {
+  # --skip-deps means the user owns their packages: no step installs any.
+  if [[ "${SKIP_ALLDEPS:-false}" == "true" ]] && pkg_command_installs "$@"; then
+    echo -e "${STY_YELLOW:-}  Skipped with --skip-deps: $*${STY_RST:-}" >&2
+    return 1
+  fi
+
   # Priority 1: USE_ELEVATE environment variable (for custom elevation)
   if [[ "${USE_ELEVATE:-false}" == "true" ]] && type elevate &>/dev/null; then
     elevate "$@"
@@ -174,18 +214,18 @@ install-yay(){
   rm -rf /tmp/buildyay
 
   # Sync databases and install base-devel
-  if ! x pkg_sudo pacman -Sy --needed --noconfirm base-devel git; then
-      log_error "Failed to install base-devel/git. Check your pacman mirrors."
+  if ! pkg_sudo pacman -Sy --needed --noconfirm base-devel git; then
+      log_error "Failed to install base-devel and git; check your mirrors, then: sudo pacman -Syu --needed base-devel git"
       return 1
   fi
 
   # Clone yay-bin (faster than compiling yay)
-  x git clone https://aur.archlinux.org/yay-bin.git /tmp/buildyay || return 1
+  git clone https://aur.archlinux.org/yay-bin.git /tmp/buildyay || return 1
 
   # Build and install
   x cd /tmp/buildyay
-  if ! x makepkg -si --noconfirm; then
-      log_error "Failed to build/install yay."
+  if ! makepkg -si --noconfirm; then
+      log_error "Failed to build yay; install an AUR helper (yay or paru) yourself, then: ./setup install"
       x cd "${REPO_ROOT}"
       return 1
   fi
@@ -223,58 +263,6 @@ ensure_aur_helper(){
 # through install_pkgbuild_deps() in install-deps.sh (no --asdeps).
 
 #####################################################################################
-# Python Environment (All distros)
-#####################################################################################
-
-install-python-packages(){
-  tui_info "Setting up Python virtual environment..."
-
-  local venv_dir="${XDG_STATE_HOME:-$HOME/.local/state}/quickshell/.venv"
-
-  if ! command -v uv &>/dev/null; then
-    log_warning "uv not installed, skipping Python venv setup"
-    return 0
-  fi
-
-  # Check for broken venv (e.g. after python update)
-  if [[ -d "$venv_dir/bin" ]]; then
-    if ! "$venv_dir/bin/python" --version &>/dev/null; then
-      log_warning "Broken Python venv detected, recreating..."
-      rm -rf "$venv_dir"
-    fi
-  fi
-
-  if [[ ! -d "$venv_dir/bin" ]]; then
-    x mkdir -p "$(dirname "$venv_dir")"
-    x uv venv --prompt ii-venv "$venv_dir" -p 3.12 || uv venv --prompt ii-venv "$venv_dir" || {
-      log_warning "Could not create Python venv"
-      return 0
-    }
-  fi
-
-  # Install required packages from requirements.txt
-  # Try repo location first (during install), then target location (during doctor)
-  local requirements_file="${REPO_ROOT}/sdata/uv/requirements.txt"
-  if [[ ! -f "$requirements_file" ]]; then
-    if declare -F get_runtime_shell_dir >/dev/null; then
-      requirements_file="$(get_runtime_shell_dir)/sdata/uv/requirements.txt"
-    else
-      requirements_file="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/inir/sdata/uv/requirements.txt"
-    fi
-  fi
-
-  if [[ -f "$requirements_file" ]]; then
-    source "$venv_dir/bin/activate"
-    x uv pip install -r "$requirements_file"
-    deactivate
-  else
-    log_warning "requirements.txt not found"
-  fi
-
-  log_success "Python venv ready at $venv_dir"
-}
-
-#####################################################################################
 # Font Installation (All distros)
 #####################################################################################
 
@@ -296,24 +284,27 @@ install-font-from-url(){
   fi
 }
 
-install-material-symbols-rounded(){
-  if fc-list | grep -qi "Material Symbols Rounded"; then
-    log_success "Material Symbols Rounded already installed"
-    return 0
-  fi
-
-  install-font-from-url "MaterialSymbolsRounded" \
-    "https://raw.githubusercontent.com/google/material-design-icons/master/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.ttf"
-}
-
-install-material-symbols-outlined(){
-  if fc-list | grep -qi "Material Symbols Outlined"; then
-    log_success "Material Symbols Outlined already installed"
-    return 0
-  fi
-
-  install-font-from-url "MaterialSymbolsOutlined" \
-    "https://raw.githubusercontent.com/google/material-design-icons/master/variablefont/MaterialSymbolsOutlined%5BFILL%2CGRAD%2Copsz%2Cwght%5D.ttf"
+# The three glyph sets a person can pick. Rounded draws the shell, so only its loss is worth failing for.
+install-material-symbols(){
+  local set url font_dir="${HOME}/.local/share/fonts" missing=0
+  mkdir -p "$font_dir"
+  for set in Rounded Outlined Sharp; do
+    if fc-list | grep -qi "Material Symbols ${set}"; then
+      continue
+    fi
+    url="https://raw.githubusercontent.com/google/material-design-icons/master/variablefont/MaterialSymbols${set}%5BFILL%2CGRAD%2Copsz%2Cwght%5D.ttf"
+    log_info "Downloading Material Symbols ${set}..."
+    if curl -fsSL --connect-timeout 10 --speed-limit 1024 --speed-time 30 -o "$font_dir/MaterialSymbols${set}.ttf" "$url"; then
+      log_success "Material Symbols ${set} installed"
+    elif [[ "$set" == Rounded ]]; then
+      log_error "Could not download Material Symbols, so UI icons will be broken; once online run: ./setup install"
+      missing=1
+    else
+      log_warning "Could not download Material Symbols ${set}; the Rounded set stays"
+    fi
+  done
+  fc-cache -f "$font_dir" 2>/dev/null
+  return "$missing"
 }
 
 install-jetbrains-mono-nerd(){
@@ -353,9 +344,9 @@ install-geist-font(){
   mkdir -p "$font_dir" "$temp_dir"
 
   if curl -fsSL -o "$temp_dir/geist.zip" \
-    "https://github.com/vercel/geist-font/releases/latest/download/Geist.zip"; then
+    "https://github.com/vercel/geist-font/releases/download/v1.8.2/geist-font-v1.8.2.zip"; then
     unzip -o "$temp_dir/geist.zip" -d "$temp_dir" >/dev/null 2>&1
-    find "$temp_dir" -name "*.ttf" -exec cp {} "$font_dir/" \;
+    find "$temp_dir" -path "*/ttf/*.ttf" -exec cp {} "$font_dir/" \;
     fc-cache -f "$font_dir"
     log_success "Geist font installed"
   else
@@ -589,20 +580,67 @@ install-eza(){
   rm -f /tmp/eza.tar.gz
 }
 
-install-uv(){
-  if command -v uv &>/dev/null; then
-    log_success "uv already installed"
+# yt-dlp for YT Music: upstream's own build, the same on every distro (packages fall behind YouTube) and brought
+# current by every update. The unpacked one: the one-file build unpacks 100 MB into /tmp on every call.
+ytdlp_dir() { printf '%s' "${XDG_DATA_HOME:-$HOME/.local/share}/inir/yt-dlp"; }
+
+# ytdlp_build: upstream's asset for this machine; none for other architectures
+ytdlp_build() {
+  local asset
+  case "$(uname -m)" in
+    x86_64|amd64) asset=yt-dlp_linux ;;
+    aarch64|arm64) asset=yt-dlp_linux_aarch64 ;;
+    *) return 1 ;;
+  esac
+  compgen -G '/lib/ld-musl-*' >/dev/null && asset="${asset/linux/musllinux}"
+  printf '%s' "$asset"
+}
+
+install-ytdlp(){
+  local dir asset tag have base tmp
+  dir="$(ytdlp_dir)"
+  if ! asset="$(ytdlp_build)"; then
+    log_warning "YT Music: yt-dlp has no build for $(uname -m); the distro's yt-dlp is used"
     return 0
   fi
 
-  log_info "Installing uv (Python package manager)..."
-
-  curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null || {
-    log_warning "Could not install uv"
+  have="$("$dir/yt-dlp" --version 2>/dev/null)"
+  tag="$(curl -fsSLI --max-time 15 -o /dev/null -w '%{url_effective}' https://github.com/yt-dlp/yt-dlp/releases/latest 2>/dev/null)"
+  tag="${tag##*/}"
+  if [[ ! "$tag" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$ ]]; then
+    [[ -n "$have" ]] && return 0
+    log_warning "YT Music: could not resolve the current yt-dlp release"
     return 1
-  }
+  fi
+  if [[ "$have" == "$tag" ]]; then
+    log_success "yt-dlp $have is current"
+    return 0
+  fi
 
-  log_success "uv installed"
+  base="https://github.com/yt-dlp/yt-dlp/releases/download/${tag}"
+  mkdir -p "${dir%/*}" && tmp="$(mktemp -d "${dir%/*}/.yt-dlp.XXXXXX")" || return 1
+  if ! curl -fsSL --max-time 30 -o "$tmp/SHA2-256SUMS" "$base/SHA2-256SUMS" \
+      || ! curl -fsSL --max-time 300 -o "$tmp/$asset.zip" "$base/$asset.zip" \
+      || ! (cd "$tmp" && grep -E "^[0-9a-f]{64} [ *]?${asset}\.zip\$" SHA2-256SUMS | sha256sum -c --status -) \
+      || ! unzip -q "$tmp/$asset.zip" -d "$tmp/new" \
+      || ! mv "$tmp/new/$asset" "$tmp/new/yt-dlp" \
+      || [[ "$("$tmp/new/yt-dlp" --version 2>/dev/null)" != "$tag" ]]; then
+    rm -rf "$tmp"
+    log_warning "YT Music: could not install yt-dlp ${tag}${have:+, keeping $have}"
+    [[ -n "$have" ]]
+    return
+  fi
+  rm -rf "$dir.old"
+  [[ ! -e "$dir" ]] || mv "$dir" "$dir.old" || { rm -rf "$tmp"; return 1; }
+  if ! mv "$tmp/new" "$dir"; then
+    [[ -e "$dir.old" ]] && mv "$dir.old" "$dir"
+    rm -rf "$tmp"
+    log_warning "YT Music: could not put yt-dlp ${tag} in place${have:+, keeping $have}"
+    [[ -n "$have" ]]
+    return
+  fi
+  rm -rf "$tmp" "$dir.old"
+  log_success "yt-dlp ${tag} installed for YT Music"
 }
 
 ytmusic-deno-compatible(){
@@ -611,19 +649,10 @@ ytmusic-deno-compatible(){
 
   local deno_version
   deno_version="$($deno_bin --version 2>/dev/null | awk 'NR == 1 { print $2; exit }')"
-  [[ -n "$deno_version" ]] || return 1
-
-  python3 - "$deno_version" <<'PY'
-import sys
-
-parts = sys.argv[1].split('.')
-try:
-    version = tuple(int(part) for part in parts[:3])
-except ValueError:
-    raise SystemExit(1)
-version += (0,) * (3 - len(version))
-raise SystemExit(0 if version >= (2, 3, 0) else 1)
-PY
+  # 2.3.0 or newer: a missing part counts as 0, one that isn't a number fails
+  [[ "$deno_version" =~ ^([0-9]+)(\.([0-9]+))?(\.[0-9]+(\..*)?)?$ ]] || return 1
+  local major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[3]:-0}"
+  (( 10#$major > 2 || (10#$major == 2 && 10#$minor >= 3) ))
 }
 
 ensure-ytmusic-js-runtime(){
@@ -667,28 +696,11 @@ ensure-ytmusic-js-runtime(){
     return 1
   fi
 
-  if ! python3 - "$tmp_dir" "$asset" <<'PY'
-import hashlib
-import pathlib
-import sys
-import zipfile
-
-root = pathlib.Path(sys.argv[1])
-asset = sys.argv[2]
-archive = root / asset
-checksum_file = root / f"{asset}.sha256sum"
-
-expected = checksum_file.read_text(encoding="utf-8").split()[0].lower()
-actual = hashlib.sha256(archive.read_bytes()).hexdigest()
-if actual != expected:
-    raise SystemExit("Deno checksum mismatch")
-
-with zipfile.ZipFile(archive) as zf:
-    info = zf.getinfo("deno")
-    with zf.open(info) as src, (root / "deno").open("wb") as dst:
-        dst.write(src.read())
-PY
-  then
+  local expected actual
+  expected="$(awk 'NF { print tolower($1); exit }' "${tmp_dir}/${asset}.sha256sum")"
+  actual="$(sha256sum "${tmp_dir}/${asset}" | awk '{ print $1 }')"
+  if [[ -z "$expected" || "$actual" != "$expected" ]] \
+      || ! unzip -p "${tmp_dir}/${asset}" deno > "${tmp_dir}/deno"; then
     rm -rf "$tmp_dir"
     log_warning "YT Music: Deno archive verification failed"
     return 1
@@ -707,459 +719,3 @@ PY
   return 1
 }
 
-#####################################################################################
-# Config File Setup (All distros)
-#####################################################################################
-
-setup-gtk-config(){
-  local cursor_theme="${1:-Bibata-Modern-Classic}"
-  local icon_theme="${2:-WhiteSur-dark}"
-  local gtk_theme="${3:-adw-gtk3-dark}"
-  local font="${4:-Geist}"
-
-  log_info "Setting up GTK configuration..."
-
-  # GTK 3
-  mkdir -p ~/.config/gtk-3.0
-  cat > ~/.config/gtk-3.0/settings.ini << EOF
-[Settings]
-gtk-theme-name=${gtk_theme}
-gtk-icon-theme-name=${icon_theme}
-gtk-font-name=${font}
-gtk-cursor-theme-name=${cursor_theme}
-gtk-cursor-theme-size=24
-gtk-toolbar-style=3
-gtk-toolbar-icon-size=GTK_ICON_SIZE_LARGE_TOOLBAR
-gtk-button-images=0
-gtk-menu-images=0
-gtk-enable-event-sounds=1
-gtk-enable-input-feedback-sounds=0
-gtk-xft-antialias=1
-gtk-xft-hinting=1
-gtk-xft-hintstyle=hintslight
-gtk-xft-rgba=rgb
-gtk-application-prefer-dark-theme=1
-gtk-decoration-layout=icon:minimize,maximize,close
-gtk-enable-animations=true
-gtk-primary-button-warps-slider=true
-EOF
-
-  # GTK 4
-  mkdir -p ~/.config/gtk-4.0
-  cat > ~/.config/gtk-4.0/settings.ini << EOF
-[Settings]
-gtk-theme-name=${gtk_theme}
-gtk-icon-theme-name=${icon_theme}
-gtk-font-name=${font}
-gtk-cursor-theme-name=${cursor_theme}
-gtk-cursor-theme-size=24
-EOF
-
-  log_success "GTK configuration set"
-}
-
-setup-kvantum-config(){
-  local theme="${1:-MaterialAdw}"
-
-  log_info "Setting up Kvantum configuration..."
-
-  mkdir -p ~/.config/Kvantum
-  cat > ~/.config/Kvantum/kvantum.kvconfig << EOF
-[General]
-theme=${theme}
-EOF
-
-  log_success "Kvantum configuration set"
-}
-
-setup-environment-config(){
-  local cursor_theme="${1:-Bibata-Modern-Classic}"
-
-  log_info "Setting up environment variables..."
-
-  # Detect the actual KDE Qt platform-theme provider. iNiR does not require a
-  # Plasma desktop session; plasma-integration is intentionally supported as a
-  # standalone dependency under Niri.
-  local qt_theme="qt6ct"
-  local qt_plugin_dir=""
-  if command -v qtpaths6 >/dev/null 2>&1; then
-    qt_plugin_dir="$(qtpaths6 --plugin-dir 2>/dev/null || true)"
-  elif command -v qtpaths >/dev/null 2>&1; then
-    qt_plugin_dir="$(qtpaths --plugin-dir 2>/dev/null || true)"
-  fi
-  if [[ -n "$qt_plugin_dir" && -f "$qt_plugin_dir/platformthemes/KDEPlasmaPlatformTheme6.so" ]] || \
-     [[ -f /usr/lib/qt6/plugins/platformthemes/KDEPlasmaPlatformTheme6.so ]] || \
-     [[ -f /usr/lib64/qt6/plugins/platformthemes/KDEPlasmaPlatformTheme6.so ]] || \
-     [[ -f /usr/lib/x86_64-linux-gnu/qt6/plugins/platformthemes/KDEPlasmaPlatformTheme6.so ]]; then
-    qt_theme="kde"
-  fi
-
-  mkdir -p ~/.config/environment.d
-  cat > ~/.config/environment.d/inir.conf << EOF
-# iNiR environment variables
-XCURSOR_THEME=${cursor_theme}
-XCURSOR_SIZE=24
-QT_QPA_PLATFORM=wayland
-QT_QPA_PLATFORMTHEME=${qt_theme}
-QT_STYLE_OVERRIDE=Darkly
-GTK_THEME=adw-gtk3-dark
-ELECTRON_OZONE_PLATFORM_HINT=auto
-ILLOGICAL_IMPULSE_VIRTUAL_ENV=\$HOME/.local/state/quickshell/.venv
-INIR_VENV=\$HOME/.local/state/quickshell/.venv
-EOF
-
-  log_success "Environment configuration set"
-}
-
-setup-foot-config(){
-  log_info "Setting up Foot terminal configuration..."
-
-  mkdir -p ~/.config/foot
-
-  # Only create if doesn't exist or is minimal
-  if [[ ! -f ~/.config/foot/foot.ini ]] || [[ $(wc -l < ~/.config/foot/foot.ini) -lt 5 ]]; then
-    cat > ~/.config/foot/foot.ini << 'EOF'
-shell=fish
-term=xterm-256color
-
-title=foot
-
-font=JetBrainsMono Nerd Font:size=11
-letter-spacing=0
-dpi-aware=no
-
-pad=25x25
-
-bold-text-in-bright=no
-
-include=~/.config/foot/inir-colors.ini
-
-[scrollback]
-lines=10000
-
-[cursor]
-style=beam
-blink=no
-beam-thickness=1.5
-
-[key-bindings]
-scrollback-up-page=Page_Up
-scrollback-down-page=Page_Down
-clipboard-copy=Control+c
-clipboard-paste=Control+v
-search-start=Control+f
-font-increase=Control+plus Control+equal Control+KP_Add
-font-decrease=Control+minus Control+KP_Subtract
-font-reset=Control+0 Control+KP_0
-
-[search-bindings]
-cancel=Escape
-find-prev=Shift+F3
-find-next=F3 Control+G
-delete-prev-word=Control+BackSpace
-
-[text-bindings]
-\x03=Control+Shift+c
-EOF
-  else
-    # Existing config - ensure include line is present for theming
-    if ! grep -q "include=.*inir-colors\.ini" ~/.config/foot/foot.ini; then
-      log_info "Adding inir-colors.ini include to existing foot.ini..."
-      sed -i '1i include=~/.config/foot/inir-colors.ini' ~/.config/foot/foot.ini
-    fi
-    # Remove stale colors.ini include if present (legacy matugen terminal template)
-    sed -i '/^include=.*\/colors\.ini$/d' ~/.config/foot/foot.ini
-  fi
-
-  log_success "Foot terminal configuration set"
-}
-
-setup-kitty-config(){
-  log_info "Setting up Kitty terminal configuration..."
-
-  mkdir -p ~/.config/kitty
-
-  # Only create if doesn't exist or is minimal
-  if [[ ! -f ~/.config/kitty/kitty.conf ]] || [[ $(wc -l < ~/.config/kitty/kitty.conf) -lt 5 ]]; then
-    cat > ~/.config/kitty/kitty.conf << 'EOF'
-# iNiR wallpaper theming - colors from quickshell
-include current-theme.conf
-
-# Font configuration
-font_family      JetBrainsMono Nerd Font
-font_size        11.0
-text_composition_strategy legacy
-
-# Cursor
-cursor_shape beam
-cursor_beam_thickness 1.5
-cursor_blink_interval 0
-
-# Scrollback
-scrollback_lines 10000
-
-# Terminal bell
-enable_audio_bell no
-visual_bell_duration 0.0
-
-# Window
-window_padding_width 25
-hide_window_decorations yes
-confirm_os_window_close 0
-
-# Transparency and blur (Wayland)
-background_opacity 0.85
-background_blur 32
-
-# Remote control for live color reload
-listen_on unix:/tmp/kitty-socket
-allow_remote_control socket-only
-
-# Tab bar
-tab_bar_style powerline
-
-# Performance
-repaint_delay 10
-input_delay 3
-sync_to_monitor yes
-
-# Keyboard shortcuts
-map ctrl+c copy_or_interrupt
-map ctrl+v paste_from_clipboard
-map ctrl+shift+c copy_to_clipboard
-map ctrl+shift+v paste_from_clipboard
-map ctrl+plus change_font_size all +1.0
-map ctrl+minus change_font_size all -1.0
-map ctrl+0 change_font_size all 0
-EOF
-  else
-    # Existing config - ensure include line is present for theming
-    if ! grep -q "include.*current-theme.conf" ~/.config/kitty/kitty.conf; then
-      log_info "Adding current-theme.conf include to kitty.conf..."
-      sed -i '1i include current-theme.conf' ~/.config/kitty/kitty.conf
-    fi
-    # Add transparency if not present
-    if ! grep -q "background_opacity" ~/.config/kitty/kitty.conf; then
-      log_info "Adding transparency settings to kitty.conf..."
-      printf '\n# Transparency and blur (Wayland)\nbackground_opacity 0.85\nbackground_blur 32\n' >> ~/.config/kitty/kitty.conf
-    fi
-    # Add remote control socket if not present
-    if ! grep -q "listen_on" ~/.config/kitty/kitty.conf; then
-      log_info "Adding remote control socket to kitty.conf..."
-      printf '\n# Remote control for live color reload\nlisten_on unix:/tmp/kitty-socket\nallow_remote_control socket-only\n' >> ~/.config/kitty/kitty.conf
-    fi
-  fi
-
-  log_success "Kitty terminal configuration set"
-}
-
-setup-fish-config(){
-  log_info "Setting up Fish shell configuration..."
-
-  mkdir -p ~/.config/fish
-
-  # Only create if doesn't exist
-  if [[ ! -f ~/.config/fish/config.fish ]]; then
-    cat > ~/.config/fish/config.fish << 'EOF'
-function fish_prompt -d "Write out the prompt"
-    printf '%s@%s %s%s%s > ' $USER $hostname \
-        (set_color $fish_color_cwd) (prompt_pwd) (set_color normal)
-end
-
-if status is-interactive
-
-    # No greeting
-    set fish_greeting
-
-    # Use starship if available
-    if command -v starship > /dev/null
-        starship init fish | source
-    end
-
-    # Load terminal colors from ii theming
-    if test -f ~/.local/state/quickshell/user/generated/terminal/sequences.txt
-        cat ~/.local/state/quickshell/user/generated/terminal/sequences.txt
-    end
-
-    # Aliases
-    if command -v eza > /dev/null
-        alias ls 'eza --icons'
-    end
-    alias clear "printf '\033[2J\033[3J\033[1;1H'"
-    alias q 'inir run'
-
-    # Add local bin to PATH
-    fish_add_path ~/.local/bin
-
-end
-EOF
-  fi
-
-  log_success "Fish shell configuration set"
-}
-
-setup-bash-config(){
-  log_info "Setting up Bash shell configuration..."
-
-  local bashrc="$HOME/.bashrc"
-  local inir_config="$HOME/.config/inir/bashrc"
-
-  mkdir -p ~/.config/inir
-
-  # Create ii bash config
-  cat > "$inir_config" << 'EOF'
-# ii shell integration - starship prompt and terminal colors
-
-# Load terminal colors from ii theming
-if [[ -f ~/.local/state/quickshell/user/generated/terminal/sequences.txt ]]; then
-    cat ~/.local/state/quickshell/user/generated/terminal/sequences.txt
-fi
-
-# Use starship if available
-if command -v starship &> /dev/null; then
-    eval "$(starship init bash)"
-elif [[ -x ~/.local/bin/starship ]]; then
-    eval "$(~/.local/bin/starship init bash)"
-fi
-
-# Aliases
-if command -v eza &> /dev/null; then
-    alias ls='eza --icons'
-elif [[ -x ~/.local/bin/eza ]]; then
-    alias ls='~/.local/bin/eza --icons'
-fi
-alias q='inir run'
-
-# Add local bin to PATH
-export PATH="$HOME/.local/bin:$PATH"
-EOF
-
-  # Add source line to .bashrc if not present
-  if [[ -f "$bashrc" ]]; then
-    if grep -q "source.*ii/bashrc" "$bashrc" || grep -q "\..*ii/bashrc" "$bashrc"; then
-      sed -i 's|~/.config/ii/bashrc|~/.config/inir/bashrc|g' "$bashrc"
-      log_success "Updated Bash integration path in .bashrc"
-    elif ! grep -q "source.*inir/bashrc" "$bashrc" && ! grep -q "\..*inir/bashrc" "$bashrc"; then
-      echo -e "\n# ii shell integration\n[[ -f ~/.config/inir/bashrc ]] && source ~/.config/inir/bashrc" >> "$bashrc"
-      log_success "Added Bash integration to .bashrc"
-    else
-      log_info "Bash integration already in .bashrc"
-    fi
-  else
-    echo -e "# ii shell integration\n[[ -f ~/.config/inir/bashrc ]] && source ~/.config/inir/bashrc" > "$bashrc"
-    log_success "Created .bashrc with Bash integration"
-  fi
-
-  log_success "Bash shell configuration set"
-}
-
-setup-zsh-config(){
-  log_info "Setting up Zsh shell configuration..."
-
-  local zshrc="$HOME/.zshrc"
-  local inir_config="$HOME/.config/inir/zshrc"
-
-  mkdir -p ~/.config/inir
-
-  # Create ii zsh config
-  cat > "$inir_config" << 'EOF'
-# ii shell integration - starship prompt and terminal colors
-
-# Load terminal colors from ii theming
-if [[ -f ~/.local/state/quickshell/user/generated/terminal/sequences.txt ]]; then
-    cat ~/.local/state/quickshell/user/generated/terminal/sequences.txt
-fi
-
-# Use starship if available
-if command -v starship &> /dev/null; then
-    eval "$(starship init zsh)"
-elif [[ -x ~/.local/bin/starship ]]; then
-    eval "$(~/.local/bin/starship init zsh)"
-fi
-
-# Aliases
-if command -v eza &> /dev/null; then
-    alias ls='eza --icons'
-elif [[ -x ~/.local/bin/eza ]]; then
-    alias ls='~/.local/bin/eza --icons'
-fi
-alias q='inir run'
-
-# Add local bin to PATH
-export PATH="$HOME/.local/bin:$PATH"
-EOF
-
-  # Add source line to .zshrc if not present
-  if [[ -f "$zshrc" ]]; then
-    if grep -q "source.*ii/zshrc" "$zshrc" || grep -q "\..*ii/zshrc" "$zshrc"; then
-      sed -i 's|~/.config/ii/zshrc|~/.config/inir/zshrc|g' "$zshrc"
-      log_success "Updated Zsh integration path in .zshrc"
-    elif ! grep -q "source.*inir/zshrc" "$zshrc" && ! grep -q "\..*inir/zshrc" "$zshrc"; then
-      echo -e "\n# ii shell integration\n[[ -f ~/.config/inir/zshrc ]] && source ~/.config/inir/zshrc" >> "$zshrc"
-      log_success "Added Zsh integration to .zshrc"
-    else
-      log_info "Zsh integration already in .zshrc"
-    fi
-  else
-    # Don't create .zshrc if it doesn't exist - user might not use zsh
-    log_info "No .zshrc found, skipping zsh setup"
-  fi
-
-  log_success "Zsh shell configuration set"
-}
-
-#####################################################################################
-# All-in-one Setup Functions
-#####################################################################################
-
-install-all-fonts(){
-  tui_info "Installing all required fonts..."
-
-  install-material-symbols-rounded
-  install-material-symbols-outlined
-  install-jetbrains-mono-nerd
-  install-geist-font
-  install-space-grotesk
-  install-rubik-font
-
-  # Refresh font cache
-  fc-cache -f ~/.local/share/fonts 2>/dev/null
-
-  log_success "All fonts installed"
-}
-
-install-all-themes(){
-  tui_info "Installing all themes..."
-
-  install-whitesur-icons
-  install-mactahoe-icons
-  install-bibata-cursors
-
-  log_success "All themes installed"
-}
-
-install-all-tools(){
-  tui_info "Installing CLI tools..."
-
-  install-starship
-  install-eza
-  install-uv
-  install-cliphist
-
-  log_success "All tools installed"
-}
-
-setup-all-configs(){
-  tui_info "Setting up all configurations..."
-
-  setup-gtk-config
-  setup-kvantum-config
-  setup-environment-config
-  setup-kitty-config
-  setup-foot-config
-  setup-fish-config
-  setup-bash-config
-  setup-zsh-config
-
-  log_success "All configurations set"
-}

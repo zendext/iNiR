@@ -5,8 +5,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.modules.common
+import qs.services
 
-// InnerTube browsing engine — wraps scripts/innertube.py (ytmusicapi).
+// InnerTube browsing engine: `inir-accel innertube` through scripts/innertube-runtime.sh.
 // Public browsing needs NO cookies; replaces the flaky yt-dlp + browser-cookie path.
 // Playback stays in YtMusic.qml (mpv/MPRIS); this service only fetches metadata.
 //
@@ -15,9 +16,9 @@ import qs.modules.common
 Singleton {
     id: root
 
-    readonly property bool enabled: Config.options?.sidebar?.ytmusic?.enable ?? false
+    readonly property bool enabled: Config.options?.ytmusic?.enable ?? false
     property bool ready: false
-    property bool available: false       // ytmusicapi importable (probed via ping)
+    property bool available: false       // the browsing helper answers (probed via ping)
     property bool authenticated: false   // a logged-in session that actually works for browse
     property string accountName: ""
     property string accountAvatar: ""
@@ -167,8 +168,8 @@ Singleton {
                         root.connectError = "";
                         // Persist the working browser so playback (mpv/yt-dlp) reuses the same source.
                         if (d.browser && d.browser !== "manual" && d.browser !== "auto")
-                            Config.setNestedValue("sidebar.ytmusic.browser", d.browser);
-                        Config.setNestedValue("sidebar.ytmusic.connected", true);
+                            Config.setNestedValue("ytmusic.browser", d.browser);
+                        Config.setNestedValue("ytmusic.connected", true);
                         root.loadHome();
                     } else {
                         root.authenticated = false;
@@ -188,7 +189,7 @@ Singleton {
                 root.connectedBrowser = "";
                 root.libraryPages = {};
                 root.libraryLoaded = {};
-                Config.setNestedValue("sidebar.ytmusic.connected", false);
+                Config.setNestedValue("ytmusic.connected", false);
             }
         }
     }
@@ -256,8 +257,8 @@ Singleton {
                     root.accountName = d.account || "";
                     root.accountAvatar = d.avatar || "";
                     if (root.authenticated) {
-                        if (!(Config.options?.sidebar?.ytmusic?.connected ?? false))
-                            Config.setNestedValue("sidebar.ytmusic.connected", true);
+                        if (!(Config.options?.ytmusic?.connected ?? false))
+                            Config.setNestedValue("ytmusic.connected", true);
                     }
                     if (!root.authenticated) {
                         root.libraryPages = {};
@@ -281,22 +282,49 @@ Singleton {
             let obj;
             try { obj = JSON.parse(line); } catch (e) { return; }
             if (obj._meta) { if (obj.lyricsId !== undefined) lyricsId = obj.lyricsId; return; }
-            if (obj.error) { root.error = obj.error; return; }
-            if (obj._done) { finished(buffer, lyricsId); buffer = []; lyricsId = ""; return; }
+            if (obj.error) {
+                root.error = obj.error;
+                root.searching = false;
+                buffer = [];
+                return;
+            }
+            if (obj._done) {
+                finished(buffer.slice ? buffer.slice() : buffer, lyricsId);
+                buffer = [];
+                lyricsId = "";
+                return;
+            }
             buffer.push(obj);
         }
     }
 
     // ---- search ----
     function search(query, filter): void {
-        if (!query || !root.available) return;
+        if (!query) return;
+        if (!root.available) {
+            root.retryAvailability();
+            return;
+        }
         root.error = "";
         root.searching = true;
         _searchProc.exec([root._runner, "search", query, filter || "songs"]);
     }
     Process {
         id: _searchProc
-        stdout: StreamCollector { onFinished: (items) => { root.searchResults = items; root.searching = false; } }
+        stdout: StreamCollector {
+            onFinished: (items) => {
+                root.searchResults = items;
+                root.searching = false;
+            }
+        }
+        onExited: (code) => {
+            if (code !== 0 && root.searching) {
+                root.searching = false;
+                if (root.searchResults.length === 0 && !root.error) {
+                    root.error = Translation.tr("Search failed. Check your connection.");
+                }
+            }
+        }
     }
 
     // ---- radio (autoplay watch-playlist) ----

@@ -40,6 +40,8 @@ declare -A INIR_ONLY_PATHS=(
     ["${XDG_DATA_HOME}/applications/inir-settings.desktop"]="iNiR settings desktop entry"
     ["${XDG_DATA_HOME}/icons/hicolor/scalable/apps/inir.svg"]="iNiR launcher icon"
     ["${HOME}/.local/bin/sync-pixel-sddm.py"]="iNiR SDDM theme sync helper"
+    ["${XDG_CONFIG_HOME}/environment.d/inir.conf"]="iNiR session environment"
+    ["${XDG_DATA_HOME:-$HOME/.local/share}/inir"]="iNiR data (qs-rs, inir-accel, the inir command, plugins, yt-dlp, OCR models)"
 )
 
 # Shared configs - may be used by other apps or user customizations
@@ -55,6 +57,7 @@ declare -A SHARED_PATHS=(
     ["${XDG_CONFIG_HOME}/gtk-3.0/gtk.css"]="GTK3 custom styles||optional"
     ["${XDG_CONFIG_HOME}/gtk-4.0/gtk.css"]="GTK4 custom styles||optional"
     ["${XDG_CONFIG_HOME}/fontconfig/conf.d/90-inir-shell.conf"]="iNiR shell font rendering||inir_default"
+    ["${XDG_CONFIG_HOME}/fontconfig/conf.d/60-inir-void-font-aliases.conf"]="iNiR font aliases (Void)||inir_default"
     ["${XDG_DATA_HOME:-$HOME/.local/share}/color-schemes/Darkly.colors"]="Darkly color scheme||inir_default"
 )
 
@@ -380,34 +383,30 @@ uninstall_backup_shell_integration() {
 uninstall_remove_shell_integration() {
     local profile tmp changed=0
 
-    for profile in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc" \
+    for profile in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.bashrc" \
                    "$HOME/.zprofile" "$HOME/.zshrc"; do
         [[ -f "$profile" ]] || continue
-        tmp="${profile}.inir-uninstall.$$"
-        python3 - "$profile" > "$tmp" <<'PY'
-import re
-import sys
-
-text = open(sys.argv[1], encoding="utf-8").read()
-for start, end in (
-    ("iNiR launcher PATH", "end iNiR launcher PATH"),
-    ("iNiR environment", "end iNiR"),
-):
-    pattern = rf"(?ms)^[ \t]*# {re.escape(start)}[ \t]*$\n.*?^[ \t]*# {re.escape(end)}[ \t]*$\n?"
-    text = re.sub(pattern, "", text)
-sys.stdout.write(text)
-PY
-        if ! cmp -s "$profile" "$tmp"; then
-            mv "$tmp" "$profile"
+        tmp="$(cat -- "$profile")"
+        inir_rc_block remove "$profile" || return 1
+        if [[ ! -f "$profile" || "$(cat -- "$profile")" != "$tmp" ]]; then
             ((changed++)) || true
-        else
-            rm -f "$tmp"
         fi
     done
 
     for profile in "${XDG_CONFIG_HOME}/fish/conf.d/inir-path.fish" \
                    "${XDG_CONFIG_HOME}/fish/conf.d/inir-env.fish"; do
         if [[ -e "$profile" || -L "$profile" ]]; then
+            rm -f -- "$profile" || return 1
+            ((changed++)) || true
+        fi
+    done
+
+    # `inir completions install` makes links (bash launcher) or files that carry the
+    # inir binary's marker; any other regular file is the user's.
+    for profile in "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/inir" \
+                   "${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions/_inir" \
+                   "${XDG_CONFIG_HOME}/fish/completions/inir.fish"; do
+        if [[ -L "$profile" ]] || grep -qsF 'answered by the inir binary on every Tab' "$profile"; then
             rm -f -- "$profile" || return 1
             ((changed++)) || true
         fi
@@ -517,6 +516,9 @@ uninstall_remove_inir_only() {
     tui_info "Removing iNiR-exclusive files..."
     echo ""
 
+    # the venv may stay (Quickshell shared resources): its python3 goes back to the real one before accel/ goes
+    rm -f "$(_prebuilt_home)/accel/current" && prebuilt_accel_hooks
+
     # Pre-count existing items for N/M progress display
     local total=0
     for path in "${!INIR_ONLY_PATHS[@]}"; do
@@ -548,10 +550,30 @@ uninstall_remove_inir_only() {
         done
     fi
 
+    # Recolored icon overlays from scripts/colors/icon-theme-polarity.sh: a stamp
+    # and no index.theme means iNiR wrote every file in there.
+    local overlay
+    for overlay in "${XDG_DATA_HOME:-$HOME/.local/share}"/icons/*/; do
+        overlay="${overlay%/}"
+        if [[ -f "$overlay/.inir-polarity" && ! -e "$overlay/index.theme" ]]; then
+            rm -rf -- "$overlay"
+            ((removed++)) || true
+        fi
+    done
+
+    # The legacy name is a compatibility link to the preferences removed above.
+    local legacy_config="${XDG_CONFIG_HOME}/illogical-impulse"
+    if [[ -L "$legacy_config" && ! -e "$legacy_config" ]]; then
+        rm -f -- "$legacy_config"
+        ((removed++)) || true
+    fi
+
     # Clean up empty quickshell directory only if no other configs exist
     if ! has_other_quickshell_configs; then
         rmdir "${XDG_CONFIG_HOME}/quickshell" 2>/dev/null || true
     fi
+    # rmdir only takes them when nothing else is inside.
+    rmdir "${XDG_STATE_HOME:-$HOME/.local/state}/quickshell" "${XDG_CACHE_HOME:-$HOME/.cache}/quickshell" 2>/dev/null || true
 
     echo ""
     local _elapsed=$(( SECONDS - _start ))
@@ -761,7 +783,9 @@ uninstall_handle_quickshell_shared() {
         echo -e "  ${STY_FAINT}No other Quickshell configs found.${STY_RST}"
         echo ""
 
-        if $ask && tui_confirm "  Remove Quickshell shared resources (venv, themes)?" "yes"; then
+        # Removing is the recommended answer, so -y takes it too.
+        if { $ask && tui_confirm "  Remove Quickshell shared resources (venv, themes)?" "yes"; } \
+            || { ! $ask && ${assume_yes:-false}; }; then
             local _removed=0
             for path in "${!QUICKSHELL_SHARED[@]}"; do
                 local ep
@@ -1186,7 +1210,8 @@ run_uninstall_quick() {
     echo "  • Create a backup first"
     echo ""
 
-    if ! tui_confirm "Continue?" "no"; then
+    # -y is the go-ahead for the uninstall it was given to
+    if $ask && ! tui_confirm "Continue?" "no"; then
         echo "Cancelled."
         return 0
     fi

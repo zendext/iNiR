@@ -38,7 +38,7 @@ Rectangle {
     // caller inherits; lower values are for surfaces that expose it to the user.
     property real blurStrength: Appearance.editorialEverywhere && Appearance.editorial.glassActive
         ? Appearance.editorial.glassBlur : 1
-    property real saturationStrength: Appearance.editorialEverywhere && Appearance.editorial.glassActive ? 0.04 : 0.2
+    property real saturationStrength: Appearance.editorialEverywhere && Appearance.editorial.glassActive ? 0.04 : Appearance.aurora.backdropSaturation
     readonly property bool useWallpaperBackdrop: root.forceBackdrop
         ? Appearance.effectsEnabled
         : (Appearance.blurBackendFor("panels", Appearance.blurTopology.unsupported) === "wallpaper"
@@ -87,9 +87,13 @@ Rectangle {
         // so Qt's QPixmapCache serves a single decoded pixmap to all of them.
         cache: true
         asynchronous: true
-        // Constrain decoded size to screen dimensions — the blur doesn't need more.
-        sourceSize.width: root.screenWidth
-        sourceSize.height: root.screenHeight
+        // Blurred anyway: a quarter of the screen looks the same and every instance kept a full layer.
+        readonly property real blur: Appearance.effectsEnabled
+            ? (root.angelEverywhere ? Appearance.angel.blurIntensity : root.blurStrength) : 0
+        readonly property real grain: blur >= 0.3 ? 0.25 : 1
+        sourceSize.width: Math.round(root.screenWidth * grain)
+        sourceSize.height: Math.round(root.screenHeight * grain)
+        layer.textureSize: Qt.size(Math.round(width * grain), Math.round(height * grain))
 
         // CRITICAL: Only enable blur layer when VISIBLE AND enabled.
         // This releases the FBO when the panel is hidden, saving ~16 MiB per instance.
@@ -97,14 +101,14 @@ Rectangle {
         layer.effect: MultiEffect {
             source: blurredWallpaper
             anchors.fill: source
+            contrast: Appearance.aurora.backdropContrast
+            brightness: Appearance.aurora.backdropBrightness
             saturation: root.angelEverywhere && !root.forceNeutralMaterial
                 ? (Appearance.angel.blurSaturation * Appearance.angel.colorStrength)
                 : (Appearance.effectsEnabled ? root.saturationStrength : 0)
             blurEnabled: Appearance.effectsEnabled
             blurMax: 64
-            blur: Appearance.effectsEnabled
-                ? (root.angelEverywhere ? Appearance.angel.blurIntensity : root.blurStrength)
-                : 0
+            blur: blurredWallpaper.blur
         }
     }
 

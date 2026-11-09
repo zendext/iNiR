@@ -50,10 +50,12 @@ Singleton {
         // (the seed of the new mode starts one) and undo it. The Settings switch shows it off; the person turns it back on.
         if (Config.options?.appearance?.wallpaperTheming?.autoDarkLightMode ?? false)
             Config.setNestedValue("appearance.wallpaperTheming.autoDarkLightMode", false)
-        // A scheme iRiS was told to keep is the mode: leaving it behind would put the shell and the apps in different ones on the next regeneration.
-        const scheme = String(Config.options?.iris?.appearance?.scheme ?? "auto")
-        if ((Config.options?.panelFamily ?? "ii") === "iris" && scheme !== "auto")
-            Config.setNestedValue("iris.appearance.scheme", dark ? "dark" : scheme === "ink" ? "ink" : "light")
+        // A scheme the family was told to keep is the mode: leaving it behind would put the shell and the apps in different
+        // ones on the next regeneration. A light scheme by another name (iRiS's ink) stays itself.
+        const schemeKey = Plugins.settingKey(Plugins.active, "scheme")
+        const scheme = String(Plugins.setting(Plugins.active, "scheme", "auto"))
+        if (schemeKey.length > 0 && scheme !== "auto")
+            Config.setNestedValue(schemeKey, dark ? "dark" : scheme === "dark" ? "light" : scheme)
         darkModeProc.command = [
             "/usr/bin/bash",
             Directories.wallpaperSwitchScriptPath,
@@ -150,25 +152,53 @@ Singleton {
         root._forceApply = false
 
         _log("[MaterialThemeLoader] Applying", Object.keys(json).length, "color keys, bg:", json.background, "primary:", json.primary)
+        // Every role is worked out first and written once, only if it moved: secondary and tertiary used to be set raw
+        // and then harmonized, so even a re-read of the same file restyled the whole shell twice.
+        const next = {}
         for (const key in json) {
-            if (json.hasOwnProperty(key)) {
-                const camelCaseKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase())
-                const noPrefix = camelCaseKey.startsWith("term") || camelCaseKey === "darkmode" || camelCaseKey === "transparent"
-                const m3Key = noPrefix ? camelCaseKey : `m3${camelCaseKey}`
-                if (Appearance.m3colors[m3Key] === undefined)
-                    continue
-                Appearance.m3colors[m3Key] = json[key]
-            }
+            if (!json.hasOwnProperty(key)) continue
+            const camelCaseKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase())
+            if (camelCaseKey === "darkmode") continue
+            const noPrefix = camelCaseKey.startsWith("term") || camelCaseKey === "transparent"
+            const m3Key = noPrefix ? camelCaseKey : `m3${camelCaseKey}`
+            if (Appearance.m3colors[m3Key] !== undefined)
+                next[m3Key] = json[key]
         }
-        
-        if (typeof json.darkmode === "boolean") {
-            Appearance.m3colors.darkmode = json.darkmode
-        } else if (typeof json.darkmode === "string") {
-            Appearance.m3colors.darkmode = json.darkmode === "true"
-        } else {
-            Appearance.m3colors.darkmode = (Appearance.m3colors.m3background.hslLightness < 0.5)
+        root.harmonize(next)
+        for (const key in next) {
+            const now = Appearance.m3colors[key]
+            const same = typeof now === "boolean" ? now === Boolean(next[key]) : Qt.colorEqual(now, next[key])
+            if (!same) Appearance.m3colors[key] = next[key]
         }
+
+        const dark = typeof json.darkmode === "boolean" ? json.darkmode
+            : typeof json.darkmode === "string" ? json.darkmode === "true"
+            : Appearance.m3colors.m3background.hslLightness < 0.5
+        if (Appearance.m3colors.darkmode !== dark) Appearance.m3colors.darkmode = dark
         _log("[MaterialThemeLoader] Colors applied successfully, darkmode:", Appearance.m3colors.darkmode)
+    }
+
+    // One family of colour (appearance.palette.harmony "accent"): the secondary and tertiary roles keep their tone and
+    // saturation but move next to the accent's hue, a step cool and a step warm. A wallpaper scheme often puts tertiary
+    // a quadrant away, and a blue card beside a red one made the widgets, chips and buttons look unrelated.
+    readonly property string harmony: Config.options?.appearance?.palette?.harmony ?? "accent"
+    onHarmonyChanged: {
+        const content = themeFileView.text()
+        if (!root.isAutoTheme || !content) return
+        root._forceApply = true
+        root.applyColors(content)
+    }
+    function harmonize(next: var): void {
+        const primary = Qt.color(next.m3primary ?? Appearance.m3colors.m3primary)
+        if (root.harmony !== "accent" || primary.hslHue < 0 || primary.hslSaturation < 0.08)
+            return
+        const hue = primary.hslHue
+        for (const key in next) {
+            const low = key.toLowerCase()
+            if (!low.startsWith("m3") || low.startsWith("m3term")) continue
+            const shift = low.includes("tertiary") ? 14 / 360 : low.includes("secondary") ? -20 / 360 : null
+            if (shift !== null) next[key] = ColorUtils.atHue(next[key], hue + shift)
+        }
     }
 
     function resetFilePathNextTime() {
@@ -274,7 +304,7 @@ Singleton {
     // palette is unchanged, so a full switchwall.sh re-extraction would be
     // wasted work — only the surface ramp the overlay writes has to catch up.
     Connections {
-        target: Config.options?.appearance ?? null
+        target: Appearance
         function onGlobalStyleChanged() {
             root._log("[MaterialThemeLoader] globalStyle changed, re-applying external theming")
             root.requestExternalApply()
@@ -300,9 +330,9 @@ Singleton {
     // containers with their own plates and every other style resolves back to
     // the Material roles.
     function _styleAppPaletteOverlay(): var {
-        // iRiS hands its own surface to the generator (IrisAppsSync): the Material style's layers
-        // are another family's, and overwrote the apps' ramp with them (#242122 over iRiS's #221f20).
-        if ((Config.options?.panelFamily ?? "ii") === "iris") return null
+        // A family that hands its own surface to the generator (flag `appsPalette`, iRiS's IrisAppsSync): the Material
+        // style's layers are another family's, and overwrote the apps' ramp with them (#242122 over iRiS's #221f20).
+        if (Plugins.flag(Plugins.active, "appsPalette")) return null
         const c = Appearance.colors
         if (!c) return null
 
@@ -422,11 +452,8 @@ Singleton {
     readonly property string _loginScreenKey: {
         const o = Config.options
         if (!o) return ""
-        const lock = o.iris?.lock
-        const look = o.iris?.appearance
-        return JSON.stringify([o.lock?.loginScreen, o.lock?.loginStyle, o.panelFamily, o.lock?.materialShapeChars, lock?.scene, lock?.type,
-            lock?.blocks?.session, look?.fontFamily, look?.numbersFontFamily, look?.titleFontFamily,
-            look?.followTheme, look?.theme?.surface])
+        return JSON.stringify([o.lock?.loginScreen, o.lock?.loginStyle, o.panelFamily, o.lock?.materialShapeChars]
+            .concat(Plugins.loginReads.map(key => Config.getNestedValue(key, null))))
     }
     // What the config held once loaded, like _appliedAppTargetsKey below.
     property string _syncedLoginScreenKey: ""
@@ -442,26 +469,33 @@ Singleton {
             Quickshell.execDetached(["/usr/bin/bash", Directories.scriptsPath + "/colors/apply-targets.sh", "sddm"])
         }
     }
+    /// The login screen you see after starting the computer. It wears your wallpaper and colours.
     IpcHandler {
         target: "loginScreen"
+        /// `auto` (iRiS while you use iRiS, Classic otherwise), `classic` or `iris`
         function set(look: string): string {
-            if (["auto", "classic", "iris"].indexOf(look) < 0) return "unknown look: " + look + " (auto, classic or iris)"
+            const looks = ["auto", "classic"].concat(Plugins.loginScreens)
+            if (looks.indexOf(look) < 0) return "unknown look: " + look + " (" + looks.join(", ") + ")"
             Config.setNestedValue("lock.loginScreen", look)
             return look
         }
-        // The iRiS login's composition: cover (the picture as a cover), frame (hung in a mat), lens (the time as a lens).
+        // The composed login's layout: cover (the picture as a cover), frame (hung in a mat), lens (the time as a lens).
+        /// How the iRiS login is composed: `cover` (your picture sharp, the clock in a corner), `frame` (the picture
+        /// hung in a mat) or `lens` (the time cut out of the picture)
         function style(name: string): string {
             if (["cover", "frame", "lens"].indexOf(name) < 0) return "unknown style: " + name + " (cover, frame or lens)"
             Config.setNestedValue("lock.loginStyle", name)
             return name
         }
+        /// Print the choice and the look it gives (e.g. `auto (iris, lens)`), or `not installed`
         function status(): string {
             if (!root.loginScreenInstalled) return "not installed"
             const look = String(Config.options?.lock?.loginScreen ?? "auto")
-            const iris = look === "iris" || (look === "auto" && (Config.options?.panelFamily ?? "ii") === "iris")
-            const shown = iris ? "iris, " + String(Config.options?.lock?.loginStyle ?? "lens") : "classic"
+            const worn = look === "auto" ? (Plugins.loginScreen(Plugins.active) || "classic") : look
+            const shown = Plugins.loginScreens.includes(worn) ? worn + ", " + String(Config.options?.lock?.loginStyle ?? "lens") : "classic"
             return look === "auto" ? "auto (" + shown + ")" : shown
         }
+        /// Copy the current colours, wallpaper and style to the login screen now
         function sync(): void { loginScreenSync.restart() }
     }
 

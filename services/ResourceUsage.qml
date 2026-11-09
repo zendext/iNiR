@@ -14,7 +14,14 @@ Singleton {
 
     property bool _runningRequested: false
     property bool _initRequested: false
-    property int _persistentConsumers: 0
+    // Who holds the poll, not how many: across a reload the old widget's release reached the new instance and
+    // dropped the new widget's hold to zero, so every reading froze until something asked again.
+    property var _holders: []
+    property int _anonymousHolders: 0
+    function _held(): bool {
+        root._holders = root._holders.filter(holder => holder !== null && holder !== undefined);
+        return root._holders.length > 0 || root._anonymousHolders > 0;
+    }
 
     // Auto-stop polling when nothing requested it recently.
     // This prevents the service from running forever after briefly opening a panel.
@@ -46,9 +53,6 @@ Singleton {
     property int cpuTemp: 0
     property int gpuTemp: 0
     property int maxTemp: Math.max(cpuTemp, gpuTemp)
-    readonly property string temperatureSource: Config.options?.bar?.resources?.temperatureSource ?? Config.options?.resources?.temperatureSource ?? "max"
-    property int displayTemp: temperatureSource === "cpu" ? cpuTemp : temperatureSource === "gpu" ? gpuTemp : maxTemp
-    property real displayTempPercentage: Math.min(displayTemp / 100, 1.0)
     property real tempPercentage: Math.min(maxTemp / 100, 1.0)  // Normalized to 100°C max
     property real gpuTempPercentage: Math.min(gpuTemp / 100, 1.0)  // Normalized to 100°C max
     property int tempWarningThreshold: 80  // Warning at 80°C
@@ -83,7 +87,7 @@ Singleton {
 
     Process {
         id: detectGpuUsageSource
-        // Select the backend only for the device chosen by detect_sensors.py.
+        // Select the backend only for the device chosen by inir-accel detect-sensors.
         command: ["/usr/bin/bash", "-c", `
             if [ "$1" = "0x10de" ] && command -v nvidia-smi >/dev/null 2>&1; then
                 echo "nvidia-smi:$(command -v nvidia-smi)"
@@ -213,7 +217,7 @@ Singleton {
             detectTempSensors.running = true;
             findCpuMaxFreqProc.running = true;
         }
-        if (root._persistentConsumers === 0)
+        if (!root._held())
             autoStopTimer.restart();
         pollTimer.restart();
         // Prime values now instead of waiting one updateInterval — but only once.
@@ -230,25 +234,31 @@ Singleton {
 
     // Register a persistent consumer (always-visible panel like bar).
     // While any persistent consumer is registered, auto-stop is disabled.
-    function keepAlive(): void {
-        root._persistentConsumers++;
+    function keepAlive(holder: var): void {
+        if (!holder)
+            root._anonymousHolders++;
+        else if (!root._holders.includes(holder))
+            root._holders = root._holders.concat([holder]);
         autoStopTimer.stop();
         ensureRunning();
     }
 
-    function releaseKeepAlive(): void {
-        root._persistentConsumers = Math.max(0, root._persistentConsumers - 1);
-        if (root._persistentConsumers === 0 && root._runningRequested)
+    function releaseKeepAlive(holder: var): void {
+        if (!holder)
+            root._anonymousHolders = Math.max(0, root._anonymousHolders - 1);
+        else
+            root._holders = root._holders.filter(other => other !== holder);
+        if (!root._held() && root._runningRequested)
             autoStopTimer.restart();
     }
 
     function stop(): void {
         root._runningRequested = false;
         root._primed = false;
+        // The last reading stays: a stopped service still knows the machine better than a 0 % (a widget resting behind a
+        // window shows it past the window's edge). Only the deltas restart.
         root.previousCpuStats = undefined;
-        root.cpuUsage = 0;
         root.previousCpuCoreStats = ({});
-        root.cpuCoreUsage = [];
         root.cpuFrequencyMhz = -1;
         root._gpuPollingAllowed = false;
         pollTimer.stop();
@@ -261,7 +271,7 @@ Singleton {
         interval: root._autoStopDelayMs
         repeat: false
         onTriggered: {
-            if (root._persistentConsumers === 0)
+            if (!root._held())
                 root.stop();
         }
     }
@@ -516,7 +526,7 @@ Singleton {
 
     Process {
         id: detectTempSensors
-        command: ["python3", Quickshell.shellPath("scripts/detect_sensors.py")]
+        command: [Quickshell.shellPath("scripts/lib/accel-run"), "detect-sensors"]
         stdout: SplitParser {
             onRead: line => {
                 const split = line.indexOf(":");

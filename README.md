@@ -1,26 +1,28 @@
 <p align="center">
-  <img src="docs/images/iris-2.32-principal.webp" alt="iNiR iRiS desktop" width="900">
+  <img src="docs/images/releases/3.0.0/00-hero.webp" alt="iNiR 3.0: the iRiS desktop on a snowy forest at night" width="100%">
 </p>
 
 <h1 align="center">iNiR</h1>
 
 <p align="center">
-  <b>A complete desktop shell for Niri, built on Quickshell</b>
+  A complete desktop shell for <a href="https://github.com/YaLTeR/niri">Niri</a>.<br>
+  Pick a family, make it yours, keep it current with one command.
 </p>
 
 <p align="center">
-  <a href="https://github.com/snowarch/inir/releases"><img src="https://img.shields.io/badge/version-2.33.0-blue?style=flat-square" alt="Version"></a>
-  <a href="https://github.com/snowarch/inir/stargazers"><img src="https://img.shields.io/github/stars/snowarch/inir?style=flat-square" alt="Stars"></a>
-  <a href="https://discord.gg/pAPTfAhZUJ"><img src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License"></a>
+  <a href="https://github.com/snowarch/iNiR/releases/latest"><img src="https://img.shields.io/github/v/release/snowarch/iNiR?style=flat-square&label=release&color=111111" alt="Latest release"></a>
+  <a href="https://github.com/snowarch/iNiR/stargazers"><img src="https://img.shields.io/github/stars/snowarch/iNiR?style=flat-square&color=111111" alt="Stars"></a>
+  <a href="https://discord.gg/pAPTfAhZUJ"><img src="https://img.shields.io/badge/discord-join-111111?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-111111?style=flat-square" alt="GPL-3.0"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/snowarch/inir/wiki/INSTALL">Install</a> &bull;
-  <a href="https://github.com/snowarch/inir/wiki/KEYBINDS">Keybinds</a> &bull;
-  <a href="https://github.com/snowarch/inir/wiki/IPC">IPC Reference</a> &bull;
-  <a href="https://discord.gg/pAPTfAhZUJ">Discord</a> &bull;
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="https://inir.space">inir.space</a> ·
+  <a href="https://inir.space/docs/install/">Install</a> ·
+  <a href="https://inir.space/docs">Docs</a> ·
+  <a href="https://inir.space/hub">Hub</a> ·
+  <a href="https://inir.space/changelog">Changelog</a> ·
+  <a href="https://discord.gg/pAPTfAhZUJ">Discord</a>
 </p>
 
 <p align="center">
@@ -29,337 +31,79 @@
   </sub>
 </p>
 
----
+## What's new in 3.0
 
-<details>
-<summary><b>🤔 New here? Click if you have no idea what any of this is</b></summary>
+A small base with every family as a plugin, a runtime of its own, a home at [inir.space](https://inir.space), and a
+new Settings for iRiS. One `inir update` brings it and keeps your config. [Read the whole changelog](CHANGELOG.md).
 
-### What is this?
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/images/releases/3.0.0/01-prism.webp" alt="Prism" width="100%"><br><sub><b>Prism</b><br>iRiS Settings rebuilt: every option in one place, with a live preview of what it changes.</sub></td>
+<td width="50%" valign="top"><img src="docs/images/releases/3.0.0/02-island.webp" alt="The Island" width="100%"><br><sub><b>The Island</b><br>Music, timers and live activities in one object at the top, in sixteen designs.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/images/releases/3.0.0/04-airisu.webp" alt="AIRISU" width="100%"><br><sub><b>AIRISU</b><br>The first Design: its own panels, layout and voice on the iRiS engine.</sub></td>
+<td width="50%" valign="top"><img src="docs/images/releases/3.0.0/03-edit-mode.webp" alt="Edit mode" width="100%"><br><sub><b>Edit mode</b><br>Drag, resize and save desktop widgets, then switch whole desktops in one click.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/images/releases/3.0.0/06-material.webp" alt="Material" width="100%"><br><sub><b>Material</b><br>The same widgets in Material's own faces, with its rebuilt Settings and type.</sub></td>
+<td width="50%" valign="top"><img src="docs/images/releases/3.0.0/05-hub.webp" alt="iNiR Hub" width="100%"><br><sub><b>iNiR Hub</b><br>Families, Designs, themes and widgets as plugins, at inir.space/hub and inside the shell.</sub></td>
+</tr>
+</table>
 
-iNiR is your entire desktop. The bar at the top, the dock, notifications, settings, wallpapers, all of it. Not a theme, not dotfiles you paste. A full shell that runs on Linux.
+## Families
 
-### What do I need to run it?
+| Material | Waffle | iRiS |
+|:---:|:---:|:---:|
+| <img src="docs/shots/families-material.webp" alt="Material" width="290"> | <img src="docs/shots/families-waffle.webp" alt="Waffle" width="290"> | <img src="docs/shots/families-iris.webp" alt="iRiS" width="290"> |
+| A bar on any edge, sidebars, overview, nine global styles | A Windows 11 taskbar and action center | One Island on any edge that becomes what you open, plus a dock |
 
-A compositor. That's the thing that handles your windows and puts pixels on screen. iNiR is made for [Niri](https://github.com/YaLTeR/niri) (a tiling Wayland compositor). There's some old Hyprland code from when this was a fork of end-4's dots, but Niri is what I actually use and test.
+`Super+Shift+W` switches between them. More looks, widgets, themes and web apps are in the [hub](https://inir.space/hub).
 
-The shell runs on [Quickshell](https://quickshell.outfoxxed.me/), a framework for building shells in QML (Qt's UI language). You don't need to know any of that to use it though, everything is configurable through the GUI or a JSON file.
-
-### How it all connects
-
-```
-your apps
-   ↓
-iNiR (shell: bar, sidebars, dock, notifications, settings...)
-   ↓
-Quickshell (runs QML shells)
-   ↓
-Niri (compositor: windows, rendering)
-   ↓
-Wayland → GPU
-```
-
-### Is it stable?
-
-It's a personal project that got out of hand. I use it daily, lots of people in the Discord do too. But stuff breaks sometimes, code is messy in places, I'm learning as I go.
-
-If something doesn't work, `inir doctor` fixes most things. Discord is active if that doesn't help. Just don't expect polished software, this is one person's rice that others happen to like.
-
-### Why does it exist?
-
-I wanted my desktop to look and work a certain way and nothing else did exactly that. Started as end-4's Hyprland dots, became a full rewrite for Niri with way more features.
-
-### Words you'll see around
-
-- **Shell**: the UI layer (bar, panels, overlays)
-- **Compositor**: manages windows, draws to screen (Niri, Hyprland, Sway...)
-- **Wayland**: Linux display protocol (the new one, replaces X11)
-- **QML**: Qt's declarative UI language, what iNiR is written in
-- **Material You**: Google's color system that makes palettes from images (that's the auto-theming)
-- **ii / waffle / iRiS**: the three panel families. ii = Material Design vibes, waffle = Windows 11 vibes, iRiS = an Island that becomes whatever you open. `Super+Shift+W` cycles through them
-
-</details>
-
----
-
-## Screenshots
-
-<details open>
-<summary><b>iRiS</b>: Island, Customize, menu bar, cards and Dock</summary>
-
-<p align="center">
-  <img src="docs/images/iris-2.31-desktop.webp" alt="iRiS desktop layout" width="49%">
-  <img src="docs/images/iris-2.31-card.webp" alt="iRiS card surface" width="49%">
-</p>
-
-<p align="center">
-  <img src="docs/images/iris-2.31-dock.webp" alt="iRiS Dock and edge layout" width="99%">
-</p>
-
-</details>
-
-<details open>
-<summary><b>Material ii</b>: floating bar, sidebars, Material Design aesthetic</summary>
-
-| | |
-|:---:|:---:|
-| ![](https://github.com/user-attachments/assets/1fe258bc-8aec-4fd9-8574-d9d7472c3cc8) | ![](https://github.com/user-attachments/assets/3ce2055b-648c-45a1-9d09-705c1b4a03b7) |
-| ![](https://github.com/user-attachments/assets/ea2311dc-769e-44dc-a46d-37cf8807d2cc) | ![](https://github.com/user-attachments/assets/da6beb4a-ccee-40ba-a372-5eea77b595f8) |
-| ![](https://github.com/user-attachments/assets/ba866063-b26a-47cb-83c8-d77bd033bf8b) | ![](https://github.com/user-attachments/assets/88e76566-061b-4f8c-a9a8-53c157950138) |
-
-</details>
-
-<details>
-<summary><b>Waffle</b>: bottom taskbar, action center, Windows 11 vibes</summary>
-
-| | |
-|:---:|:---:|
-| ![](https://github.com/user-attachments/assets/5c5996e7-90eb-4789-9921-0d5fe5283fa3) | ![](https://github.com/user-attachments/assets/fadf9562-751e-4138-a3a1-b87b31114d44) |
-
-</details>
-
----
-
-> [!WARNING]
-> Not for low-spec machines.
-> You can strip it down a lot though. Turn off effects, drop panels, flatten the design. Settings or `config.json`, whichever you prefer.
-
-## Features
-
-**Three panel families**, switchable on the fly with `Super+Shift+W`:
-- **Material ii**: floating bar, sidebars, dock, and 9 global styles (Material, Cards, Aurora, iNiR, Angel, Regalia, ZZZ, Cookie Shapes, Editorial)
-- **Waffle**: Windows 11-inspired taskbar, start menu, action center, notification center
-- **iRiS**: the flagship. An Island on any screen edge that grows into pages, cards and panels, pieces you can carry, a Dock on any edge, glass, whole-redesign Themes, light, ink and dark, and Customize right on the shell
-
-**Automatic theming**. Pick a wallpaper and everything adapts:
-- Shell colors via Material You, propagated to GTK3/4, Qt, terminals, Firefox, Discord, SDDM
-- 10 theming targets covering terminals, editors, browsers, Spicetify, Steam, Cava and more
-- Theme presets: Regalia / Regalia Ivory, Gruvbox, Catppuccin, Rosé Pine, and custom
-
-**Built for Niri.** Hyprland code survives from the fork but is not tested.
-
-**Kira**, the mascot, lives on your desktop if you want her there. Off by default, art pack is a separate download.
-
-<details>
-<summary><b>Full feature list</b></summary>
-
-### iRiS
-
-- **The Island**: one shape on a screen edge that answers "what's happening" and becomes the page, card or panel you opened, then folds back into itself. Top, bottom, left or right (`inir iris edge <side>`, or drag it there). On a side it stands up with a stacked clock and bubbles above and below
-- **Menu bar**: a thin strip with your workspaces, window and pieces, the Island hanging from it as a notch (`inir iris layout menubar`)
-- **Full width bar mode** with start, center and end zones for the Island, workspaces, the focused window, the time or any piece (`inir iris zone start|center|end kinds+joined+with+plus`)
-- **Pieces**: weather, sound, mic, tray, notifications, tools, media, VPN, a visualizer, anime (Airing and Continue) and your own apps as bubbles you can park on the Island, on the screen contour or loose on the desktop
-- **Pieces join what they touch**: park one on the Dock's or the Island's edge and it becomes part of that body instead of floating on top
-- **Dock** on any edge (`inir iris dockEdge <side|auto>`); auto sits opposite the Island, and sending one to the other's edge makes them trade places
-- **Glass** that frosts the wallpaper under every surface, and keeps text readable even on bright or busy wallpapers. Compositor Blur exists too, but it is still under construction, so don't judge it yet
-- **Themes**: 20 curated redesigns (Liquid Glass, Frost, Obsidian, Terminal, Neo Tokyo, Twilight, Lume, Sakura, Unit-01 and more) plus your own as shareable JSON files (`inir iris theme`)
-- **Light, Ink and Dark**, each with its own tone and frost, and colour themes (Catppuccin, Nord, Rosé Pine, Tokyo Night…) that your apps wear too (`inir iris palette`)
-- **Shape**: capsule, round, squircle or square for the Island and the Dock
-- **Customize on the shell**: tap the Island, the Dock or a bubble and its options grow out of it, with Themes, Look, Pieces and undo under the Island (`inir iris edit`). Studio keeps every area in one panel beside the screen if you prefer
-- **Control Center you arrange**: every shared quick toggle, the player and each slider as cells you drag, resize from a corner and add from a library beside it, with six starting layouts; right-click a control to unfold it (`inir iris control edit`)
-- **Lock screen you rehearse**: the real lock opens editable with nothing to unlock; drag the clock, player and sign-in field around, and set what plays behind them, video included (`inir iris lock edit`)
-
-### Theming and appearance
-
-- **9 global styles**: Material (solid), Cards, Aurora (glass blur), iNiR (TUI-inspired), Angel (neo-brutalism), Regalia (black engineered chassis, warm ivory ink, restrained champagne hardware), ZZZ (poster plates), Cookie Shapes (animated shape morphing), Editorial (paper-and-ink typography)
-- **Dynamic wallpaper colors** via Material You, propagated system-wide
-- **10 terminal and TUI tools auto-themed**: foot, kitty, alacritty, ghostty, wezterm, starship, fuzzel, btop, lazygit, yazi
-- **App theming**: GTK3/4, Qt (via plasma-integration and darkly), Firefox, Discord/Vesktop (System24), Zed, Spicetify, Steam, SDDM
-- **Theme presets**: Gruvbox, Catppuccin, Rosé Pine, and more, or create your own
-- **Video wallpapers**: mp4/webm/gif with optional blur, or frozen first frame for performance
-- **Desktop widgets**: one design for all of them (iRiS, Material, iNstrument or Readout), stacks that turn like iOS ones, and ink that follows the wallpaper under them
-
-### Bar
-
-- **6 bar styles**: classic, islands, scenic, frame, Material 3 capsules, and pill
-- **Pill bar**: a morphing centre island that opens on hover into workspaces, launcher, mixer, media, calendar and a screen recorder
-- **Modular layout** with a drag editor in Settings, so any module can go anywhere
-- **Vertical bar** for the people who want the screen edge back
-
-### Sidebars and widgets (Material ii)
-
-Left sidebar (app drawer):
-- **AI Chat**: live model catalogs across Ollama, LM Studio, OpenRouter, Gemini, Groq, Mistral, Cerebras, Anthropic, OpenAI and OpenCode
-- **YT Music**: cookie-less InnerTube player with search, queue, radio and synced lyrics
-- **Wallhaven browser**: search and apply wallpapers directly
-- **Anime tracker**: AniList integration with schedule view
-- **Translator**: via Gemini or translate-shell
-- **Draggable widgets**: crypto, media player, quick notes, status rings, weekly calendar
-
-Right sidebar:
-- **Calendar** with event integration
-- **Notification center**
-- **Quick toggles**: WiFi, Bluetooth, night light, DND, power profiles, WARP VPN, EasyEffects
-- **Volume mixer** with per-app control
-- **Bluetooth and WiFi** device management
-- **Pomodoro timer**, **todo list**, **calculator**, **notepad**
-- **System monitor**: CPU, RAM, temperature
-
-### Tools
-
-- **Workspace overview**: adapted for Niri's scrolling model, with app search and calculator
-- **Dashboard hub**: configurable three-column overlay with agenda, notifications, todo, notes, media and weather
-- **Workspace edge strip**: hover rail with live workspace previews and drag-to-reorder
-- **Window switcher**: an animated Alt-Tab across all workspaces, opt-in since Niri ships its own now
-- **Clipboard manager**: history with search and image preview
-- **Region tools**: screenshots, screen recording, OCR, reverse image search
-- **Cheatsheet**: keybind viewer pulled from your Niri config
-- **Media controls**: full MPRIS player with multiple layout presets
-- **On-screen display**: volume, brightness, and media OSD
-- **Song recognition**: Shazam-style identification via SongRec
-- **Voice input**: local whisper.cpp when installed, or a connected Groq, Gemini or OpenAI backend
-
-### System
-
-- **GUI settings**: configure everything without touching files
-- **GameMode**: auto-disables effects for fullscreen apps
-- **Auto-updates**: `inir update` with rollback, migrations, and user change preservation
-- **Lock screen** and **session screen** (logout/reboot/shutdown/suspend)
-- **Polkit agent**, **on-screen keyboard**, **autostart manager** backed by niri's own startup file
-- **Kira**: pixel-art cat girl who wanders the screen edges, reacts to what you do, and has a chaos mode. Opt-in, separate ~32 MiB art pack under `./setup` › Extras
-- **18 locales** with auto-detection, including Indonesian (`id_ID`) and Kalaallisut (`kl_GL`)
-- **Night light**: scheduled or manual
-- **Weather**: Open-Meteo, supports GPS, manual coordinates, or city name
-- **Battery management**: configurable thresholds, auto-suspend on critical
-- **Custom event sounds** with a master volume and per-event audio files
-- **Shell update checker**: notifies when new versions are available
-
-</details>
-
----
-
-## Quick Start
+## Install
 
 ```bash
 git clone https://github.com/snowarch/inir.git
 cd inir
-./setup install       # interactive, asks before each step
-./setup install -y    # automatic, no questions asked
+./setup install
 ```
 
-The installer handles dependencies, system config and theming. After install, run `inir run` to start the shell, or log out and back in.
+Arch, Fedora, Debian, Ubuntu, Void and NixOS. The [install guide](https://inir.space/docs/install/) has what each one needs.
 
-### Void Linux
-
-iNiR supports **Void Linux glibc + runit + XBPS** through the same setup entry
-point instead of a separate installer. From the checkout created above, run
-`./setup install` normally.
-
-For a first Void install, the interactive path is recommended. Setup shows the
-detected system and install plan, installs the XBPS dependency profiles, builds
-the few providers that are not packaged by Void, configures the non-systemd
-session path, and only then offers disruptive system changes such as migrating
-from `dhcpcd`/standalone `wpa_supplicant` to NetworkManager or enabling SDDM.
-`./setup install -y` deliberately does not make those two ownership changes for
-you.
-
-See [iNiR on Void Linux](docs/VOID.md), [Void capabilities](docs/VOID_CAPABILITIES.md)
-and the [installation guide](docs/INSTALL.md) for the exact support scope.
+## Update
 
 ```bash
-inir run                        # launch the shell
-inir settings                   # open settings GUI
-inir logs                       # check runtime logs
-inir doctor                     # auto-diagnose and fix
-inir update                     # pull + migrate + restart
+inir update
 ```
 
-Other ways in, if `./setup install` isn't what you want:
+Your config and your edits stay. If the new version doesn't start, the update puts back the one you had.
 
-```bash
-./setup                 # TUI menu, pick what you want
-sudo make install       # system-wide instead of your home
-./setup rollback        # undo the last update
-```
+## How it's built
 
-**Distros:** Arch remains the upstream primary target. Void Linux glibc/runit
-is also supported through XBPS. Fedora and Debian/Ubuntu
-retain their automated dependency paths with distro-repository-first fallbacks;
-other distributions use the generic guidance in the
-[package list](https://github.com/snowarch/inir/wiki/PACKAGES). iNiR needs Qt
-6.9 or newer: Ubuntu 25.10, Fedora 43 and Debian testing or later.
+iNiR is a base and the parts around it, each in its own repository. Nothing compiles on your machine: setup and
+`inir update` fetch every part prebuilt and check it by sha256.
 
----
+| Repository | What it is | Latest |
+|---|---|---|
+| **iNiR** (this one) | The base: services, config, Settings, the welcome wizard, setup and update, the plugin host | ![](https://img.shields.io/github/v/release/snowarch/iNiR?label=&style=flat-square&color=111111) |
+| [inir-hub](https://github.com/snowarch/inir-hub) | Every plugin: the three families, components, themes, widgets, web apps | [inir.space/hub](https://inir.space/hub) |
+| [qs-rs](https://github.com/snowarch/qs-rs) | The runtime: Quickshell rewritten in Rust, with its own Qt | ![](https://img.shields.io/github/v/release/snowarch/qs-rs?label=&style=flat-square&color=111111) |
+| [inir-accel](https://github.com/snowarch/inir-accel) | What the shell runs in the background, in Rust: colours, thumbnails, sensors, search | ![](https://img.shields.io/github/v/release/snowarch/inir-accel?label=&style=flat-square&color=111111) |
+| [inir-cli](https://github.com/snowarch/inir-cli) | The `inir` command: IPC, doctor, update, `inir hub` | ![](https://img.shields.io/github/v/release/snowarch/inir-cli?label=&style=flat-square&color=111111) |
+| [inir-site](https://github.com/snowarch/inir-site) | [inir.space](https://inir.space): the site, the docs, the hub catalogue | |
+| [iNiR-Walls](https://github.com/snowarch/iNiR-Walls), [inir-mascot](https://github.com/snowarch/inir-mascot) | The wallpaper pack and Kira's art, both optional in setup | |
 
-## Keybinds
-
-| Key | Action |
-|-----|--------|
-| <kbd>Super</kbd> + <kbd>Space</kbd> | Overview: search apps, navigate workspaces |
-| <kbd>Super</kbd> + <kbd>V</kbd> | Clipboard history |
-| <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | Screenshot a region |
-| <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> | OCR a region |
-| <kbd>Super</kbd> + <kbd>,</kbd> | Settings |
-| <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> | Switch panel family |
-| <kbd>Super</kbd> + <kbd>/</kbd> | Cheatsheet, in case you forget the rest |
-
-Full list: [Keybinds](https://github.com/snowarch/inir/wiki/KEYBINDS)
-
----
-
-## Wallpapers
-
-15 wallpapers ship bundled. For more, check [iNiR-Walls](https://github.com/snowarch/iNiR-Walls), a curated collection that works well with the Material You pipeline.
-
----
-
-## Documentation
-
-General documentation lives in the [Wiki](https://github.com/snowarch/inir/wiki).
-Fork-specific behavior and validation notes are listed in [Local changes](docs/LOCAL_CHANGES.md).
-
-| Page | What's in it |
-|---|---|
-| [Install](https://github.com/snowarch/inir/wiki/INSTALL) | Getting it running |
-| [Setup](https://github.com/snowarch/inir/wiki/SETUP) | Updates, migrations, rollback |
-| [Keybinds](https://github.com/snowarch/inir/wiki/KEYBINDS) | Every shortcut |
-| [IPC](https://github.com/snowarch/inir/wiki/IPC) | Targets you can bind or script |
-| [Packages](https://github.com/snowarch/inir/wiki/PACKAGES) | Every dependency and why it's there |
-| [Limitations](https://github.com/snowarch/inir/wiki/LIMITATIONS) | What's known broken, and workarounds |
-| [Void Linux](docs/VOID.md) | XBPS, runit/Turnstile, providers, validation and gotchas |
-| [Architecture](ARCHITECTURE.md) | How the code is put together |
-
----
-
-## Troubleshooting
-
-```bash
-inir logs                       # check recent runtime logs
-inir restart                    # restart the active runtime
-inir repair                     # doctor + restart + filtered log check
-./setup doctor                  # auto-diagnose and fix common problems
-./setup rollback                # undo the last update
-```
-
-Check [Limitations](https://github.com/snowarch/inir/wiki/LIMITATIONS) before opening an issue. If you'd rather just ask someone, Discord is faster.
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code patterns, and pull request guidelines.
-
----
+[Architecture](docs/ARCHITECTURE_OVERVIEW.md) has the whole map. To add something, make it a plugin:
+[inir-hub's guide](https://github.com/snowarch/inir-hub/blob/main/CONTRIBUTING.md). To change the base:
+[CONTRIBUTING](.github/CONTRIBUTING.md).
 
 ## Credits
 
-- [**end-4**](https://github.com/end-4/dots-hyprland): illogical-impulse, the Hyprland dots iNiR forked from
-- [**pctrade/end4-pC**](https://github.com/pctrade/end4-pC): a fork that occasionally has a genuinely good idea
-- [**Gakuseei**](https://github.com/Gakuseei): [Ricelin](https://github.com/Gakuseei/Ricelin), where the pill bar and the washi and flame look come from
-- [**Quickshell**](https://quickshell.outfoxxed.me/): the framework this runs on
-- [**Niri**](https://github.com/YaLTeR/niri): the compositor it's built for
+- [end-4](https://github.com/end-4/dots-hyprland): illogical-impulse, the Hyprland dots iNiR started from
+- [Quickshell](https://quickshell.outfoxxed.me/) by outfoxxed: the framework, and the API qs-rs keeps
+- [Niri](https://github.com/YaLTeR/niri) by YaLTeR: the compositor
+- [Gakuseei](https://github.com/Gakuseei): [Ricelin](https://github.com/Gakuseei/Ricelin), where the pill bar and the washi and flame look come from
+- [pctrade/end4-pC](https://github.com/pctrade/end4-pC): a fork with ideas worth taking
+- Everyone who [contributes](https://github.com/snowarch/iNiR/graphs/contributors) and tests on Discord
 
-GPL-3.0, same as end-4's dots. Copyright (C) 2025-2026 snowarch.
-
----
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/snowarch/inir-mascot/main/inir-mascot-hero-banner.png" alt="iNiR mascot leaning on the iNiR logotype" width="720">
-</p>
-
----
-
-<p align="center">
-  <a href="https://github.com/snowarch/inir/graphs/contributors">Contributors</a> &bull;
-  <a href="CHANGELOG.md">Changelog</a> &bull;
-  <a href="LICENSE">GPL-3.0 License</a>
-</p>
+[GPL-3.0](LICENSE) with the terms in [NOTICE](NOTICE). Copyright (C) 2025-2026 snowarch.

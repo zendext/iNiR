@@ -248,9 +248,11 @@ MouseArea { // Notification group area
             layer.effect: MultiEffect {
                 source: notifBlurredWallpaper
                 anchors.fill: source
+                contrast: Appearance.aurora.backdropContrast
+                brightness: Appearance.aurora.backdropBrightness
                 saturation: Appearance.angelEverywhere
                     ? (Appearance.angel.blurSaturation * Appearance.angel.colorStrength)
-                    : (Appearance.effectsEnabled ? 0.2 : 0)
+                    : (Appearance.effectsEnabled ? Appearance.aurora.backdropSaturation : 0)
                 blurEnabled: Appearance.effectsEnabled
                 blurMax: 64
                 blur: Appearance.effectsEnabled

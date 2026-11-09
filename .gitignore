@@ -29,6 +29,9 @@ session-*.md
 # Private design contracts (kept local by the maintainer)
 modules/iris/DESIGN.md
 modules/iris/DECISIONS.md
+modules/iris/AIRISU.md
+modules/iris/AIRISU-PROMPT.md
+modules/iris/DESIGNS.md
 modules/iris/SYSTEM.md
 ROADMAP.md
 STATUS.md
@@ -92,16 +95,6 @@ mcp/
 .github/agents/
 .github/copilot-instructions.md
 .github/instructions/
-
-# ── Go theme-generator binaries (built on demand) ────────────
-/vscode_themegen
-/opencode_themegen
-/system24_themegen
-/zed_themegen
-/scripts/colors/vscode_themegen/vscode_themegen
-/scripts/colors/opencode_themegen/opencode_themegen
-/scripts/colors/system24_themegen/system24_themegen
-/scripts/colors/zed_themegen/zed_themegen
 
 # ── Python ────────────────────────────────────────────────────
 __pycache__/
@@ -179,7 +172,7 @@ wiki/
 
 # ── Stale paths (prevent accidental commits) ─────────────────
 /src/
-modules/ii/overlay/floatingImage/undefined/
+modules/shared/overlay/floatingImage/undefined/
 docs-site/
 prompt-framework-opencode.md
 version.json
@@ -207,3 +200,11 @@ assets/images/mascot/inir-mascot-*.gif
 # fontconfig marks every scanned font folder; assets/fonts is linked into the user fonts by sync-system-fonts.sh
 assets/fonts/**/.uuid
 assets/fonts/.uuid
+
+# local tooling, never shipped
+/dev
+/GNUmakefile
+
+# written in the runtime by inir hub
+/HubScan.qml
+/plugins.list

@@ -16,16 +16,25 @@ fi
 #####################################################################################
 if [[ -n "${ONLY_MISSING_DEPS:-}" ]]; then
   tui_info "Installing missing dependencies only..."
+  source "${REPO_ROOT}/sdata/dist-arch/providers.sh"
+  # not a package: the recipe picks what this machine takes and turns it on
+  if [[ " $ONLY_MISSING_DEPS " == *" power-profiles "* ]]; then
+    provider_power-profiles || log_warning "power-profiles-daemon could not be installed; the profile buttons stay off"
+    ONLY_MISSING_DEPS="$(tr ' ' '\n' <<<"$ONLY_MISSING_DEPS" | grep -vx power-profiles | xargs)"
+  fi
 
   # doctor reports command IDs; map them to Arch package names.
   declare -A cmd_to_pkg=(
     [qs]="quickshell"
     [niri]="niri"
+    [niri-session]="niri"
     [nmcli]="networkmanager"
     [wpctl]="wireplumber"
+    [pw-dump]="pipewire"
     [jq]="jq"
     [rsync]="rsync"
     [curl]="curl"
+    [unzip]="unzip"
     [git]="git"
     [python3]="python"
     [wlsunset]="wlsunset"
@@ -55,7 +64,20 @@ if [[ -n "${ONLY_MISSING_DEPS:-}" ]]; then
     [kirigami]="kirigami"
     [kdialog]="kdialog"
     [millennium]="millennium-bin"
+    [plasma-integration]="plasma-integration"
+    [font-noto-color-emoji]="noto-fonts-emoji"
     [missioncenter]="mission-center"
+    # Commands whose Arch package has another name
+    [awww-daemon]="awww"
+    [blueman-manager]="blueman"
+    [checkupdates]="pacman-contrib"
+    [notify-send]="libnotify"
+    [flock]="util-linux"
+    [qalc]="libqalculate"
+    [kwriteconfig6]="kconfig"
+    [nm-connection-editor]="nm-connection-editor"
+    [xdg-settings]="xdg-utils"
+    [gowall]="gowall-bin"
   )
 
   _miss_installflags="--needed"
@@ -117,11 +139,9 @@ esac
 #####################################################################################
 # Ensure AUR helper
 #####################################################################################
-if ! command -v yay >/dev/null 2>&1 && ! command -v paru >/dev/null 2>&1; then
-  log_warning "No AUR helper found"
-  showfun install-yay
-  v install-yay
-fi
+source "${REPO_ROOT}/sdata/dist-arch/providers.sh"
+v provider_aur-helper
+provider_power-profiles || log_warning "power-profiles-daemon could not be installed; the profile buttons stay off"
 
 # Set AUR helper
 if command -v yay >/dev/null 2>&1; then
@@ -158,6 +178,9 @@ collect_pkgbuild_deps() {
 for pkgdir in ./sdata/dist-arch/inir-*/; do
   pkgname=$(basename "$pkgdir")
   case "$pkgname" in
+    # The meta-package that registers everything with pacman, built further down;
+    # collecting it here would install every group whatever the --no-* flags say.
+    inir-deps) continue ;;
     inir-audio) $INSTALL_AUDIO || continue ;;
     inir-toolkit) $INSTALL_TOOLKIT || continue ;;
     inir-screencapture) $INSTALL_SCREENCAPTURE || continue ;;
@@ -178,8 +201,8 @@ for qs_conflict in quickshell-git quickshell-bin; do
     if $ask; then
       if tui_confirm "Replace $qs_conflict with quickshell (stable)? (recommended)"; then
         log_info "Removing $qs_conflict..."
-        v pkg_sudo pacman -Rdd --noconfirm "$qs_conflict" 2>/dev/null \
-          || v pkg_sudo pacman -R --noconfirm "$qs_conflict" \
+        pkg_sudo pacman -Rdd --noconfirm "$qs_conflict" 2>/dev/null \
+          || pkg_sudo pacman -R --noconfirm "$qs_conflict" \
           || log_warning "Could not remove $qs_conflict — install may fail"
       else
         log_warning "Keeping $qs_conflict — removing quickshell from install plan"
@@ -229,8 +252,8 @@ for _qs_pkg in "${_qs_shell_conflicts[@]}"; do
     if $ask; then
       if tui_confirm "Remove $_qs_pkg? (required for iNiR)"; then
         log_info "Removing $_qs_pkg..."
-        v pkg_sudo pacman -Rdd --noconfirm "$_qs_pkg" 2>/dev/null \
-          || v pkg_sudo pacman -R --noconfirm "$_qs_pkg" \
+        pkg_sudo pacman -Rdd --noconfirm "$_qs_pkg" 2>/dev/null \
+          || pkg_sudo pacman -R --noconfirm "$_qs_pkg" \
           || log_warning "Could not remove $_qs_pkg — install may fail"
       else
         log_warning "Keeping $_qs_pkg — iNiR may not work correctly"
@@ -323,9 +346,6 @@ if $INSTALL_FONTS; then
     ttf-jetbrains-mono-nerd
   )
 fi
-if $INSTALL_TOOLKIT; then
-  OFFICIAL_PACKAGES+=(uv)
-fi
 
 installflags="--needed"
 $ask || installflags="$installflags --noconfirm"
@@ -356,7 +376,7 @@ done
 
 if [[ ${#_repo_installable[@]} -gt 0 ]]; then
   log_info "Installing ${#_repo_installable[@]} missing packages from official repos..."
-  if ! v pkg_sudo pacman -S $installflags "${_repo_installable[@]}"; then
+  if ! pkg_sudo pacman -S $installflags "${_repo_installable[@]}"; then
     log_warning "Official package batch failed — retrying individually before AUR fallback"
     for pkg in "${_repo_installable[@]}"; do
       pacman -Q "$pkg" &>/dev/null && continue
@@ -391,8 +411,6 @@ AUR_PACKAGES=(
 
   # Wallpaper effects editor (used by Gowall integration)
   gowall-bin
-
-  # Note: Python deps are handled via uv + requirements.txt, not AUR packages
 )
 unset REPO_FALLBACK_PACKAGES
 
@@ -461,16 +479,14 @@ if $INSTALL_AUDIO; then
   : # cava moved to inir-audio PKGBUILD
 fi
 
-# uv is in Arch extra and is installed in the official package batch.
-
 # Reset installflags for AUR helper
 installflags="--needed"
 $ask || installflags="$installflags --noconfirm"
 
 if [[ ${#REQUIRED_AUR_PACKAGES[@]} -gt 0 ]]; then
   log_info "Installing required AUR packages: ${REQUIRED_AUR_PACKAGES[*]}"
-  if ! v $AUR_HELPER -S $installflags "${REQUIRED_AUR_PACKAGES[@]}"; then
-    log_error "Failed to install required AUR packages: ${REQUIRED_AUR_PACKAGES[*]}"
+  if ! $AUR_HELPER -S $installflags "${REQUIRED_AUR_PACKAGES[@]}"; then
+    log_error "Failed to install required AUR packages; retry with: ${AUR_HELPER:-yay} -S ${REQUIRED_AUR_PACKAGES[*]}"
     return 1
   fi
 fi
@@ -478,7 +494,7 @@ fi
 # Install main AUR packages (these are the only ones that need AUR)
 if [[ ${#AUR_PACKAGES[@]} -gt 0 ]]; then
   log_info "Installing ${#AUR_PACKAGES[@]} AUR packages..."
-  v $AUR_HELPER -S $installflags "${AUR_PACKAGES[@]}" || {
+  $AUR_HELPER -S $installflags "${AUR_PACKAGES[@]}" || {
     log_warning "Some AUR packages failed — trying individually..."
     for pkg in "${AUR_PACKAGES[@]}"; do
       $AUR_HELPER -S $installflags "$pkg" 2>/dev/null || \
@@ -529,7 +545,7 @@ tui_info "Registering dependencies with pacman..."
 _meta_dir="./sdata/dist-arch/inir-deps"
 if [[ -f "$_meta_dir/PKGBUILD" ]]; then
   # Update pkgver from VERSION file
-  _inir_ver="$(cat ./VERSION 2>/dev/null || echo '2.33.0')"
+  _inir_ver="$(cat ./VERSION 2>/dev/null || echo '3.0.1')"
   sed -i "s/^pkgver=.*/pkgver=${_inir_ver}/" "$_meta_dir/PKGBUILD"
 
   (

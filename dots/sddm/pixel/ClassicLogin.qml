@@ -1,4 +1,4 @@
-// iNiR SDDM, Classic appearance: exact replica of modules/lock/LockSurface.qml (ii/Material)
+// iNiR SDDM, Classic appearance: exact replica of modules/shared/lock/LockSurface.qml (ii/Material)
 // States: "clock" (initial) ↔ "login" (password entry), same layout + transitions.
 import QtQuick 2.15
 import QtQuick.Layouts 1.15
@@ -54,7 +54,7 @@ MouseArea {
         return (v !== undefined && v !== null && String(v).length > 0) ? String(v) : "Desktop"
     }
 
-    // ── Theme (synced from matugen by sync-pixel-sddm.py) ──────────────────
+    // ── Theme (synced from matugen by inir-accel sddm-sync) ──────────────────
     readonly property color colPrimary:          config.primaryColor          || "#cba6f7"
     readonly property color colOnPrimary:        config.onPrimaryColor        || "#1e1e2e"
     readonly property color colSurface:          config.surfaceColor          || "#1e1e2e"

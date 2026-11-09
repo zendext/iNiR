@@ -44,22 +44,13 @@ Singleton {
         { id: "wallpaper/grid", family: "ii", surface: "wallpaper-grid", view: "", safe: true, settleMs: 500 },
         { id: "wallpaper/coverflow", family: "ii", surface: "wallpaper-coverflow", view: "", safe: true, settleMs: 500 },
         { id: "tiling/picker", family: "shared", surface: "tiling", view: "picker", safe: true, settleMs: 350 },
-        { id: "tiling/osd", family: "shared", surface: "tiling", view: "osd", safe: true, settleMs: 350 },
-        { id: "iris/palette", family: "iris", surface: "iris-palette", view: "", safe: true, settleMs: 300 },
-        { id: "iris/controls", family: "iris", surface: "iris-controls", view: "", safe: true, settleMs: 300 },
-        { id: "iris/session", family: "iris", surface: "iris-session", view: "", safe: true, settleMs: 300 },
-        { id: "waffle/start", family: "waffle", surface: "waffle-search", view: "start", safe: true, settleMs: 350 },
-        { id: "waffle/all-apps", family: "waffle", surface: "waffle-search", view: "all-apps", safe: true, settleMs: 350 },
-        { id: "waffle/search", family: "waffle", surface: "waffle-search", view: "search", safe: true, settleMs: 450 },
-        { id: "waffle/action-center", family: "waffle", surface: "waffle-action-center", view: "", safe: true, settleMs: 350 },
-        { id: "waffle/notification-center", family: "waffle", surface: "waffle-notification-center", view: "", safe: true, settleMs: 350 },
-        { id: "waffle/widgets", family: "waffle", surface: "waffle-widgets", view: "", safe: true, settleMs: 350 },
-        { id: "waffle/taskview", family: "waffle", surface: "waffle-taskview", view: "", safe: true, settleMs: 450 }
+        { id: "tiling/osd", family: "shared", surface: "tiling", view: "osd", safe: true, settleMs: 350 }
     ]
     property var settingsDestinations: []
-    readonly property var destinations: baseDestinations.concat(settingsDestinations)
+    readonly property var destinations: baseDestinations.concat(Plugins.devDestinations, settingsDestinations)
     property string currentDestination: ""
-    property string requestedWaffleStartView: "start"
+    // The view a family's own surface opens on, read by that surface (`view` of its dev destination).
+    property string requestedView: ""
 
     function registerSettingsPages(pages): void {
         const out = []
@@ -93,12 +84,10 @@ Singleton {
         GlobalStates.tilingOverlayOsdOpen = false
         GlobalStates.settingsOverlayOpen = false
         GlobalStates.searchOpen = false
-        GlobalStates.waffleActionCenterOpen = false
-        GlobalStates.waffleNotificationCenterOpen = false
-        GlobalStates.waffleWidgetsOpen = false
-        GlobalStates.waffleTaskViewOpen = false
+        const familyClose = GlobalStates.familyVerb("dev", "close")
+        if (familyClose) familyClose()
         GlobalStates.sidebarRightRequestedWidget = ""
-        requestedWaffleStartView = "start"
+        requestedView = ""
         LauncherSearch.query = ""
         currentDestination = ""
     }
@@ -135,27 +124,20 @@ Singleton {
             GlobalStates.tilingOverlayPickerOpen = entry.view === "picker"
             GlobalStates.tilingOverlayOsdOpen = entry.view === "osd"
             break
-        case "iris-palette": GlobalStates.searchOpen = true; break
-        case "iris-controls": GlobalStates.controlPanelOpen = true; break
-        case "iris-session": GlobalStates.sessionOpen = true; break
         case "settings":
-            if ((Config.options?.panelFamily ?? "ii") === "waffle"
-                    && Config.options?.waffles?.settings?.useMaterialStyle !== true) {
+            // The pages are the settings host's: a family wearing no such Settings has none to open.
+            if (Plugins.part(Plugins.settingsFamily, "settingsHost").length === 0) {
                 currentDestination = ""
-                return "error:material-settings-page-unavailable-in-waffle"
+                return "error:settings-page-unavailable"
             }
             GlobalStates.openSettingsPage(entry.pageIndex ?? -1)
             break
-        case "waffle-search":
-            requestedWaffleStartView = entry.view
-            LauncherSearch.query = entry.view === "search" ? "a" : ""
-            GlobalStates.searchOpen = true
-            break
-        case "waffle-action-center": GlobalStates.waffleActionCenterOpen = true; break
-        case "waffle-notification-center": GlobalStates.waffleNotificationCenterOpen = true; break
-        case "waffle-widgets": GlobalStates.waffleWidgetsOpen = true; break
-        case "waffle-taskview": GlobalStates.waffleTaskViewOpen = true; break
-        default: currentDestination = ""; return "error:unsupported-surface"
+        default: {
+            // A family's own surface: its verb `dev.open` opens it and says so.
+            requestedView = entry.view ?? ""
+            const familyOpen = GlobalStates.familyVerb("dev", "open")
+            if (!familyOpen || familyOpen(entry.surface) !== true) { currentDestination = ""; return "error:unsupported-surface" }
+        }
         }
         return "ok:" + destination
     }
@@ -170,7 +152,23 @@ Singleton {
         const round = value => Math.round(value * 10) / 10
         return { state: "done", frames: gaps.length, mean: round(gaps.reduce((a, b) => a + b, 0) / gaps.length),
             p95: round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]), worst: round(sorted[sorted.length - 1]),
-            over20: gaps.filter(v => v > 20).length, over50: gaps.filter(v => v > 50).length }
+            over20: gaps.filter(v => v > 20).length, over50: gaps.filter(v => v > 50).length,
+            // How long the GUI thread was held at once: frame gaps also count drawing (a llvmpipe nest draws in 40 ms),
+            // this counts only work that blocks animations and input, whatever renders the frame.
+            busy: round(Math.max(0, ...root.meterBeats.slice(1)) - 4), busy16: root.meterBeats.slice(1).filter(v => v > 20).length }
+    }
+    property var meterBeats: []
+    property real meterBeat: 0
+    Timer {
+        interval: 4
+        repeat: true
+        running: meter.running
+        onRunningChanged: if (running) { root.meterBeats = []; root.meterBeat = Date.now() }
+        onTriggered: {
+            const now = Date.now()
+            root.meterBeats.push(now - root.meterBeat)
+            root.meterBeat = now
+        }
     }
     FrameAnimation {
         id: meter
@@ -181,39 +179,51 @@ Singleton {
         }
     }
 
-    property string dragSlot: ""
-    property int dragPerFrame: 1
-    property real dragStart: 0
-    property real dragUntil: 0
-    FrameAnimation {
-        id: dragSim
-        running: false
-        onTriggered: {
-            const t = Date.now() - root.dragStart
-            if (Date.now() >= root.dragUntil) { dragSim.stop(); GlobalStates.irisBubbleDrag = null; return }
-            const screen = GlobalStates.focusedScreen
-            const cx = (screen?.width ?? 1920) / 2, cy = (screen?.height ?? 1080) / 2
-            for (let k = 0; k < root.dragPerFrame; k++) {
-                const a = (t + k * 13 / root.dragPerFrame) / 400
-                GlobalStates.irisBubbleDrag = { slot: root.dragSlot, kind: root.dragSlot.replace(/^extra-/, ""), screen: screen?.name ?? "",
-                    x: cx + cx * 0.3 * Math.cos(a), y: cy + cy * 0.37 * Math.sin(a), size: 40, released: false }
-            }
-        }
+    // Installs restart on update and carry no Makefile: the watcher is for checkouts only, not a python all day.
+    property bool checkout: false
+    FileView {
+        path: Quickshell.shellPath("Makefile")
+        printErrors: false
+        onLoaded: root.checkout = true
     }
-
     Process {
-        running: Quickshell.watchFiles
-        command: ["python3", Quickshell.shellPath("scripts/daemon/dev_hot_reload.py"), Quickshell.shellDir,
+        running: Quickshell.watchFiles && root.checkout
+        command: [Quickshell.shellPath("scripts/lib/accel-run"), "dev-hot-reload", Quickshell.shellDir,
             String(Quickshell.processId)]
     }
 
+    /// Development navigation for loading lazy surfaces and internal views without automating pointer or keyboard
+    /// input. Destination identifiers are stable and returned as JSON by `list`.
+    ///
+    /// ```bash
+    /// inir dev list | jq -r '.[].id'
+    /// inir dev open sidebar-left/anime-schedule
+    /// inir dev close
+    /// inir dev audit
+    /// inir dev audit sidebar-left/ai settings/ai
+    /// inir dev audit --all --all-families
+    /// inir dev meter 2500; sleep 3; inir dev metered
+    /// ```
+    ///
+    /// `inir dev audit` selects destinations related to changed area-specific files in the current worktree.
+    /// Destination arguments select an exact scope, while `--all` requests every safe destination and
+    /// `--all-families` includes both ii and waffle. Each visited destination is closed again and new QML warnings or
+    /// errors are attributed to the destination that triggered them. Destructive actions such as locking, recording,
+    /// power commands, and wallpaper mutation are excluded.
     IpcHandler {
         target: "dev"
+        /// Return the destination inventory as JSON
         function list(): string { return JSON.stringify(root.destinations) }
+        /// Open a destination by semantic identifier
         function open(destination: string): string { return root.request(destination) }
+        /// Close development-opened surfaces and clear the request
         function close(): void { root.closeAll() }
+        /// Reload the shell's QML the way an edit does (soft: windows are kept). In a git checkout
+        /// `inir-accel dev-hot-reload` calls it for the files Quickshell does not watch itself
         function reload(): string { Qt.callLater(() => Quickshell.reload(false)); return "reloading" }
+        /// Return the current destination or `closed`
         function current(): string { return root.currentDestination.length > 0 ? root.currentDestination : "closed" }
+        /// Measure frame gaps for the given milliseconds (250–20000, default 2500)
         function meter(ms: string): string {
             const span = Math.max(250, Math.min(20000, Number(ms) || 2500))
             root.meterGaps = []
@@ -222,49 +232,7 @@ Singleton {
             meter.restart()
             return "measuring:" + span
         }
+        /// Return the last measurement as JSON: frames, mean, p95, worst, frames over 20 and 50 ms
         function metered(): string { return JSON.stringify(root.meterResult) }
-        function dragSim(slot: string, perFrame: string): string {
-            if (!GlobalStates.focusedScreen) return "error:no-screen"
-            root.dragSlot = slot.length > 0 ? slot : "extra-clock"
-            root.dragPerFrame = Math.max(1, Math.min(16, Number(perFrame) || 1))
-            root.dragStart = Date.now()
-            root.dragUntil = root.dragStart + 2500
-            dragSim.restart()
-            return "dragging:" + root.dragSlot + "x" + root.dragPerFrame
-        }
-        function dropBubble(slot: string, x: string, y: string): string {
-            const screen = GlobalStates.focusedScreen
-            if (!screen) return "error:no-screen"
-            GlobalStates.irisBubbleDrag = { slot: slot, kind: slot.startsWith("app:") ? "app" : slot.replace(/^extra-/, ""),
-                screen: screen.name, x: Number(x), y: Number(y), size: 40, released: false }
-            dropRelease.restart()
-            return "dropped:" + slot + "@" + x + "," + y
-        }
-        function dockSlide(appId: string, pixels: string): string {
-            if (!GlobalStates.focusedScreen) return "error:no-screen"
-            root.slideApp = appId.toLowerCase()
-            root.slideDistance = Number(pixels) || 0
-            root.slideStart = Date.now()
-            slideSim.restart()
-            return "sliding:" + root.slideApp + ":" + root.slideDistance
-        }
-    }
-    Timer {
-        id: dropRelease
-        interval: 200
-        onTriggered: if (GlobalStates.irisBubbleDrag) GlobalStates.irisBubbleDrag = Object.assign({}, GlobalStates.irisBubbleDrag, { released: true })
-    }
-    property string slideApp: ""
-    property real slideDistance: 0
-    property real slideStart: 0
-    FrameAnimation {
-        id: slideSim
-        running: false
-        onTriggered: {
-            const t = Math.min(1, (Date.now() - root.slideStart) / 1000)
-            const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
-            GlobalStates.irisDockSlide = { appId: root.slideApp, along: root.slideDistance * eased, done: t >= 1 }
-            if (t >= 1) { slideSim.stop(); GlobalStates.irisDockSlide = null }
-        }
     }
 }

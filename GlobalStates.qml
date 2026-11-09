@@ -60,15 +60,14 @@ Singleton {
         }
         openEqualizer(outputName)
     }
-    property real irisLevelQuietUntil: 0
-    function quietIrisLevels(): void { root.irisLevelQuietUntil = Date.now() + 700 }
     property bool osdBrightnessOpen: false
     property bool osdVolumeOpen: false
     property bool osdMicOpen: false
     property bool osdMediaOpen: false
     property string osdMediaAction: "play" // "play", "pause", "next", "previous"
     signal osdMediaActionTriggered(string action)
-    readonly property bool userMediaFeedback: Config.options?.panelFamily === "iris"
+    // Media keys give feedback when the OSD shows it, or always under a family that shows it its own way (`mediaFeedback`).
+    readonly property bool userMediaFeedback: Plugins.flag(Plugins.active, "mediaFeedback")
         || (Config.options?.osd?.mediaEnabled ?? true)
 
     function showMediaAction(action: string): void {
@@ -103,9 +102,24 @@ Singleton {
     property bool clipboardOpen: false
     // True only while iNiR asks Niri for internal window-preview frames.
     property bool windowPreviewCaptureActive: false
+    // The active family's own answers to the shared verbs (taskview, orbit, overview, clipboard, family.leave), set by
+    // its `critical` part: { owner: id, target: { verb: function } }. A verb it leaves out keeps Material's behaviour;
+    // a family with verbs (flag `verbs`) that hasn't loaded them yet answers nothing rather than Material's.
+    property var familyVerbs: ({})
+    function familyVerb(target: string, name: string): var {
+        const verbs = root.familyVerbs?.owner === Plugins.active ? root.familyVerbs : null
+        if (!verbs) return Plugins.flag(Plugins.active, "verbs") ? () => "" : null
+        const verb = verbs[target]?.[name]
+        return typeof verb === "function" ? verb : null
+    }
+
     property bool settingsOverlayOpen: false
     property int settingsOverlayRequestedPage: -1 // Set before opening to navigate to a specific page
+    property string settingsOverlayRequestedKey: "" // The same page by name, for a Settings that keeps its own pages
     property string settingsOverlayRequestedSection: ""
+    // The page names of the Settings in use, in order, given by its host (`settingsHost`): callers name a page
+    // ("widgets", "orbit"), never its position, which moves whenever a page is added.
+    property var settingsPageKeys: []
     property int settingsOverlayCurrentPage: -1 // Published by whichever overlay chrome is loaded
     // iRiS Settings as a window: open or toggle with it mapped but not focused brings it forward instead.
     property bool settingsWindowBehind: false
@@ -114,20 +128,41 @@ Singleton {
     readonly property bool settingsNativeDialogOpen:
         Object.keys(root._settingsNativeDialogs).length > 0
 
+    // A Settings page by its name ("widgets", "orbit", "about"), in the family's own Settings.
+    function openSettingsAt(key: string, section): void {
+        root._openSettings(root.settingsPageKeys.indexOf(key), key, section)
+    }
+
     function openSettingsPage(index: int, section): void {
+        root._openSettings(index, String(root.settingsPageKeys[index] ?? ""), section)
+    }
+
+    // Inside the shell when the Settings in use has no window, or brings an overlay (`settingsHost`) and the person
+    // asked for it; its own window otherwise.
+    function _settingsInShell(): bool {
+        const family = Plugins.settingsFamily
+        if (Plugins.part(family, "settingsApp").length === 0) return true
+        return Plugins.part(family, "settingsHost").length > 0 && Boolean(Plugins.setting(family, "settingsOverlay", false))
+    }
+
+    // Overlay or window is the Settings family's own choice (plugin.json `settings.settingsOverlay`).
+    function setSettingsOverlay(on: bool): void {
+        const key = Plugins.settingKey(Plugins.settingsFamily, "settingsOverlay")
+        if (key.length > 0) Config.setNestedValue(key, on)
+    }
+
+    function _openSettings(index: int, key: string, section): void {
         const requestedSection = String(section ?? "")
-        const isWaffle = Config.options?.panelFamily === "waffle"
-            && Config.options?.waffles?.settings?.useMaterialStyle !== true
-        if (isWaffle) {
-            Quickshell.execDetached([Quickshell.shellPath("scripts/inir"),
-                "waffle-settings-window"])
-        } else if (Config.options?.panelFamily === "iris" || (Config.options?.settingsUi?.overlayMode ?? false)) {
-            root.settingsOverlayRequestedPage = index
+        if (root._settingsInShell()) {
+            // The name goes last: iRiS Settings acts when it changes, with the section already there.
             root.settingsOverlayRequestedSection = requestedSection
+            root.settingsOverlayRequestedPage = index
+            root.settingsOverlayRequestedKey = key
             if (root.settingsOverlayOpen) root.settingsRaiseRequest++
             root.settingsOverlayOpen = true
         } else {
-            const args = ["/usr/bin/env", `QS_SETTINGS_PAGE=${index}`]
+            // Each window knows its pages by name; the number is for callers that only have one.
+            const args = ["/usr/bin/env", `QS_SETTINGS_PAGE=${key.length > 0 ? key : index}`]
             if (requestedSection.length > 0)
                 args.push(`QS_SETTINGS_SECTION=${requestedSection}`)
             args.push(Quickshell.shellPath("scripts/inir"), "settings-window")
@@ -136,32 +171,20 @@ Singleton {
     }
 
     function openSettings(): void {
-        const isWaffle = Config.options?.panelFamily === "waffle"
-            && Config.options?.waffles?.settings?.useMaterialStyle !== true
-        if (isWaffle) {
-            Quickshell.execDetached([Quickshell.shellPath("scripts/inir"),
-                "waffle-settings-window"])
-        } else if (Config.options?.panelFamily === "iris" || (Config.options?.settingsUi?.overlayMode ?? false)) {
+        if (root._settingsInShell()) {
             if (root.settingsOverlayOpen) root.settingsRaiseRequest++
             root.settingsOverlayOpen = true
         } else {
-            Quickshell.execDetached([Quickshell.shellPath("scripts/inir"),
-                "settings-window"])
+            Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "settings-window"])
         }
     }
 
     function toggleSettings(): void {
-        const isWaffle = Config.options?.panelFamily === "waffle"
-            && Config.options?.waffles?.settings?.useMaterialStyle !== true
-        if (isWaffle) {
-            Quickshell.execDetached([Quickshell.shellPath("scripts/inir"),
-                "waffle-settings-window", "--toggle"])
-        } else if (Config.options?.panelFamily === "iris" || (Config.options?.settingsUi?.overlayMode ?? false)) {
+        if (root._settingsInShell()) {
             if (root.settingsOverlayOpen && root.settingsWindowBehind) root.settingsRaiseRequest++
             else root.settingsOverlayOpen = !root.settingsOverlayOpen
         } else {
-            Quickshell.execDetached([Quickshell.shellPath("scripts/inir"),
-                "settings-window", "--toggle"])
+            Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "settings-window", "--toggle"])
         }
     }
 
@@ -198,7 +221,7 @@ Singleton {
 
     // The unified snip menu may restore the last toolbar choice. Raw ordinals
     // mirror RegionSelection's enums: action 0 Shot, 1 Edit, 2 Search, 3 OCR
-    // (record is never restored); mode 0 rectangle, 1 circle.
+    // (record and 6 Pin are never restored); mode 0 rectangle, 1 circle.
     function openRememberedRegionTool(): void {
         let action = 0
         let mode = 0
@@ -244,13 +267,13 @@ Singleton {
     property string selectedDesktopWidget: ""
     property string selectedDesktopItem: ""
     property string desktopWidgetQuickControls: ""
-    property string desktopWidgetManagerOutput: ""
+    // A shelf page asked for by whoever opens the arranging mode (Settings' Desktops row); the shelf takes it and clears it.
+    property string desktopShelfPage: ""
     property bool shellLayoutEditMode: false
 
     function setWidgetEditMode(enabled: bool): void {
         if (enabled) {
             shellLayoutEditMode = false
-            irisEdit = false
         }
         else {
             selectedDesktopWidget = ""
@@ -306,12 +329,11 @@ Singleton {
     // Dialog requests from other panels (e.g. left sidebar → right sidebar)
     property bool requestWifiDialog: false
     property bool requestBluetoothDialog: false
-    // Selection targets: "main", "backdrop", "waffle", "waffle-backdrop"
+    // Selection targets: "main", "backdrop", and a family's own wallpaper and backdrop: "<id>", "<id>-backdrop"
     property string wallpaperSelectionTarget: "main"
     // Target monitor for wallpaper selector (set before opening, avoids config timing issues)
     property string wallpaperSelectorTargetMonitor: ""
     onWallpaperSelectorOpenChanged: {
-        if (wallpaperSelectorOpen) irisOrbitOpen = false
         // Reset selection target when selector closes without selection
         if (!wallpaperSelectorOpen) {
             wallpaperSelectionTarget = "main";
@@ -327,7 +349,6 @@ Singleton {
         }
     }
     onWallpaperLauncherOpenChanged: {
-        if (wallpaperLauncherOpen) irisOrbitOpen = false
         if (!wallpaperLauncherOpen) {
             // Restore the configured wallpaper if the user browsed away without applying.
             Wallpapers.cancelWallpaperPreview()
@@ -356,153 +377,21 @@ Singleton {
         }
     }
     property bool controlPanelOpen: false
-    // iRiS: screen-local geometry ({x, y, width, height, radius, screen}) of the
-    // Island part that last opened a surface, so it can morph out of and back
-    // into that exact shape. Transient coordination only; null means "no origin".
-    property var irisMorphOrigin: null
-    // Who published that origin when it is not the Island (e.g. "left" for a
-    // side panel's button). The Island leaves a foreign origin alone on open and
-    // close; the morph surface clears it once it has fully collapsed.
-    property string irisMorphOwner: ""
-    // True while a surface is mid-morph out of or back into that origin; the
-    // Island hides the published part so only one shape is ever on screen.
-    // iRiS intent preloading: the pointer resting on the Island (controls) or an
-    // expanded Island (settings) instantiates those surfaces hidden, so the
-    // morph starts on the click frame instead of after an async load.
-    property bool irisControlsWarm: false
-    // Asks the focused Island to open a page ("media", "desktop", "activity",
-    // "tray", "tools") from a surface that is not the Island (card, floating bubble).
-    property string irisIslandPageRequest: ""
-    // A bubble's own card: { kind, x, y, width, height, radius, screen, source }
-    // with the screen-local rect of the bubble it grows out of; `source` names
-    // that bubble ("island-<slot>" or "float-<slot>") so it can hide meanwhile.
-    property var irisBubbleCard: null
-    // The Island's desktop page is being arranged in place (iRiS Studio).
-    property bool irisArrange: false
-    // The Dock's body per output, so the chassis field draws it in the same pass
-    // as the frame and the Island instead of the Dock carrying a second surface.
-    property var irisDockBody: ({})
-    // iRiS is being edited in place: every piece is grabbable, the edit bar
-    // holds the pieces, the look and the sizes, and Done ends it.
-    // Arranging the Control Center in place; closing the panel ends it.
-    property bool irisControlEdit: false
-    property string irisControlTab: "controls"
-    // The lock screen rehearsal: the same surface, editable, with no PAM behind it.
-    property bool irisLockEdit: false
-    property string irisLockSelection: ""
-    // The quick-controls tab `inir iris lock select:<key>/<tab>` asks the selected lock widget to show.
-    property string irisLockWidgetTab: ""
-    property string irisLockPage: "scene"
-    property bool irisEdit: false
-    // What the edit bar is inspecting: a piece slot ("extra:vitals", "left",
-    // "app:kitty"), a surface ("island", "dock", "cards"…) or "" for the family.
-    property string irisEditSelection: ""
-    // A Studio target the edit bar should inspect ("" = keep what it shows).
-    property string irisEditTarget: ""
-    property int irisChassisEpoch: 0
-    onIrisEditChanged: {
-        if (!irisEdit) { irisEditSelection = ""; irisEditTarget = "" }
-        else if (widgetEditMode) setWidgetEditMode(false)
-        if (irisEdit && irisStudioOpen) irisStudioOpen = false
-    }
-    onIrisEditSelectionChanged: if (irisEditSelection.length > 0) irisEditTarget = ""
-    onIrisEditTargetChanged: if (irisEditTarget.length > 0) irisEditSelection = ""
-    // The in-place editors belong to iRiS: leaving the family ends them, or they are destroyed open and
-    // come back open when the family does.
-    function endIrisEditing(): void {
-        irisLockEdit = false
-        irisEdit = false
-        irisControlEdit = false
-    }
-    onControlPanelOpenChanged: if (!controlPanelOpen) irisControlEdit = false
-    onIrisControlEditChanged: if (!irisControlEdit) irisControlTab = "controls"
-    // iRiS Studio, the panel form of Customize, is open. It and Customize on the shell never show together.
-    property bool irisStudioOpen: false
-    onIrisStudioOpenChanged: if (irisStudioOpen && irisEdit) irisEdit = false
-    // Customize, in the form the person chose (iris.appearance.customize), on a target ("" = where it was).
-    function openIrisCustomize(target): void {
-        const wanted = String(target ?? "")
-        if (String(Config.options?.iris?.appearance?.customize ?? "shell") === "studio") {
-            irisStudioTarget = wanted
-            irisStudioOpen = true
-        } else {
-            irisEditTarget = wanted
-            irisEdit = true
-        }
-    }
-    // A target Studio should show when it opens or is already open ("" = keep).
-    property string irisStudioTarget: ""
-    // The `source` of the card on screen (kept while it collapses), "" when none.
-    // Asks whichever bubble shows this kind (floating first, then the Island)
-    // to open its card; IPC and keyboard paths use it.
-    property string irisBubbleCardRequest: ""
-    // A floating piece asked to open its own menu, by kind (IPC).
-    property string irisBubbleMenuRequest: ""
-    // A bubble being carried: { slot, kind, screen, x, y (screen-local centre),
-    // size, released }. The bubble layer draws it and resolves the drop.
-    property var irisBubbleDrag: null
-    // Per output name: what each bubble slot shows ({ left, right, utility }) and
-    // the resting Island's screen-local geometry, published by each Island.
-    property var irisBubbleKinds: ({})
-    property var irisIslandGeometry: ({})
-    // Per output: pieces an edge owner carries instead of floating over it ({ island: [...], dock: [...] }).
-    property var irisAbsorbed: ({})
-    property bool irisSettingsWarm: false
-    // iRiS side panel ("left"/"right") that was revealed by resting at its screen
-    // edge: it closes when the pointer leaves until a press inside commits it.
-    property string irisSidebarPeek: ""
-    // iRiS Dock held on screen by IPC (`inir iris dock show`) until hidden again
-    // or an app is chosen from it.
-    property bool irisDockShown: false
-    // Opens an app's windows or menu on the focused Dock: { appId, mode: "windows" | "menu" }.
-    property var irisDockMenuRequest: null
-    property var irisDockSlide: null
-    property var irisDockHome: null
-    // A query for Spotlight to type as it opens (IPC); taken and cleared by the palette.
-    property string irisSpotlightQuery: ""
-    // Orbit (iRiS): Niri's workspaces and windows as a place to find and go. `irisOrbitQuery` is what it types as it opens.
-    property bool irisOrbitOpen: false
-    property string irisOrbitQuery: ""
-    // The output Orbit opened on when a hot corner asked for one; empty means the focused output. It stays put until the
-    // next open, so a leaving Orbit is not pulled to another output.
-    property string irisOrbitOutput: ""
-    property bool _irisOrbitOutputAsked: false
-    // The corner each output's Orbit hot corner is on right now ("" = none), published by the corner itself.
-    property var irisOrbitCorners: ({})
-    function openIrisOrbit(outputName: string): void {
-        irisOrbitOutput = outputName
-        _irisOrbitOutputAsked = true
-        irisOrbitOpen = true
-    }
-    onIrisOrbitOpenChanged: {
-        if (!irisOrbitOpen) return
-        if (!_irisOrbitOutputAsked) irisOrbitOutput = ""
-        _irisOrbitOutputAsked = false
-        searchOpen = false
-        wallpaperSelectorOpen = false
-        wallpaperLauncherOpen = false
-    }
-    // Desktop widget manager toggle routed to the output that should show it.
-    signal desktopWidgetManagerToggleRequested(string outputName)
-    // The iRiS desktop menu opened at a point of an output (`inir iris desktopMenu`).
-    signal irisDesktopMenuRequested(string outputName, real x, real y)
-    // Whether any output's Island is expanded, published for `inir iris status`.
-    property bool irisIslandExpanded: false
-    property string irisIslandShape: ""
-    property string irisControlPickerRequest: ""
-    property string irisIslandPage: ""
+    // The active family's desktop menu, asked to open at a point of an output (the family's own `desktopMenu` IPC).
+    signal familyDesktopMenuRequested(string outputName, real x, real y)
+    // A surface on screen shows seconds (a lock rehearsed while unlocked): the clock ticks each second meanwhile.
+    property bool clockShowsSeconds: false
     property bool dashboardOpen: false
     property bool workspaceShowNumbers: false
     property var activeBooruImageMenu: null  // Track which BooruImage has its menu open
     property var activeTaskViewMenu: null  // Track which WindowThumbnail has its menu open
-    // Waffle-specific states
+    // The palette search (a family's Start or Spotlight).
     property bool searchOpen: false
-    property bool waffleActionCenterOpen: false
-    property bool waffleNotificationCenterOpen: false
-    property bool waffleWidgetsOpen: false
-    property bool waffleAltSwitcherOpen: false
-    property bool waffleClipboardOpen: false
-    property bool waffleTaskViewOpen: false
+    // What the active family publishes about its own panels: a bit per open panel, its quick settings, its
+    // notification list on screen.
+    property int familyPanelsOpen: 0
+    property bool familyQuickSettingsOpen: false
+    property bool familyNotificationsOpen: false
     // Panel family transition animation state
     property bool familyTransitionActive: false
     property string familyTransitionDirection: "left" // "left" = current exits left, new enters from right
@@ -564,8 +453,8 @@ Singleton {
 
     readonly property string overviewPresentationOutput:
         root.resolveOutputName(root.overviewTargetOutput, [])
-    readonly property var sidebarScreenList: (Config.options?.panelFamily ?? "ii") === "iris"
-        ? [] : (Config.options?.sidebar?.screenList ?? [])
+    // The screens the active family's side panels may open on (plugin.json settings.sidebarScreens); none listed, any.
+    readonly property var sidebarScreenList: Array.from(Plugins.setting(Plugins.active, "sidebarScreens", []) ?? [])
     readonly property string sidebarLeftPresentationOutput:
         root.resolveOutputName(root.sidebarLeftTargetOutput,
             root.sidebarScreenList)
@@ -654,8 +543,15 @@ Singleton {
     function openTaskView(outputName): void { root.openOrbit(outputName) }
     function toggleTaskView(outputName): void { root.toggleOrbit(outputName) }
 
+    // The family may keep a side panel shut (its verb `sidebar.opens`); one still loading answers no yes/no and allows it.
+    function _sidebarOpens(side: string): bool {
+        const opens = root.familyVerb("sidebar", "opens")
+        const answer = opens ? opens(side) : true
+        return typeof answer === "boolean" ? answer : true
+    }
+
     function openSidebarLeft(outputName): void {
-        if (Config.options?.panelFamily === "iris" && !(Config.options?.iris?.sidebars?.left?.enable ?? true)) return
+        if (!root._sidebarOpens("left")) return
         sidebarLeftTargetOutput = root.resolveOutputName(outputName,
             root.sidebarScreenList)
         sidebarLeftOpen = true
@@ -675,7 +571,7 @@ Singleton {
     }
 
     function openSidebarRight(outputName): void {
-        if (Config.options?.panelFamily === "iris" && !(Config.options?.iris?.sidebars?.right?.enable ?? true)) return
+        if (!root._sidebarOpens("right")) return
         sidebarRightTargetOutput = root.resolveOutputName(outputName,
             root.sidebarScreenList)
         sidebarRightOpen = true
@@ -703,65 +599,6 @@ Singleton {
         if (sidebarLeftOpen && sidebarLeftTargetOutput.length === 0)
             sidebarLeftTargetOutput = root.resolveOutputName("",
                 root.sidebarScreenList)
-    }
-
-    // Close other waffle popups when one opens (unless allowMultiplePanels is enabled)
-    property bool _allowMultiple: Config.options?.waffles?.behavior?.allowMultiplePanels ?? false
-    onSearchOpenChanged: {
-        if (searchOpen) irisOrbitOpen = false
-        if (searchOpen && !_allowMultiple) {
-            waffleActionCenterOpen = false
-            waffleNotificationCenterOpen = false
-            waffleWidgetsOpen = false
-            waffleClipboardOpen = false
-        }
-    }
-    onWaffleActionCenterOpenChanged: {
-        if (waffleActionCenterOpen && !_allowMultiple) {
-            searchOpen = false
-            waffleNotificationCenterOpen = false
-            waffleWidgetsOpen = false
-            waffleClipboardOpen = false
-        }
-    }
-    onWaffleNotificationCenterOpenChanged: {
-        if (waffleNotificationCenterOpen) {
-            if (!_allowMultiple) {
-                searchOpen = false
-                waffleActionCenterOpen = false
-                waffleWidgetsOpen = false
-                waffleClipboardOpen = false
-            }
-            // Mark notifications as read when opening notification center
-            Notifications.timeoutAll();
-            Notifications.markAllRead();
-        }
-    }
-    onWaffleWidgetsOpenChanged: {
-        if (waffleWidgetsOpen && !_allowMultiple) {
-            searchOpen = false
-            waffleActionCenterOpen = false
-            waffleNotificationCenterOpen = false
-            waffleClipboardOpen = false
-        }
-    }
-    onWaffleClipboardOpenChanged: {
-        if (waffleClipboardOpen && !_allowMultiple) {
-            searchOpen = false
-            waffleActionCenterOpen = false
-            waffleNotificationCenterOpen = false
-            waffleWidgetsOpen = false
-            waffleTaskViewOpen = false
-        }
-    }
-    onWaffleTaskViewOpenChanged: {
-        if (waffleTaskViewOpen && !_allowMultiple) {
-            searchOpen = false
-            waffleActionCenterOpen = false
-            waffleNotificationCenterOpen = false
-            waffleWidgetsOpen = false
-            waffleClipboardOpen = false
-        }
     }
 
     onSidebarRightOpenChanged: {
@@ -801,13 +638,16 @@ Singleton {
         }
     }
 
+    /// Screen zoom. Accessibility feature, or for reading tiny UI without pretending your monitor is the problem.
     IpcHandler {
 		target: "zoom"
 
+		/// Increase compositor zoom
 		function zoomIn(): void {
             screenZoom = Math.min(screenZoom + 0.4, 3.0)
         }
 
+        /// Decrease compositor zoom
         function zoomOut(): void {
             screenZoom = Math.max(screenZoom - 0.4, 1)
         }

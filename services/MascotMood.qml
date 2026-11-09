@@ -12,7 +12,8 @@ Singleton {
     property string currentMood: _initialMood()
     readonly property var moods: ["neutral", "sleepy", "hyper", "snarky", "contemplative"]
     readonly property var moodLines: ({})  // loaded by consumer from manifest
-    readonly property bool enabled: Config.options?.mascot?.personality?.enabled ?? true
+    readonly property bool enabled: (Config.options?.mascot?.enable ?? false)
+        && (Config.options?.mascot?.personality?.enabled ?? true)
     readonly property int intervalMinutes: Math.max(5, Config.options?.mascot?.personality?.idleMoodIntervalMinutes ?? 30)
 
     // Initial mood from time of day
@@ -47,9 +48,13 @@ Singleton {
         }
     }
 
+    /// Session-long mood state that flavors the mascot's idle lines (needs `mascot.personality.enabled`). The mood
+    /// re-rolls on a jittered interval and starts from the time of day.
     IpcHandler {
         target: "mascotMood"
+        /// Force a mood: `neutral`, `sleepy`, `hyper`, `snarky` or `contemplative`
         function set(mood: string): void { root.setMood(mood) }
+        /// Print the current mood
         function current(): string { return root.currentMood }
     }
 }

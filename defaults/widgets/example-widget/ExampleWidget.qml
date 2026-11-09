@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 // Quick Glance — example widget showing how to use iNiR's services and components.
 // Copy this to ~/.config/inir/widgets/example-widget/ to use it.
-// Full SDK docs: defaults/widgets/WIDGET-SDK.md
+// Every property a widget can read: https://github.com/snowarch/inir-hub/blob/main/guides/widgets.md
 
 import QtQuick
 import QtQuick.Layouts
@@ -11,7 +11,7 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.functions
 import qs.modules.common.widgets
-import qs.modules.background.widgets
+import qs.modules.shared.background.widgets
 
 AbstractBackgroundWidget {
     id: root

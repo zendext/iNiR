@@ -202,8 +202,8 @@ Singleton {
         id: localProbe
         running: false
         command: [
-            "/usr/bin/python3",
-            `${Directories.scriptsPath}/voiceSearch/transcribe-audio.py`,
+            `${Directories.scriptsPath}/lib/accel-run`,
+            "transcribe-audio",
             "--provider", "probe",
             "--local-model", root.localModelPath,
         ]
@@ -261,8 +261,8 @@ Singleton {
         command: {
             const provider = root.activeProvider
             const command = [
-                "/usr/bin/python3",
-                `${Directories.scriptsPath}/voiceSearch/transcribe-audio.py`,
+                `${Directories.scriptsPath}/lib/accel-run`,
+                "transcribe-audio",
                 "--provider", provider,
                 "--audio", root._audioPath,
                 "--language", root.language,
@@ -298,13 +298,25 @@ Singleton {
         }
     }
 
+    /// Provider-neutral voice input for web search and AI dictation. Auto prefers local whisper.cpp, then connected
+    /// Groq, Gemini and OpenAI speech backends. Keys stay in the system keyring and are passed to adapters through
+    /// the process environment.
+    ///
+    /// ```kdl
+    /// Super+Shift+V { spawn "inir" "voiceSearch" "toggle"; }
+    /// ```
     IpcHandler {
         target: "voiceSearch"
 
+        /// Start recording for voice web search
         function start(): void { root.start() }
+        /// Stop the active recording or transcription
         function stop(): void { root.stop() }
+        /// Toggle recording
         function toggle(): void { root.toggle() }
+        /// Re-detect local and connected speech backends
         function refresh(): void { root.refreshBackends() }
+        /// Return backend, local detection, recording and error state as JSON
         function status(): string {
             return JSON.stringify({
                 configuredProvider: root.configuredProvider,

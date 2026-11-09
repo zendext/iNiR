@@ -41,6 +41,11 @@ Singleton {
     property string wallpapersPath: Config.options?.wallpapers?.directory || `${Directories.picturesPath}/Wallpapers`
     property string screenshotsPath: Config.options?.regionSelector?.savePath || `${Directories.picturesPath}/Screenshots`
     property string persistentStatesPath: `${Directories.statePath}/states.json`
+    // A plugin that is not a family keeps its own options here, never in config.json: removing it leaves the person's
+    // settings as they were, and installing it again finds its options where it left them.
+    function pluginFile(id: string): string {
+        return `${Directories.configPath}/inir/plugins/${id}.json`
+    }
     property string eventsPath: `${Directories.stateUserPath}/events.json`
     property string screenTimePath: `${Directories.stateUserPath}/screentime`
     property string generatedMaterialScssPath: `${Directories.stateUserPath}/generated/material_colors.scss`
@@ -90,8 +95,8 @@ Singleton {
     property string coverArt: `${Directories.cachePath}/media/coverart`
     property string tempImages: "/tmp/quickshell/media/images"
     property string booruPreviews: `${Directories.cachePath}/media/boorus`
-    property string booruDownloads: Config.options?.sidebar?.booru?.downloadPath?.sfw || Directories.wallpapersPath
-    property string booruDownloadsNsfw: Config.options?.sidebar?.booru?.downloadPath?.nsfw || `${Directories.wallpapersPath}/🌶️`
+    property string booruDownloads: Config.options?.booru?.downloadPath?.sfw || Directories.wallpapersPath
+    property string booruDownloadsNsfw: Config.options?.booru?.downloadPath?.nsfw || `${Directories.wallpapersPath}/🌶️`
     property string latexOutput: `${Directories.cachePath}/media/latex`
     property string shellConfig: `${Directories.configPath}/illogical-impulse`
     property string shellConfigName: "config.json"
@@ -122,6 +127,7 @@ Singleton {
     property string aiChats: `${Directories.stateUserPath}/ai/chats`
     property string aiTranslationScriptPath: `${Directories.scriptsPath}/ai/gemini-translate.sh`
     property string recordScriptPath: `${Directories.scriptsPath}/videos/record.sh`
+    property string recorderPidsScriptPath: `${Directories.scriptsPath}/videos/recorder-pids.sh`
 
     function shortHomePath(path: string): string {
         const cleaned = FileUtils.trimFileProtocol(path)
@@ -158,12 +164,10 @@ Singleton {
         Quickshell.execDetached(["mkdir", "-p", `${stateUserPath}`])
         Quickshell.execDetached(["mkdir", "-p", `${favicons}`])
         Quickshell.execDetached(["mkdir", "-p", `${coverArt}`])
-        Quickshell.execDetached(["rm", "-rf", `${booruPreviews}`])
-        Quickshell.execDetached(["mkdir", "-p", `${booruPreviews}`])
-        Quickshell.execDetached(["rm", "-rf", `${latexOutput}`])
-        Quickshell.execDetached(["mkdir", "-p", `${latexOutput}`])
-        Quickshell.execDetached(["rm", "-rf", `${cliphistDecode}`])
-        Quickshell.execDetached(["mkdir", "-p", `${cliphistDecode}`])
+        // Emptied and made again in one process: as two detached ones the mkdir could run before the rm, which left the
+        // folder gone and every clipboard image after it blank.
+        for (const dir of [booruPreviews, latexOutput, cliphistDecode])
+            Quickshell.execDetached(["/usr/bin/bash", "-c", 'rm -rf -- "$1" && mkdir -p -- "$1"', "fresh", dir])
         Quickshell.execDetached(["mkdir", "-p", `${aiChats}`])
         Quickshell.execDetached(["mkdir", "-p", `${screenTimePath}`])
         Quickshell.execDetached(["mkdir", "-p", `${userActions}`])

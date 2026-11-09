@@ -16,6 +16,10 @@ Singleton {
     readonly property string widgetsDir: `${Directories.configPath}/inir/widgets`
 
     property bool _scanDone: false
+    // Raised by every reload. Qt keeps what it compiled per URL for the life of the engine, so a widget
+    // updated in its folder would keep running its old code; each reload loads widgets through a new
+    // folder of links (`inir-accel scan-widgets`), and the .qml, its .js and imports compile again.
+    property int _generation: 0
 
     Component.onCompleted: _scan()
     Connections {
@@ -29,6 +33,7 @@ Singleton {
     }
 
     function reload(): void {
+        root._generation += 1;
         root._scanDone = false;
         root.widgets = [];
         _scan();
@@ -41,7 +46,7 @@ Singleton {
     // Single process that finds and reads all manifests, outputs JSON array
     Process {
         id: _scanProcess
-        command: [Directories.scriptsPath + "/scan-widgets.sh", root.widgetsDir]
+        command: [Directories.scriptsPath + "/lib/accel-run", "scan-widgets", root.widgetsDir, String(root._generation)]
         running: false
 
         stdout: StdioCollector {
@@ -87,8 +92,15 @@ Singleton {
                 if (warnings.length > 0)
                     console.warn("[CustomWidgets]", warnings.join("; "));
                 const qmlFile = m.main || (entry.id.charAt(0).toUpperCase() + entry.id.slice(1) + ".qml");
-                const iris = m.iris && typeof m.iris === "object" ? m.iris : {};
-                const irisFile = typeof iris.main === "string" ? iris.main.trim() : "";
+                const load = entry.load || entry.dir;
+                // A face per family, under the family's id: { main, slots }.
+                const faces = {};
+                for (const key of Object.keys(m)) {
+                    const face = m[key];
+                    const file = face && typeof face === "object" && typeof face.main === "string" ? face.main.trim() : "";
+                    if (file.length > 0)
+                        faces[key] = { path: `file://${load}/${file}`, slots: Array.isArray(face.slots) ? face.slots : [] };
+                }
                 result.push({
                     id: entry.id,
                     name: m.name || entry.id,
@@ -97,9 +109,8 @@ Singleton {
                     author: m.author || "",
                     description: m.description || "",
                     category: m.category || "",
-                    qmlPath: `file://${entry.dir}/${qmlFile}`,
-                    irisQmlPath: irisFile.length > 0 ? `file://${entry.dir}/${irisFile}` : "",
-                    irisSlots: Array.isArray(iris.slots) ? iris.slots : [],
+                    qmlPath: `file://${load}/${qmlFile}`,
+                    faces: faces,
                     dirPath: entry.dir,
                     configKeys: m.configKeys || {},
                     resizableAxes: m.resizableAxes || {},
@@ -195,13 +206,43 @@ Singleton {
     // Create a new widget from template
     function create(name: string): void {
         if (!name || name.length === 0) return;
+        const pascal = name.charAt(0).toUpperCase() + name.slice(1).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        // Each installed plugin that offers a face for custom widgets hands its template over (plugin.json `customWidget`).
+        const faces = {};
+        const templates = [];
+        for (const id of Object.keys(Plugins.manifests).sort()) {
+            const offer = Plugins.manifests[id]?.customWidget;
+            const template = Plugins.path(id, String(offer?.face ?? ""));
+            if (template.length === 0) continue;
+            faces[id] = Object.assign({ main: template.split("/").pop() }, Array.isArray(offer.slots) ? { slots: offer.slots } : {});
+            templates.push(template);
+        }
+        const manifest = Object.assign({
+            name: pascal,
+            icon: "widgets",
+            version: "1.0",
+            author: "",
+            description: "Custom desktop widget",
+            category: "custom",
+            main: `${pascal}.qml`
+        }, faces, {
+            defaultConfig: { placementStrategy: "free", widgetScale: 100, widgetOpacity: 100, colorMode: "auto", dim: 0, x: 200, y: 200 },
+            configKeys: {
+                label: { type: "string", default: pascal, label: "Widget label" },
+                showIcon: { type: "bool", default: true, label: "Show icon" }
+            },
+            resizableAxes: { uniform: "widgetScale" },
+            defaultSize: { width: 200, height: 80 }
+        });
         _createProcess.widgetName = name;
+        _createProcess.manifest = JSON.stringify(manifest, null, 4);
+        _createProcess.templates = templates;
         _createProcess.running = true;
     }
 
     // Delete a widget by removing its directory
     function remove(widgetId: string): void {
-        if (!widgetId || widgetId.length === 0) return;
+        if (!widgetId || widgetId.length === 0 || _removeProcess.running) return;
         _removeProcess.widgetId = widgetId;
         _removeProcess.running = true;
     }
@@ -222,43 +263,19 @@ Singleton {
         id: _createProcess
         property string widgetName: ""
         property string _pascalName: widgetName.charAt(0).toUpperCase() + widgetName.slice(1).replace(/-([a-z])/g, (_, c) => c.toUpperCase())
+        property string manifest: ""
+        property var templates: []
         running: false
+        // The manifest and the templates' paths come in as arguments, never inside the script.
         command: ["bash", "-c", `
             dir="${root.widgetsDir}/${_createProcess.widgetName}"
             mkdir -p "$dir"
-            cat > "$dir/widget.json" << 'MANIFEST'
-{
-    "name": "${_createProcess._pascalName}",
-    "icon": "widgets",
-    "version": "1.0",
-    "author": "",
-    "description": "Custom desktop widget",
-    "category": "custom",
-    "main": "${_createProcess._pascalName}.qml",
-    "iris": {
-        "main": "IrisCompact.qml",
-        "slots": ["island.desktop"]
-    },
-    "defaultConfig": {
-        "placementStrategy": "free",
-        "widgetScale": 100,
-        "widgetOpacity": 100,
-        "colorMode": "auto",
-        "dim": 0,
-        "x": 200,
-        "y": 200
-    },
-    "configKeys": {
-        "label": { "type": "string", "default": "${_createProcess._pascalName}", "label": "Widget label" },
-        "showIcon": { "type": "bool", "default": true, "label": "Show icon" }
-    },
-    "resizableAxes": { "uniform": "widgetScale" },
-    "defaultSize": { "width": 200, "height": 80 }
-}
-MANIFEST
+            printf '%s\\n' "$1" > "$dir/widget.json"
+            shift
+            for template in "$@"; do cp "$template" "$dir/"; done
             cat > "$dir/${_createProcess._pascalName}.qml" << 'QML'
 // ${_createProcess._pascalName} — custom iNiR desktop widget
-// Full SDK reference: defaults/widgets/WIDGET-SDK.md
+// Full SDK reference: inir-hub guides/widgets.md
 // Example widget: defaults/widgets/example-widget/
 
 import QtQuick
@@ -270,7 +287,7 @@ import qs.services              // Audio, Battery, DateTime, Network, Weather, R
 import qs.modules.common        // Config, Appearance, Directories, GlobalStates
 import qs.modules.common.functions // ColorUtils, StringUtils, DateUtils, FileUtils
 import qs.modules.common.widgets   // 130+ components (StyledText, MaterialSymbol, RippleButton, CircularProgress, Graph, CavaVisualizer...)
-import qs.modules.background.widgets // AbstractBackgroundWidget base class
+import qs.modules.shared.background.widgets // AbstractBackgroundWidget base class
 
 AbstractBackgroundWidget {
     id: root
@@ -359,37 +376,8 @@ AbstractBackgroundWidget {
     //   root.colText adapts to wallpaper brightness automatically
 }
 QML
-            cat > "$dir/IrisCompact.qml" << 'IRIS_QML'
-import QtQuick
-import QtQuick.Layouts
-import qs.services
-import qs.modules.iris.style
-import qs.modules.iris.components
-
-Item {
-    id: root
-    property string irisSlot: ""
-    property var targetScreen
-    implicitWidth: compactRow.implicitWidth
-    implicitHeight: Math.round(28 * IrisStyle.density)
-
-    RowLayout {
-        id: compactRow
-        anchors.centerIn: parent
-        spacing: IrisStyle.spaceSmall
-
-        IrisMark { implicitSize: Math.round(14 * IrisStyle.density) }
-        IrisText {
-            text: DateTime.timeDisplay
-            role: IrisText.Meta
-            font.family: IrisStyle.fontNumbers
-            color: IrisStyle.text
-        }
-    }
-}
-IRIS_QML
             echo "done"
-        `]
+        `, "bash", _createProcess.manifest].concat(_createProcess.templates)
         stdout: StdioCollector {
             onStreamFinished: root.reload()
         }
@@ -400,10 +388,25 @@ IRIS_QML
         id: _removeProcess
         property string widgetId: ""
         running: false
-        command: ["bash", "-c", `rm -rf "${root.widgetsDir}/${_removeProcess.widgetId}" && echo "removed"`]
+        // Held aside in the runtime dir until the Undo notice is gone.
+        command: ["bash", "-c", 'd="${XDG_RUNTIME_DIR:-/tmp}/inir-undo"; mkdir -p "$d" && h="$(mktemp -d -p "$d" widget-XXXXXX)" '
+            + '&& mv -- "$1/$2" "$h/" && echo "$h"', "remove", root.widgetsDir, _removeProcess.widgetId]
         stdout: StdioCollector {
-            onStreamFinished: root.reload()
+            onStreamFinished: {
+                root.reload()
+                const held = (text ?? "").trim()
+                const id = _removeProcess.widgetId
+                if (held.length === 0) return
+                Undo.offer(Translation.tr("Removed %1").arg(id),
+                    () => _restoreProcess.exec(["bash", "-c", 'mv -- "$1/$2" "$3/" && rmdir -- "$1"', "restore", held, id, root.widgetsDir]),
+                    () => Quickshell.execDetached(["rm", "-rf", "--", held]))
+            }
         }
+    }
+
+    Process {
+        id: _restoreProcess
+        onExited: root.reload()
     }
 
     // Path to shipped example widget

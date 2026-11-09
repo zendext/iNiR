@@ -10,14 +10,13 @@ import Quickshell.Io
  * A nice wrapper for date and time strings.
  */
 Singleton {
+    id: root
+
     property var clock: SystemClock {
         id: clock
         precision: {
-            if ((Config.options?.time?.secondPrecision ?? false) || GlobalStates.screenLocked)
-                return SystemClock.Seconds;
-            // The lock screen may show seconds, and it is rehearsed while unlocked.
-            if ((Config.options?.iris?.lock?.type?.seconds ?? false)
-                    && (GlobalStates.irisLockEdit || GlobalStates.screenLocked))
+            if ((Config.options?.time?.secondPrecision ?? false) || GlobalStates.screenLocked
+                    || GlobalStates.clockShowsSeconds)
                 return SystemClock.Seconds;
             return SystemClock.Minutes;
         }
@@ -31,9 +30,9 @@ Singleton {
         const ap = fmt.indexOf(" AP");
         return Qt.locale().toString(clock.date, ap >= 0 ? fmt.slice(0, ap) + ":ss" + fmt.slice(ap) : fmt + ":ss");
     }
-    property string shortDate: Qt.locale().toString(clock.date, Config.options?.time.shortDateFormat ?? "dd/MM")
-    property string date: Qt.locale().toString(clock.date, Config.options?.time.dateFormat ?? "dddd, dd/MM")
-    property string collapsedCalendarFormat: Qt.locale().toString(clock.date, "dd MMMM yyyy")
+    property string shortDate: Translation.locale.toString(clock.date, Config.options?.time.shortDateFormat ?? "dd/MM")
+    property string date: Translation.locale.toString(clock.date, Config.options?.time.dateFormat ?? "dddd, dd/MM")
+    property string collapsedCalendarFormat: Translation.locale.toString(clock.date, "dd MMMM yyyy")
     property string uptime: "0h, 0m"
 
     Timer {
@@ -42,10 +41,16 @@ Singleton {
         interval: 60000
         running: true
         repeat: true
-        onTriggered: {
-            fileUptime.reload();
-            const textUptime = fileUptime.text();
-            const uptimeSeconds = Number(textUptime.split(" ")[0] ?? 0);
+        onTriggered: fileUptime.reload()
+    }
+
+    FileView {
+        id: fileUptime
+
+        path: "/proc/uptime"
+        // reload() reads in the background: parsing right after it read nothing, so every start said 0 m for a minute.
+        onLoaded: {
+            const uptimeSeconds = Number(fileUptime.text().split(" ")[0] ?? 0);
 
             // Convert seconds to days, hours, and minutes
             const days = Math.floor(uptimeSeconds / 86400);
@@ -60,13 +65,7 @@ Singleton {
                 formatted += `${formatted ? ", " : ""}${hours}h`;
             if (minutes > 0 || !formatted)
                 formatted += `${formatted ? ", " : ""}${minutes}m`;
-            uptime = formatted;
+            root.uptime = formatted;
         }
-    }
-
-    FileView {
-        id: fileUptime
-
-        path: "/proc/uptime"
     }
 }

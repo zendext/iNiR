@@ -24,6 +24,9 @@ Button {
         : (Appearance?.rounding?.small ?? 4)
     property real buttonRadiusPressed: buttonRadius
     property real buttonEffectiveRadius: root.down ? root.buttonRadiusPressed : root.buttonRadius
+    // A tile in a segmented list rounds its top and bottom apart: only a run's outer corners are round.
+    property real buttonRadiusTop: root.buttonEffectiveRadius
+    property real buttonRadiusBottom: root.buttonEffectiveRadius
     property int rippleDuration: Appearance.regaliaEverywhere ? Appearance.regalia.pressDuration
         : Appearance.cookieEverywhere ? Appearance.animation.elementMoveFast.duration
         : Appearance.zzzEverywhere ? Appearance.zzz.overshootDuration : 1200
@@ -102,21 +105,53 @@ Button {
 
     function startRipple(x, y) {
         const stateY = buttonBackground.y;
-        rippleAnim.x = x;
-        rippleAnim.y = y - stateY;
-
         const dist = (ox,oy) => ox*ox + oy*oy
         const stateEndY = stateY + buttonBackground.height
-        rippleAnim.radius = Math.sqrt(Math.max(dist(0, stateY), dist(0, stateEndY), dist(width, stateY), dist(width, stateEndY)))
+        // The ripple and its animations are built on the first press: most buttons are never clicked in a session.
+        rippleLoader.active = true;
+        rippleLoader.item.start(x, y - stateY,
+            Math.sqrt(Math.max(dist(0, stateY), dist(0, stateEndY), dist(width, stateY), dist(width, stateEndY))));
+    }
 
-        rippleFadeAnim.complete();
-        rippleAnim.restart();
+    function fadeRipple() {
+        if (rippleLoader.item) rippleLoader.item.fade();
     }
 
     component RippleAnim: NumberAnimation {
         duration: rippleDuration
         easing.type: Appearance?.animation.elementMoveEnter.type ?? Easing.BezierSpline
         easing.bezierCurve: Appearance?.animationCurves.standardDecel ?? [0, 0, 0, 1, 1, 1]
+    }
+
+    // Space presses a focused button past the MouseArea: what a press does still runs, the click follows on release
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Space && !event.isAutoRepeat && root.downAction)
+            root.downAction({ x: root.width / 2, y: root.height / 2, button: Qt.LeftButton, modifiers: event.modifiers })
+    }
+
+    // Keyboard focus, M3's focus ring: 3 px of secondary 2 px outside the shape, only when focus came from the keyboard
+    // (a click never leaves one). Rows packed edge to edge (lists, nav rails) draw it inside (focusRingInward).
+    // Editorial, Regalia and a morphing Cookie draw focus on their own face.
+    property bool focusRingInward: false
+    // A host that keeps one stop for many buttons (a list) says which one wears the ring.
+    property bool focusRingShown: root.visualFocus
+    Rectangle {
+        readonly property real out: root.focusRingInward ? 0 : 5
+        readonly property bool cookie: Appearance.cookieEverywhere
+        visible: root.focusRingShown && !Appearance.editorialEverywhere && !Appearance.regaliaEverywhere
+            && !(cookie && root.cookieMorphing)
+        z: 2
+        x: -out
+        y: -out
+        width: root.width + 2 * out
+        height: root.height + 2 * out
+        color: "transparent"
+        border.width: 3
+        border.color: Appearance.colors.colSecondary
+        topLeftRadius: (cookie ? root._cookieRadius : root.buttonRadiusTop) + out
+        topRightRadius: topLeftRadius
+        bottomLeftRadius: (cookie ? root._cookieRadius : root.buttonRadiusBottom) + out
+        bottomRightRadius: bottomLeftRadius
     }
 
     MouseArea {
@@ -156,54 +191,15 @@ Button {
             if (root.releaseAction) root.releaseAction();
             root.click() // Because the MouseArea already consumed the event
             if (!root.rippleEnabled) return;
-            rippleFadeAnim.restart();
+            // The click may have closed what holds this button: same tear-down race as on press.
+            if (typeof root.fadeRipple === "function") root.fadeRipple();
         }
         onCanceled: (event) => {
             root.down = false
             if (root.cancelAction) root.cancelAction(event)
             else if (root.releaseAction) root.releaseAction();
             if (!root.rippleEnabled) return;
-            rippleFadeAnim.restart();
-        }
-    }
-
-    RippleAnim {
-        id: rippleFadeAnim
-        duration: rippleDuration * 2
-        target: ripple
-        property: "opacity"
-        to: 0
-    }
-
-    SequentialAnimation {
-        id: rippleAnim
-
-        property real x
-        property real y
-        property real radius
-
-        PropertyAction {
-            target: ripple
-            property: "x"
-            value: rippleAnim.x
-        }
-        PropertyAction {
-            target: ripple
-            property: "y"
-            value: rippleAnim.y
-        }
-        PropertyAction {
-            target: ripple
-            property: "opacity"
-            value: 1
-        }
-        ParallelAnimation {
-            RippleAnim {
-                target: ripple
-                properties: "rippleWidth,rippleHeight"
-                from: 0
-                to: rippleAnim.radius * 2
-            }
+            if (typeof root.fadeRipple === "function") root.fadeRipple();
         }
     }
 
@@ -214,6 +210,10 @@ Button {
         color: (Appearance.cookieEverywhere && root.cookieMorphing) || Appearance.regaliaEverywhere
             ? "transparent" : root.buttonColor
         radius: Appearance.cookieEverywhere ? root._cookieRadius : root.buttonEffectiveRadius
+        topLeftRadius: Appearance.cookieEverywhere ? root._cookieRadius : root.buttonRadiusTop
+        topRightRadius: topLeftRadius
+        bottomLeftRadius: Appearance.cookieEverywhere ? root._cookieRadius : root.buttonRadiusBottom
+        bottomRightRadius: bottomLeftRadius
         // Cookie has no rectangular chrome: a pill focus ring fights the organic
         // silhouette. cookieMorphing surfaces still show focus through CookieFace.
         border.width: Appearance.editorialEverywhere ? (root.visualFocus ? 2 : 1)
@@ -251,28 +251,34 @@ Button {
             }
         }
 
-        Rectangle {
+        // Style chrome is built only under its own Global Style: thousands of buttons
+        // carried every style's pieces hidden.
+        Loader {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 3
-            width: root.toggled ? Math.min(24, Math.max(0, parent.width - 16)) : 0
-            height: 2
-            radius: 1
-            visible: Appearance.editorialEverywhere && root.enabled
-            color: Appearance.editorial.accent
-            Behavior on width {
-                enabled: Appearance.animationsEnabled && root.stateTransitionsEnabled
-                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            active: Appearance.editorialEverywhere && root.enabled
+            sourceComponent: Rectangle {
+                width: root.toggled ? Math.min(24, Math.max(0, buttonBackground.width - 16)) : 0
+                height: 2
+                radius: 1
+                color: Appearance.editorial.accent
+                Behavior on width {
+                    enabled: Appearance.animationsEnabled && root.stateTransitionsEnabled
+                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                }
             }
         }
 
-        RegaliaControlFace {
+        Loader {
             anchors.fill: parent
-            visible: Appearance.regaliaEverywhere
-            fillColor: root.buttonColor
-            radius: root.buttonEffectiveRadius
-            selected: root.toggled
-            focused: root.visualFocus
+            active: Appearance.regaliaEverywhere
+            sourceComponent: RegaliaControlFace {
+                fillColor: root.buttonColor
+                radius: root.buttonEffectiveRadius
+                selected: root.toggled
+                focused: root.visualFocus
+            }
         }
 
         Loader {
@@ -291,7 +297,7 @@ Button {
             }
         }
 
-        layer.enabled: ripple.opacity > 0
+        layer.enabled: rippleLoader.item !== null && rippleLoader.item.opacity > 0
         layer.effect: OpacityMask {
             maskSource: Item {
                 width: buttonBackground.width
@@ -301,6 +307,10 @@ Button {
                     anchors.fill: parent
                     visible: !Appearance.cookieEverywhere || !root.cookieMorphing
                     radius: Appearance.cookieEverywhere ? root._cookieRadius : root.buttonEffectiveRadius
+                    topLeftRadius: buttonBackground.topLeftRadius
+                    topRightRadius: buttonBackground.topLeftRadius
+                    bottomLeftRadius: buttonBackground.bottomLeftRadius
+                    bottomRightRadius: buttonBackground.bottomLeftRadius
                     color: "white"
                 }
                 Loader {
@@ -315,33 +325,62 @@ Button {
             }
         }
 
-        Item {
-            id: ripple
-            width: ripple.rippleWidth
-            height: ripple.rippleHeight
-            opacity: 0
-            visible: width > 0 && height > 0
+        Loader {
+            id: rippleLoader
+            active: false
+            sourceComponent: Item {
+                id: ripple
+                width: ripple.rippleWidth
+                height: ripple.rippleHeight
+                opacity: 0
+                visible: width > 0 && height > 0
 
-            property real rippleWidth: 0
-            property real rippleHeight: 0
+                property real rippleWidth: 0
+                property real rippleHeight: 0
 
-            Behavior on opacity {
-                enabled: Appearance.animationsEnabled
-                animation: ColorAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
-            }
-
-            RadialGradient {
-                anchors.fill: parent
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: root.rippleColor }
-                    GradientStop { position: 0.3; color: root.rippleColor }
-                    GradientStop { position: 0.5; color: Qt.rgba(root.rippleColor.r, root.rippleColor.g, root.rippleColor.b, 0) }
+                // Direct writes, as the PropertyActions before them: the ripple shows at once and only fades.
+                function start(px, py, radius) {
+                    rippleFadeAnim.complete();
+                    ripple.x = px;
+                    ripple.y = py;
+                    ripple.opacity = 1;
+                    rippleGrow.to = radius * 2;
+                    rippleGrow.restart();
                 }
-            }
 
-            transform: Translate {
-                x: -ripple.width / 2
-                y: -ripple.height / 2
+                function fade() {
+                    rippleFadeAnim.restart();
+                }
+
+                RippleAnim {
+                    id: rippleGrow
+                    target: ripple
+                    properties: "rippleWidth,rippleHeight"
+                    from: 0
+                }
+
+                RippleAnim {
+                    id: rippleFadeAnim
+                    duration: root.rippleDuration * 2
+                    target: ripple
+                    property: "opacity"
+                    to: 0
+                }
+
+                RadialGradient {
+                    anchors.fill: parent
+                    visible: ripple.opacity > 0
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: root.rippleColor }
+                        GradientStop { position: 0.3; color: root.rippleColor }
+                        GradientStop { position: 0.5; color: Qt.rgba(root.rippleColor.r, root.rippleColor.g, root.rippleColor.b, 0) }
+                    }
+                }
+
+                transform: Translate {
+                    x: -ripple.width / 2
+                    y: -ripple.height / 2
+                }
             }
         }
     }

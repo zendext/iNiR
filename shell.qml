@@ -1,19 +1,18 @@
 //@ pragma UseQApplication
 //@ pragma ShellId inir
-// DISABLED: webapps — requires quickshell-webengine rebuild, re-enable when ready
-//-@ pragma EnableQtWebEngineQuick
+// The shell's own windows are its Settings (iRiS's window mode): they wear iNiR Settings' desktop entry and icon.
+//@ pragma AppId inir-settings
 //@ pragma Env QS_NO_RELOAD_POPUP=1
-//@ pragma DefaultEnv QT_LOGGING_RULES=quickshell.dbus.properties=false;qt.qpa.wayland.textinput.warning=false
+//@ pragma DefaultEnv QT_LOGGING_RULES=quickshell.dbus.properties=false;quickshell.dbus.objectmanager.warning=false;qt.qpa.wayland.textinput.warning=false
 //@ pragma Env QT_QUICK_CONTROLS_STYLE=Basic
 //@ pragma Env QT_QUICK_FLICKABLE_WHEEL_DECELERATION=10000
 //@ pragma Env QSG_RENDER_LOOP=threaded
 //@ pragma DefaultEnv QS_DROP_EXPENSIVE_FONTS=1
 // Launcher keeps QT_SCALE_FACTOR=1; shell scaling lives in appearance.typography.sizeScale
-// DISABLED: webapps — requires quickshell-webengine rebuild
-//-@ pragma Env QTWEBENGINE_CHROMIUM_FLAGS=--disable-features=ThirdPartyCookieBlocking,StorageAccessAPI
+// Web apps (sidebar): logins like Discord's need third-party cookies
+//@ pragma Env QTWEBENGINE_CHROMIUM_FLAGS=--disable-features=ThirdPartyCookieBlocking,StorageAccessAPI
 
 import qs.modules.common
-import qs.modules.settings
 
 import QtQuick
 import Quickshell
@@ -56,22 +55,25 @@ ShellRoot {
     property var _screenTimeService
     function _ensureScreenTimeService(): void {
         if (GlobalStates.deferredPanelsReady
-                && (Config.options?.sidebar?.screenTime?.enable ?? false))
+                && (Config.options?.screenTime?.enable ?? false))
             root._screenTimeService = ScreenTime
     }
     // Tier 4: T+1500ms (background features - updates, sync, content services)
     property var _shellUpdatesService
     property var _autostartService
+    // `inir undo` answers only once the singleton exists, before anything was removed.
+    property var _undoService
+    // The community hub answers `inir hub …` from any family; it does nothing until asked.
+    property var _hubService
     property var _niriAnimationPresetsService
     property var _calendarSyncService
     property var _todoService
     property var _notepadService
 
     function _ensureDeferredFamilyServices(): void {
-        const family = Config.options?.panelFamily ?? "ii"
         root._gameModeService = GameMode
         root._fontSyncService = FontSyncService
-        if (family !== "iris") {
+        if (!Plugins.flag(Plugins.active, "lazyServices")) {
             root._windowPreviewService = WindowPreviewService
             root._weatherService = Weather
             root._voiceSearchService = VoiceSearch
@@ -80,11 +82,12 @@ ShellRoot {
     }
 
     function _ensureLateFamilyServices(): void {
-        const family = Config.options?.panelFamily ?? "ii"
         root._shellUpdatesService = ShellUpdates
         root._autostartService = Autostart
+        root._undoService = Undo
+        root._hubService = Hub
         root._niriAnimationPresetsService = NiriAnimationPresets
-        if (family !== "iris") {
+        if (!Plugins.flag(Plugins.active, "lazyServices")) {
             root._calendarSyncService = CalendarSync
             root._todoService = Todo
             root._notepadService = Notepad
@@ -130,7 +133,6 @@ ShellRoot {
         root._globalActionsService = GlobalActions;
         // Public packageSearch IPC must exist before any package UI is opened.
         root._packageSearchService = PackageSearch;
-        DevNavigation.registerSettingsPages(SettingsPageRegistry.pages);
         
         // Reset shell entry state (hot-reload may preserve singletons)
         GlobalStates.shellEntryReady = false;
@@ -160,6 +162,9 @@ ShellRoot {
             if (!root._bootShellEntryAt) root._bootShellEntryAt = Date.now();
             console.info("[Boot] T+" + (root._bootShellEntryAt - root._bootCompletedAt) + "ms: shellEntryReady (first frame)");
             GlobalStates.shellEntryReady = true;
+            // The wallpaper is the first thing anyone sees: its daemon starts with the first frame, not
+            // when a late surface first asks for the backend (2.3 s later).
+            void AwwwBackend.enabled;
             deferredInitTimer.start();
         }
     }
@@ -260,17 +265,26 @@ ShellRoot {
                 // Tier 3 is scheduled by shellEntryTimer so its 500 ms delay is
                 // measured from the first frame, not concurrently with it.
                 shellEntryTimer.start();
-                // Only reset enabledPanels if it's empty or undefined (first run / corrupted config)
-                if (!Config.options?.enabledPanels || Config.options.enabledPanels.length === 0) {
-                    const family = Config.options?.panelFamily ?? "ii"
-                    if (root.families.includes(family)) {
-                        Config.setNestedValue("enabledPanels", root.panelFamilies[family])
-                    }
-                }
-                // Migration: Ensure waffle family has wBackdrop instead of iiBackdrop
-                root.migrateEnabledPanels();
+                root._settlePanels();
             }
         }
+    }
+
+    Connections {
+        target: Plugins
+        function onReadyChanged() { root._settlePanels() }
+    }
+
+    // The panel lists come from each family's plugin.json: they settle once both the config and the plugins are read.
+    function _settlePanels(): void {
+        if (!Config.ready || !Plugins.ready || root._migrationDone) return
+        // Only reset enabledPanels if it's empty or undefined (first run / corrupted config)
+        if (!Config.options?.enabledPanels || Config.options.enabledPanels.length === 0) {
+            const panels = Plugins.panels(Config.options?.panelFamily ?? "ii")
+            if (panels.length > 0)
+                Config.setNestedValue("enabledPanels", panels)
+        }
+        root.migrateEnabledPanels();
     }
 
     // Migrate enabledPanels for users upgrading from older versions
@@ -286,7 +300,7 @@ ShellRoot {
         // Only add genuinely NEW panels (from updates), not panels the user deliberately disabled.
         // knownPanels tracks what the user has seen. If a panel is in knownPanels but not in
         // enabledPanels, the user removed it — don't re-add.
-        const basePanels = root.panelFamilies[family] ?? [];
+        const basePanels = Plugins.panels(family);
         let known = [...(Config.options?.knownPanels ?? [])];
         const isFirstRun = known.length === 0;
 
@@ -295,8 +309,8 @@ ShellRoot {
             // This prevents re-adding panels that existing users already disabled,
             // including across family switches.
             const allPanels = [];
-            for (const fam of root.families) {
-                for (const p of (root.panelFamilies[fam] ?? [])) {
+            for (const fam of Plugins.families) {
+                for (const p of Plugins.panels(fam)) {
                     if (!allPanels.includes(p)) allPanels.push(p);
                 }
             }
@@ -321,25 +335,20 @@ ShellRoot {
             }
         }
 
-        if (family === "waffle") {
-            // If waffle family has iiBackdrop but not wBackdrop, migrate
-            const hasIiBackdrop = panels.includes("iiBackdrop");
-            const hasWBackdrop = panels.includes("wBackdrop");
-
-            if (hasIiBackdrop && !hasWBackdrop) {
-                root._log("[Shell] Migrating enabledPanels: replacing iiBackdrop with wBackdrop for waffle family");
-                panels = panels.filter(p => p !== "iiBackdrop");
-                panels.push("wBackdrop");
-                changed = true;
-            }
+        // A family that never ran (setup's family pick written straight to the file, a hand edit) has none of its
+        // panels: the fresh profile only lists Material's, and iRiS came up as a bare wallpaper.
+        if (basePanels.length > 0 && !basePanels.some(p => panels.includes(p))) {
+            root._log("[Shell] First start of " + family + ": enabling its panels");
+            panels.push(...basePanels.filter(p => !panels.includes(p)));
+            changed = true;
         }
 
         const legacyPinnedApps = ["org.gnome.Nautilus", "firefox", "foot"];
-        const currentPinnedApps = Config.options?.dock?.pinnedApps ?? [];
+        const currentPinnedApps = Config.options?.apps?.pinned ?? [];
         if (currentPinnedApps.length === legacyPinnedApps.length
                 && currentPinnedApps.every((panel, idx) => panel === legacyPinnedApps[idx])) {
-            root._log("[Shell] Migrating dock.pinnedApps default files app to Dolphin and terminal to kitty");
-            Config.setNestedValue("dock.pinnedApps", ["org.kde.dolphin", "firefox", "kitty"])
+            root._log("[Shell] Migrating apps.pinned default terminal from foot to kitty");
+            Config.setNestedValue("apps.pinned", ["org.gnome.Nautilus", "firefox", "kitty"])
         }
 
         if (changed)
@@ -350,21 +359,29 @@ ShellRoot {
     // Bar.qml / VerticalBar.qml. Both ii bars are instantiated together, so a
     // per-bar handler collided and Quickshell dropped one with a warning. All
     // three bars only toggle GlobalStates.barOpen, so a single shared handler is
-    // family-agnostic and serves the horizontal bar, vertical bar and waffle.
+    // family-agnostic and serves the horizontal bar, vertical bar and any family's bar.
+    /// Top bar visibility.
     IpcHandler {
         target: "bar"
+        /// How wide the song title gets in the active family's bar, 120 to 640 px (the window title gives way); empty
+        /// to read it
         function mediaWidth(px: string): string {
+            const key = Plugins.settingKey(Plugins.active, "barMediaWidth")
+            if (key.length === 0) return "This family's bar shows no song title"
             const value = parseInt(px)
-            if (value >= 120 && value <= 640) Config.setNestedValue("bar.media.maxWidth", value)
+            if (value >= 120 && value <= 640) Config.setNestedValue(key, value)
             else if (px.length > 0) return "Use a width from 120 to 640 px"
-            return String(value >= 120 && value <= 640 ? value : (Config.options?.bar?.media?.maxWidth ?? 220))
+            return String(value >= 120 && value <= 640 ? value : Plugins.setting(Plugins.active, "barMediaWidth", 220))
         }
+        /// Show/hide bar
         function toggle(): void {
             GlobalStates.barOpen = !GlobalStates.barOpen
         }
+        /// Hide bar
         function close(): void {
             GlobalStates.barOpen = false
         }
+        /// Show bar
         function open(): void {
             GlobalStates.barOpen = true
         }
@@ -372,19 +389,33 @@ ShellRoot {
 
     // Shared OSD entrypoint. Family OSDs observe GlobalStates, so the command
     // remains available even while a family-specific visual tree is deferred.
+    /// On-screen volume indicator.
     IpcHandler {
         target: "osdVolume"
+        /// Show volume OSD
         function trigger(): void { GlobalStates.osdVolumeOpen = true }
+        /// Hide volume OSD
         function hide(): void { GlobalStates.osdVolumeOpen = false }
+        /// Toggle volume OSD
         function toggle(): void { GlobalStates.osdVolumeOpen = !GlobalStates.osdVolumeOpen }
     }
 
+    /// On-screen feedback for any family. The active family's OSD or Island decides where it is drawn.
+    ///
+    /// ```kdl
+    /// Mod+Shift+K { spawn "inir" "osd" "keyboard"; }
+    /// ```
     IpcHandler {
         target: "osd"
+        /// Show the volume level
         function volume(): void { GlobalStates.osdVolumeOpen = true }
+        /// Show the brightness level
         function brightness(): void { GlobalStates.osdBrightnessOpen = true }
+        /// Show the microphone level
         function mic(): void { GlobalStates.osdMicOpen = true }
+        /// Show the keyboard layout
         function keyboard(): void { GlobalStates.osdKeyboardLayoutOpen = true }
+        /// Show now playing with a transport action: `play`, `pause`, `next` or `previous`
         function media(action: string): string {
             const normalized = action.length === 0 ? "play" : action
             if (!["play", "pause", "next", "previous"].includes(normalized))
@@ -392,6 +423,7 @@ ShellRoot {
             GlobalStates.showMediaAction(normalized)
             return normalized
         }
+        /// Hide whatever is showing
         function hide(): void {
             GlobalStates.osdVolumeOpen = false
             GlobalStates.osdBrightnessOpen = false
@@ -404,23 +436,29 @@ ShellRoot {
     // Keep the SDK command available without paying for widget discovery at
     // startup. The singleton is instantiated only when this IPC is actually
     // used (or a Settings/bar consumer requests it).
+    /// Custom widget management. Create, list, reload, and remove user-installed widgets from
+    /// `~/.config/inir/widgets/`.
     IpcHandler {
         target: "customWidgets"
+        /// Re-scan widgets directory and reload all custom widgets
         function reload(): string {
             CustomWidgets.reload()
             return "Reloading custom widgets..."
         }
+        /// List all discovered custom widgets (JSON output)
         function list(): string {
             return JSON.stringify(CustomWidgets.widgets.map(w => ({
                 id: w.id, name: w.name, version: w.version,
                 valid: w.valid, path: w.dirPath
             })), null, 2)
         }
+        /// Create a new widget scaffold in the widgets directory
         function create(name: string): string {
             if (!name || name.length === 0) return "Usage: inir customWidgets create <name>"
             CustomWidgets.create(name)
             return `Creating widget "${name}" in ${CustomWidgets.widgetsDir}/${name}/...`
         }
+        /// Remove a custom widget by ID
         function remove(widgetId: string): string {
             if (!widgetId || widgetId.length === 0) return "Usage: inir customWidgets remove <id>"
             CustomWidgets.remove(widgetId)
@@ -430,31 +468,48 @@ ShellRoot {
 
     // ii interaction routers stay resident with the root so commands remain
     // available while the heavier family panel tree is deferred.
+    /// Quick settings panel. Toggles, sliders, and system controls without opening full settings.
     IpcHandler {
         target: "controlPanel"
+        /// Open/close control panel
         function toggle(): void { GlobalStates.controlPanelOpen = !GlobalStates.controlPanelOpen }
+        /// Close control panel
         function close(): void { GlobalStates.controlPanelOpen = false }
+        /// Open control panel
         function open(): void { GlobalStates.controlPanelOpen = true }
     }
 
+    /// Centered welcome hub panel (ii family): greeting, clock, notifications, media, weather, calendar, todo, system
+    /// usage and GitHub activity.
     IpcHandler {
         target: "dashboard"
+        /// Open/close dashboard
         function toggle(): void { GlobalStates.dashboardOpen = !GlobalStates.dashboardOpen }
+        /// Close dashboard
         function close(): void { GlobalStates.dashboardOpen = false }
+        /// Open dashboard
         function open(): void { GlobalStates.dashboardOpen = true }
     }
 
+    /// Left sidebar: AI chat and apps in Material; the customizable Focus panel in iRiS. In iRiS, `open`, `close` and
+    /// `toggle` use the family-owned panel; AI detach and expanded-layout actions apply to Material.
     IpcHandler {
         target: "sidebarLeft"
+        /// Open/close left sidebar
         function toggle(): void { GlobalStates.toggleSidebarLeft("") }
+        /// Hide left sidebar
         function close(): void { GlobalStates.closeSidebarLeft() }
+        /// Show left sidebar
         function open(): void { GlobalStates.openSidebarLeft("") }
+        /// Open the sidebar in its wide Ctrl+O layout
         function expand(): void {
             GlobalStates.aiChatDetached = false
             GlobalStates.openSidebarLeft("")
             GlobalStates.sidebarLeftExpanded = true
         }
+        /// Return the sidebar to its normal width
         function compact(): void { GlobalStates.sidebarLeftExpanded = false }
+        /// Return open, expanded and detached state as JSON
         function status(): string {
             return JSON.stringify({
                 open: GlobalStates.sidebarLeftOpen,
@@ -462,11 +517,13 @@ ShellRoot {
                 detached: GlobalStates.aiChatDetached,
             })
         }
+        /// Move AI chat into its Ctrl+P standalone window
         function detach(): void {
             GlobalStates.sidebarLeftOpen = false
             GlobalStates.sidebarLeftExpanded = false
             GlobalStates.aiChatDetached = true
         }
+        /// Return AI chat from the standalone window to the sidebar
         function attach(): void {
             GlobalStates.aiChatDetached = false
             GlobalStates.sidebarLeftExpanded = false
@@ -474,117 +531,110 @@ ShellRoot {
         }
     }
 
+    /// Right sidebar: quick toggles, notepad and settings in Material; the customizable Today panel in iRiS.
     IpcHandler {
         target: "sidebarRight"
+        /// Open/close right sidebar
         function toggle(): void { GlobalStates.toggleSidebarRight("") }
+        /// Hide right sidebar
         function close(): void { GlobalStates.closeSidebarRight() }
+        /// Show right sidebar
         function open(): void { GlobalStates.openSidebarRight("") }
     }
 
+    /// Floating media controls panel.
     IpcHandler {
         target: "mediaControls"
+        /// Open/close media controls
         function toggle(): void {
             GlobalStates.mediaControlsOpen = !GlobalStates.mediaControlsOpen
             if (GlobalStates.mediaControlsOpen) Notifications.timeoutAll()
         }
+        /// Hide media controls
         function close(): void { GlobalStates.mediaControlsOpen = false }
+        /// Show media controls
         function open(): void {
             GlobalStates.mediaControlsOpen = true
             Notifications.timeoutAll()
         }
     }
 
-    // Waffle interaction routers are also root-owned so commands remain
-    // available while the heavier Waffle host is deferred.
+    /// Waffle start menu / search.
     IpcHandler {
         target: "search"
+        /// Open/close start menu
         function toggle(): void { GlobalStates.searchOpen = !GlobalStates.searchOpen }
+        /// Close start menu
         function close(): void { GlobalStates.searchOpen = false }
+        /// Open start menu
         function open(): void { GlobalStates.searchOpen = true }
     }
 
-    IpcHandler {
-        target: "wactionCenter"
-        function toggle(): void { GlobalStates.waffleActionCenterOpen = !GlobalStates.waffleActionCenterOpen }
-        function close(): void { GlobalStates.waffleActionCenterOpen = false }
-        function open(): void { GlobalStates.waffleActionCenterOpen = true }
-    }
-
-    IpcHandler {
-        target: "wnotificationCenter"
-        function toggle(): void { GlobalStates.waffleNotificationCenterOpen = !GlobalStates.waffleNotificationCenterOpen }
-        function close(): void { GlobalStates.waffleNotificationCenterOpen = false }
-        function open(): void { GlobalStates.waffleNotificationCenterOpen = true }
-    }
-
-    IpcHandler {
-        target: "wwidgets"
-        function toggle(): void { GlobalStates.waffleWidgetsOpen = !GlobalStates.waffleWidgetsOpen }
-        function close(): void { GlobalStates.waffleWidgetsOpen = false }
-        function open(): void { GlobalStates.waffleWidgetsOpen = true }
-    }
-
+    // Shared verbs: the active family answers first (GlobalStates.familyVerbs), Material's behaviour otherwise.
+    /// Compatibility entry point for task navigation. On Waffle it opens the Waffle Task View; on ii/Niri it routes
+    /// to Orbit.
     IpcHandler {
         target: "taskview"
-        function _isWaffle(): bool { return (Config.options?.panelFamily ?? "ii") === "waffle" }
-        function _isIris(): bool { return (Config.options?.panelFamily ?? "ii") === "iris" }
-        // iRiS: Orbit when it is on, Spotlight (what task view opened before Orbit) when it is off.
-        function _irisOrbit(): bool { return Config.options?.iris?.orbit?.enable ?? false }
+        /// Open/close the active family's task navigator
         function toggle(): void {
-            if (_isWaffle()) { GlobalStates.waffleTaskViewOpen = !GlobalStates.waffleTaskViewOpen; return }
-            if (_isIris()) { if (_irisOrbit()) GlobalStates.irisOrbitOpen = !GlobalStates.irisOrbitOpen; else GlobalStates.searchOpen = !GlobalStates.searchOpen; return }
-            if (CompositorService.isNiri) GlobalStates.toggleOrbit("")
+            const verb = GlobalStates.familyVerb("taskview", "toggle")
+            if (verb) verb()
+            else if (CompositorService.isNiri) GlobalStates.toggleOrbit("")
         }
+        /// Close the active family's task navigator
         function close(): void {
-            if (_isWaffle()) { GlobalStates.waffleTaskViewOpen = false; return }
-            if (_isIris()) { GlobalStates.irisOrbitOpen = false; GlobalStates.searchOpen = false; return }
-            if (GlobalStates.overviewMode === "orbit") GlobalStates.closeOverview()
+            const verb = GlobalStates.familyVerb("taskview", "close")
+            if (verb) verb()
+            else if (GlobalStates.overviewMode === "orbit") GlobalStates.closeOverview()
         }
+        /// Open the active family's task navigator
         function open(): void {
-            if (_isWaffle()) { GlobalStates.waffleTaskViewOpen = true; return }
-            if (_isIris()) { if (_irisOrbit()) GlobalStates.irisOrbitOpen = true; else GlobalStates.searchOpen = true; return }
-            if (CompositorService.isNiri) GlobalStates.openOrbit("")
+            const verb = GlobalStates.familyVerb("taskview", "open")
+            if (verb) verb()
+            else if (CompositorService.isNiri) GlobalStates.openOrbit("")
         }
     }
 
+    /// Niri-only session navigator. On ii it presents nearby workspaces and readable window previews, with MRU Trail
+    /// navigation and temporary Stash parking. On iRiS it is the Island growing into one strip per workspace, with a
+    /// search that lights up the windows that match; `stage`, `orbital`, `studio` and `toggleView` are ii's and do
+    /// nothing there, `pocket` and `find` open Orbit, and `next` and `previous` move Niri to the workspace below or
+    /// above.
     IpcHandler {
         target: "orbit"
-        // iRiS has its own Orbit (a Place in the chassis, one layout, no Studio); the rest of the verbs are ii's.
-        function _isIris(): bool { return (Config.options?.panelFamily ?? "ii") === "iris" }
-        function toggle(): void {
-            if (_isIris()) { GlobalStates.irisOrbitOpen = !GlobalStates.irisOrbitOpen; return }
-            if (CompositorService.isNiri) GlobalStates.toggleOrbit("")
+        function _family(name: string): bool {
+            const verb = GlobalStates.familyVerb("orbit", name)
+            if (verb) verb()
+            return verb !== null
         }
-        function close(): void {
-            if (_isIris()) { GlobalStates.irisOrbitOpen = false; return }
-            if (GlobalStates.overviewMode === "orbit") GlobalStates.closeOverview()
-        }
-        function open(): void {
-            if (_isIris()) { GlobalStates.irisOrbitOpen = true; return }
-            if (CompositorService.isNiri) GlobalStates.openOrbit("")
-        }
-        function pocket(): void {
-            if (_isIris()) { GlobalStates.irisOrbitOpen = true; return }
-            if (CompositorService.isNiri) GlobalStates.openOrbitPocket("")
-        }
-        function studio(): void { if (!_isIris() && CompositorService.isNiri) GlobalStates.openOrbitStudio("") }
+        /// Open/close Orbit
+        function toggle(): void { if (!_family("toggle") && CompositorService.isNiri) GlobalStates.toggleOrbit("") }
+        /// Close Orbit if it is active
+        function close(): void { if (!_family("close") && GlobalStates.overviewMode === "orbit") GlobalStates.closeOverview() }
+        /// Open Orbit on the focused output
+        function open(): void { if (!_family("open") && CompositorService.isNiri) GlobalStates.openOrbit("") }
+        /// Open Orbit directly into Pocket
+        function pocket(): void { if (!_family("pocket") && CompositorService.isNiri) GlobalStates.openOrbitPocket("") }
+        /// Open Orbit directly into the live Studio editor
+        function studio(): void { if (!_family("studio") && CompositorService.isNiri) GlobalStates.openOrbitStudio("") }
+        /// Open Orbit Focus Lens and filter session windows by app or title
         function find(query: string): void {
-            if (_isIris()) { GlobalStates.irisOrbitQuery = query; GlobalStates.irisOrbitOpen = true; return }
-            if (CompositorService.isNiri) GlobalStates.openOrbitLens("", query)
+            const verb = GlobalStates.familyVerb("orbit", "find")
+            if (verb) verb(query)
+            else if (CompositorService.isNiri) GlobalStates.openOrbitLens("", query)
         }
-        function stage(): void { if (!_isIris() && CompositorService.isNiri) GlobalStates.openOrbitView("", "stage") }
-        function orbital(): void { if (!_isIris() && CompositorService.isNiri) GlobalStates.openOrbitView("", "orbital") }
-        function next(): void {
-            if (_isIris()) { NiriService.focusWorkspaceDown(); return }
-            if (CompositorService.isNiri) GlobalStates.orbitNavigateRequested(1)
-        }
-        function previous(): void {
-            if (_isIris()) { NiriService.focusWorkspaceUp(); return }
-            if (CompositorService.isNiri) GlobalStates.orbitNavigateRequested(-1)
-        }
+        /// Open Orbit in the classic Stage view for this session
+        function stage(): void { if (!_family("stage") && CompositorService.isNiri) GlobalStates.openOrbitView("", "stage") }
+        /// Open Orbit in the Orbital workspace view for this session
+        function orbital(): void { if (!_family("orbital") && CompositorService.isNiri) GlobalStates.openOrbitView("", "orbital") }
+        /// Switch Niri to the next workspace while Orbit stays open
+        function next(): void { if (!_family("next") && CompositorService.isNiri) GlobalStates.orbitNavigateRequested(1) }
+        /// Switch Niri to the previous workspace while Orbit stays open
+        function previous(): void { if (!_family("previous") && CompositorService.isNiri) GlobalStates.orbitNavigateRequested(-1) }
+        /// Print the effective Orbit runtime state used by diagnostics and visual audits
         function status(): string {
-            if (_isIris()) return JSON.stringify({ family: "iris", open: GlobalStates.irisOrbitOpen,
-                enabled: Config.options?.iris?.orbit?.enable ?? false, output: GlobalStates.focusedScreen?.name ?? "" })
+            const verb = GlobalStates.familyVerb("orbit", "status")
+            if (verb) return verb()
             const outputName = NiriService.currentOutput ?? ""
             const orbitCorner = Config.options?.orbit?.hotCorner ?? "topRight"
             return JSON.stringify(Object.assign({}, GlobalStates.orbitRuntimeStatus, {
@@ -602,8 +652,9 @@ ShellRoot {
                 }
             }))
         }
+        /// Switch the open Orbit session between Stage and Orbital
         function toggleView(): void {
-            if (!CompositorService.isNiri || _isIris()) return
+            if (_family("toggleView") || !CompositorService.isNiri) return
             if (GlobalStates.overviewOpen && GlobalStates.overviewMode === "orbit")
                 GlobalStates.toggleOrbitStageView()
             else
@@ -611,43 +662,47 @@ ShellRoot {
         }
     }
 
-    // IPC for settings - overlay mode or separate window based on config
-    // Note: waffle family ALWAYS uses its own window (waffleSettings.qml), never the Material overlay
+    // IPC for settings: inside the shell or its own window, as the Settings in use allows (GlobalStates).
+    /// Open or toggle the settings window. GUI config so you don't have to edit JSON by hand.
+    ///
+    /// ```kdl
+    /// Super+Comma { spawn "inir" "settings"; }
+    /// ```
     IpcHandler {
         target: "settings"
+        /// Open the settings window
         function open(): void {
             GlobalStates.openSettings()
         }
+        /// Toggle settings in the active host (overlay or window)
         function toggle(): void {
             GlobalStates.toggleSettings()
         }
+        /// Switch to overlay mode and open Settings
         function openOverlay(): void {
-            Config.setNestedValue("settingsUi.overlayMode", true)
+            GlobalStates.setSettingsOverlay(true)
             GlobalStates.settingsOverlayOpen = true
         }
+        /// Switch to overlay mode, open Settings and keep the page, or jump to a page by its number
         function openOverlayAt(index: int): void {
             if (index >= 0)
                 GlobalStates.settingsOverlayRequestedPage = index
-            Config.setNestedValue("settingsUi.overlayMode", true)
+            GlobalStates.setSettingsOverlay(true)
             GlobalStates.settingsOverlayOpen = true
         }
+        /// Switch to standalone Window mode and open page `index`
         function openWindowAt(index: int): void {
             const args = ["/usr/bin/env"]
             if (index >= 0)
                 args.push(`QS_SETTINGS_PAGE=${index}`)
             args.push(Quickshell.shellPath("scripts/inir"), "settings-window")
             Quickshell.execDetached(args)
-            Config.setNestedValue("settingsUi.overlayMode", false)
+            GlobalStates.setSettingsOverlay(false)
             GlobalStates.settingsOverlayOpen = false
         }
+        /// Kept for scripts from before Settings had one layout: opens the overlay at page `index`
         function setOverlayStyle(style: string, index: int): void {
-            if (index >= 0)
-                GlobalStates.settingsOverlayRequestedPage = index
-            Config.setNestedValues({
-                "settingsUi.overlayMode": true,
-                "settingsUi.overlayStyle": style
-            })
-            GlobalStates.settingsOverlayOpen = true
+            openOverlayAt(index)
         }
     }
 
@@ -657,89 +712,106 @@ ShellRoot {
     // and silently dropped one — the caller then hit whichever survived. Routing
     // through GlobalStates keeps the target valid no matter which chrome, or
     // none, is loaded.
+    /// Navigate the settings overlay to a specific page (same as clicking the nav rail). `inir settings` toggles the
+    /// current Settings host; use the `settings` IPC target above when you need explicit open/toggle semantics.
+    ///
+    /// ```sh
+    /// inir ipc settingsNav page 5
+    /// ```
     IpcHandler {
         target: "settingsNav"
+        /// Open the overlay and jump to a page by its number
         function page(index: int): void {
             GlobalStates.openSettingsPage(index)
         }
+        /// Open a page at its named section; for example `inir settingsNav section 28 sidebars`
         function section(index: int, name: string): void {
             GlobalStates.openSettingsPage(index, name)
         }
-        function count(): int { return SettingsPageRegistry.pages.length }
+        // A page by its key ("hub", "themes"…) in the family's own Settings.
+        /// Open a page by its name in the family's own Settings, for example `inir settingsNav open hub`
+        function open(key: string): string {
+            const keys = GlobalStates.settingsPageKeys
+            if (keys.length > 0 && keys.indexOf(key) < 0)
+                return `no page ${key}`
+            GlobalStates.openSettingsAt(key, "")
+            return key
+        }
+        /// Number of settings pages
+        function count(): int { return GlobalStates.settingsPageKeys.length }
+        /// Current page index, or `-1` when no page is open
         function current(): int { return GlobalStates.settingsOverlayCurrentPage }
     }
 
-    // Settings overlay panel (loaded only when overlay mode is enabled).
-    // overlayStyle picks the chrome; sibling loaders keep only the selected
-    // presentation alive. Any unrecognised style falls back to the nav rail.
-    LazyLoader {
-        active: Config.ready && (Config.options?.panelFamily ?? "ii") !== "iris" && (Config.options?.settingsUi?.overlayMode ?? false)
-            && (Config.options?.settingsUi?.overlayStyle ?? "rail") !== "focus"
-            && (Config.options?.settingsUi?.overlayStyle ?? "rail") !== "editorial"
-        component: SettingsOverlay {}
-    }
-
-    LazyLoader {
-        active: Config.ready && (Config.options?.panelFamily ?? "ii") !== "iris" && (Config.options?.settingsUi?.overlayMode ?? false)
-            && (Config.options?.settingsUi?.overlayStyle ?? "rail") === "focus"
-        component: SettingsFocus {}
-    }
-
-    LazyLoader {
-        active: Config.ready && (Config.options?.panelFamily ?? "ii") !== "iris" && (Config.options?.settingsUi?.overlayMode ?? false)
-            && (Config.options?.settingsUi?.overlayStyle ?? "rail") === "editorial"
-        component: SettingsEditorial {}
-    }
+    // The Settings in use may keep a host in the shell (its plugin.json part `settingsHost`): page names, overlay.
+    FamilyPartLoader { family: Plugins.settingsFamily; part: "settingsHost"; when: Config.ready }
 
     // === Panel Loaders ===
     // Keep one permanent IPC router so mode/family changes never overlap two
     // `altSwitcher` handlers during Loader teardown. The heavy ii visual tree is
     // present only for visual ii presets; the router handles no-UI cycling and
-    // forwards visual commands to ii internally or to Waffle's family module.
+    // forwards visual commands to ii internally or to the active family's own.
     readonly property bool iiAltSwitcherNoVisual:
         (Config.options?.altSwitcher?.noVisualUi ?? false)
         && (Config.options?.altSwitcher?.preset ?? "default") !== "skew"
 
     LazyLoader {
         active: Config.ready
-        source: "modules/altSwitcher/AltSwitcherNoVisual.qml"
+        source: "modules/shared/altSwitcher/AltSwitcherNoVisual.qml"
     }
 
     LazyLoader {
         active: Config.ready
             && (Config.options?.panelFamily ?? "ii") === "ii"
             && !root.iiAltSwitcherNoVisual
-        source: "modules/altSwitcher/AltSwitcher.qml"
+        source: "modules/shared/altSwitcher/AltSwitcher.qml"
     }
 
     // Load ONLY the active family panels to reduce startup time.
     // Using `source:` instead of `component:` to avoid parsing inactive family at compile time.
-    // This saves ~135 file parses when using ii family (waffle not parsed) and vice versa.
+    // Only the active family's files are parsed (~135 fewer).
     // Family-agnostic IPC routers. Both panel files used to instantiate their
     // own copy, so during a family switch — when the outgoing loader is still
     // being torn down — two instances existed and Quickshell dropped one
     // handler per target (region, tiling, wallpaperSelector, coverflowSelector).
     // One owner here is valid whichever family is loaded.
-    LazyLoader { active: Config.ready; source: "modules/regionSelector/RegionSelectorRouter.qml" }
-    LazyLoader { active: Config.ready; source: "modules/japaneseLookup/JapaneseLookup.qml" }
-    LazyLoader { active: Config.ready; source: "modules/tilingOverlay/TilingOverlayRouter.qml" }
-    LazyLoader { active: Config.ready; source: "modules/wallpaperSelector/WallpaperSelectorRouter.qml" }
+    LazyLoader { active: Config.ready; source: "modules/shared/regionSelector/RegionSelectorRouter.qml" }
+    // Live snips kept above the windows (those on the desktop are drawn by Background): only while one exists, and
+    // only where windows can be streamed (qs-rs on niri).
+    LazyLoader { active: Config.ready && LivePins.supported && LivePins.pins.some(pin => pin.onTop); source: "modules/shared/livePins/LivePinLayer.qml" }
+    LazyLoader { active: Config.ready && LivePins.framing; source: "modules/shared/livePins/LivePinFramer.qml" }
+    // A hidden window per screen otherwise, for a lookup most people never make.
+    LazyLoader { active: Config.ready && GlobalStates.japaneseLookupOpen; source: "modules/shared/japaneseLookup/JapaneseLookup.qml" }
+    LazyLoader { active: Config.ready; source: "modules/shared/tilingOverlay/TilingOverlayRouter.qml" }
+    LazyLoader { active: Config.ready; source: "modules/shared/wallpaperSelector/WallpaperSelectorRouter.qml" }
 
     // Same reason as the routers: both panel files declared these, so every
     // family switch registered them twice and Quickshell kept whichever won the
     // race — sometimes the handler belonging to the family being torn down.
     // The four below were byte-identical in both files; only overview differs,
     // so it branches here instead of existing twice.
+    /// On-screen keyboard.
     IpcHandler {
         target: "osk"
+        /// Show/hide on-screen keyboard
         function toggle(): void { GlobalStates.oskOpen = !GlobalStates.oskOpen }
+        /// Hide on-screen keyboard
         function close(): void { GlobalStates.oskOpen = false }
+        /// Show on-screen keyboard
         function open(): void { GlobalStates.oskOpen = true }
     }
 
+    /// Floating tools (Super+G): notes, images, crosshair, recorder, resources and other pinnable desktop tools.
+    ///
+    /// ```kdl
+    /// Super+G { spawn "inir" "overlay" "toggle"; }
+    /// ```
     IpcHandler {
         target: "overlay"
+        /// Open/close Floating tools
         function toggle(): void { GlobalStates.overlayOpen = !GlobalStates.overlayOpen }
+        /// Show or hide one floating tool by id (`crosshair`, `fpsLimiter`, `floatingImage`, `recorder`, `resources`,
+        /// `notes`, `discord`, `volumeMixer`, `notifications`, `gamePerformance`): `on`, `off` or `toggle`
         function tool(identifier: string, action: string): string {
             const state = Persistent.states.overlay
             if (!state || typeof state[identifier] !== "object") return "Unknown tool"
@@ -751,84 +823,98 @@ ShellRoot {
         }
     }
 
+    /// Power menu. Logout, suspend, reboot, shutdown. The "I'm done for today" buttons.
+    ///
+    /// ```kdl
+    /// Super+Shift+E { spawn "inir" "session" "toggle"; }
+    /// ```
     IpcHandler {
         target: "session"
+        /// Open/close session menu
         function toggle(): void { GlobalStates.sessionOpen = !GlobalStates.sessionOpen }
+        /// Hide session screen
         function close(): void { GlobalStates.sessionOpen = false }
+        /// Show session screen
         function open(): void { GlobalStates.sessionOpen = true }
     }
 
+    /// Keyboard shortcuts reference. For when you forget what you just configured five minutes ago.
+    ///
+    /// ```kdl
+    /// Super+Slash { spawn "inir" "cheatsheet" "toggle"; }
+    /// ```
     IpcHandler {
         target: "cheatsheet"
+        /// Open/close cheatsheet
         function toggle(): void { GlobalStates.cheatsheetOpen = !GlobalStates.cheatsheetOpen }
+        /// Hide cheatsheet overlay
         function close(): void { GlobalStates.cheatsheetOpen = false }
+        /// Show cheatsheet overlay
         function open(): void { GlobalStates.cheatsheetOpen = true }
     }
 
+    /// Clipboard history panel. Because Ctrl+V only remembers one thing, and that's not enough for power users.
+    ///
+    /// ```kdl
+    /// Super+V repeat=false { spawn "inir" "clipboard" "toggle"; }
+    /// ```
     IpcHandler {
         target: "clipboard"
-        function _isWaffle(): bool { return (Config.options?.panelFamily ?? "ii") === "waffle" }
-        function _isIris(): bool { return (Config.options?.panelFamily ?? "ii") === "iris" }
-        function _openIrisClipboard(): void {
-            LauncherSearch.ensurePrefix(Config.options?.search?.prefix?.clipboard ?? ";")
-            GlobalStates.searchOpen = true
-        }
+        /// Open panel
         function open(): void {
-            if (_isWaffle()) GlobalStates.waffleClipboardOpen = true
-            else if (_isIris()) _openIrisClipboard()
+            const verb = GlobalStates.familyVerb("clipboard", "open")
+            if (verb) verb()
             else GlobalStates.clipboardOpen = true
         }
+        /// Close panel
         function close(): void {
-            if (_isWaffle()) GlobalStates.waffleClipboardOpen = false
-            else if (_isIris()) GlobalStates.searchOpen = false
+            const verb = GlobalStates.familyVerb("clipboard", "close")
+            if (verb) verb()
             else GlobalStates.clipboardOpen = false
         }
+        /// Open/close panel
         function toggle(): void {
-            if (_isWaffle()) GlobalStates.waffleClipboardOpen = !GlobalStates.waffleClipboardOpen
-            else if (_isIris()) {
-                if (GlobalStates.searchOpen) GlobalStates.searchOpen = false
-                else _openIrisClipboard()
-            }
+            const verb = GlobalStates.familyVerb("clipboard", "toggle")
+            if (verb) verb()
             else GlobalStates.clipboardOpen = !GlobalStates.clipboardOpen
         }
     }
 
+    /// Toggle the workspace overview panel. The one with all your windows looking tiny and organized.
+    ///
+    /// ```kdl
+    /// Mod+Space { spawn "inir" "overview" "toggle"; }
+    /// ```
     IpcHandler {
         target: "overview"
-        function _usesPalette(): bool {
-            const family = Config.options?.panelFamily ?? "ii"
-            return family === "waffle" || family === "iris"
+        function _family(name: string): bool {
+            const verb = GlobalStates.familyVerb("overview", name)
+            if (verb) verb()
+            return verb !== null
         }
-        function _usePillLauncher(): bool {
-            return (Config.options?.panelFamily ?? "ii") === "ii"
-                && (Config.options?.bar?.appearanceStyle ?? "classic") === "pill"
-                && (Config.options?.bar?.pill?.superSpaceLauncher ?? "overview") === "pill"
-        }
+        /// Open/close overview
         function toggle(): void {
-            if (_usesPalette()) { GlobalStates.searchOpen = !GlobalStates.searchOpen; return }
-            if (_usePillLauncher()) { GlobalStates.pillSurfaceCommand("toggle", "launcher"); return }
+            if (_family("toggle")) return
             GlobalStates.overviewSearchPrefix = ""
             GlobalStates.toggleOverview("")
         }
+        /// Close overview
         function close(): void {
-            if (_usesPalette()) { GlobalStates.searchOpen = false; return }
-            if (_usePillLauncher()) { GlobalStates.pillSurfaceCommand("close", "launcher"); return }
+            if (_family("close")) return
             GlobalStates.overviewOpen = false
         }
+        /// Open overview
         function open(): void {
-            if (_usesPalette()) { GlobalStates.searchOpen = true; return }
-            if (_usePillLauncher()) { GlobalStates.pillSurfaceCommand("open", "launcher"); return }
+            if (_family("open")) return
             GlobalStates.overviewSearchPrefix = ""
             GlobalStates.openOverview("")
         }
+        /// Clear the super-key release interrupt flag
         function toggleReleaseInterrupt(): void { GlobalStates.superReleaseMightTrigger = false }
+        /// Open clipboard search, or close if already open
         function clipboardToggle(): void {
+            if (_family("clipboardToggle")) return
             const prefix = Config.options?.search?.prefix?.clipboard ?? ";"
-            if (_usesPalette()) {
-                LauncherSearch.ensurePrefix(prefix)
-                GlobalStates.searchOpen = true
-                return
-            }
             if (GlobalStates.overviewOpen && GlobalStates.overviewSearchPrefix.length > 0) {
                 GlobalStates.overviewOpen = false
             } else {
@@ -836,101 +922,136 @@ ShellRoot {
                 GlobalStates.openOverview("")
             }
         }
+        /// Open overview in action search mode
         function actionOpen(): void {
+            if (_family("actionOpen")) return
             const prefix = Config.options?.search?.prefix?.action ?? "/"
-            if (_usesPalette()) {
-                LauncherSearch.ensurePrefix(prefix)
-                GlobalStates.searchOpen = true
-                return
-            }
             GlobalStates.overviewSearchPrefix = prefix
             GlobalStates.openOverview("")
         }
     }
 
-    LazyLoader {
-        loading: Config.ready && !root._familyPanelsSuspended && (Config.options?.panelFamily ?? "ii") === "ii"
-        activeAsync: Config.ready && !root._familyPanelsSuspended && (Config.options?.panelFamily ?? "ii") === "ii"
-        source: "modules/ii/critical/ShellIiCriticalPanels.qml"
+    // Each installed family's panels, found through its plugin.json: the critical ones with the config, the rest
+    // once the first frame is out. Only the chosen family loads.
+    Variants {
+        model: Plugins.families
+        Scope {
+            id: family
+            required property string modelData
+            readonly property bool chosen: Config.ready && Plugins.ready && !root._familyPanelsSuspended
+                && (Config.options?.panelFamily ?? "ii") === family.modelData
+            readonly property bool panelsWanted: family.chosen && GlobalStates.deferredPanelsReady
+            // A part gets its source the first time it's wanted and keeps it while the family is in use: a LazyLoader
+            // compiles its source as soon as it has one (every family's parts compiled before the first frame), and
+            // dropping the source would delete the component under a load still running.
+            property bool criticalUsed: false
+            property bool panelsUsed: false
+            onChosenChanged: {
+                if (!family.chosen) {
+                    family.release.restart()
+                    return
+                }
+                family.release.stop()
+                family.criticalUsed = true
+                if (root._transitionInProgress) Qt.callLater(family.finishNow)
+            }
+            // A family left behind lets its parts go once the switch is well over, so what it compiled can be freed:
+            // kept for good, every family visited stayed in memory (+75 MB after two rounds of the three, a nest).
+            property Timer release: Timer {
+                interval: 30000
+                onTriggered: if (!family.chosen && !criticalParts.active && !panelParts.active) {
+                    family.criticalUsed = false
+                    family.panelsUsed = false
+                }
+            }
+            // Under the switch's curtain nothing is on screen to keep smooth, so the parts finish at once instead of in
+            // the incubator's 10 ms slices between frames: Material stood after 3.7 s fresh, 9.6 s on a shell
+            // reloaded all day.
+            // Reading item while it loads completes it (LazyLoader docs, both runtimes).
+            function finishNow() {
+                void criticalParts.item
+                void panelParts.item
+            }
+            onPanelsWantedChanged: if (family.panelsWanted) family.panelsUsed = true
+            // The switch's curtain lifts once the chosen family stands: lifted on the swap alone, Material was still
+            // building its panels on screen for a second or two (his 10-30: "se lagea todo").
+            Binding { when: family.chosen; target: root; property: "_familyUp"; value: family.up }
+            // A part that doesn't compile leaves the person without panels: the update reads these lines and rolls the
+            // family back (robust-update.sh, restart_shell_and_verify). The type loader compiles it once for both.
+            function checkPart(url: string) {
+                if (url === "") return
+                const part = Qt.createComponent(url, Component.PreferSynchronous)
+                if (part.status === Component.Error)
+                    console.error(`[Plugins] family ${family.modelData} failed to load: ${part.errorString().trim()}`)
+                part.destroy()
+            }
+            readonly property string criticalSource: criticalParts.source
+            readonly property string panelsSource: panelParts.source
+            readonly property bool up: panelParts.item !== null
+            onCriticalSourceChanged: {
+                if (family.criticalSource !== "")
+                    console.info(`[Plugins] family ${family.modelData} loading`)
+                family.checkPart(family.criticalSource)
+            }
+            onPanelsSourceChanged: family.checkPart(family.panelsSource)
+            onUpChanged: if (family.up) console.info(`[Plugins] family ${family.modelData} loaded`)
+            Component.onCompleted: {
+                family.criticalUsed = family.criticalUsed || family.chosen
+                family.panelsUsed = family.panelsUsed || family.panelsWanted
+            }
+
+            // loading reads the source too: neither runtime starts a load asked for before its component came
+            LazyLoader {
+                id: criticalParts
+                source: family.criticalUsed ? Plugins.part(family.modelData, "critical") : ""
+                loading: family.chosen && criticalParts.source !== ""
+                activeAsync: family.chosen && criticalParts.source !== ""
+            }
+
+            LazyLoader {
+                id: panelParts
+                source: family.panelsUsed ? Plugins.part(family.modelData, "panels") : ""
+                loading: family.panelsWanted && panelParts.source !== ""
+                activeAsync: family.panelsWanted && panelParts.source !== ""
+            }
+        }
     }
 
-    LazyLoader {
-        readonly property bool enabled: Config.ready
-            && GlobalStates.deferredPanelsReady
-            && !root._familyPanelsSuspended
-            && (Config.options?.panelFamily ?? "ii") === "ii"
-        loading: enabled
-        activeAsync: enabled
-        source: "ShellIiPanels.qml"
-    }
-
-    LazyLoader {
-        loading: Config.ready && !root._familyPanelsSuspended && (Config.options?.panelFamily ?? "ii") === "waffle"
-        activeAsync: Config.ready && !root._familyPanelsSuspended && (Config.options?.panelFamily ?? "ii") === "waffle"
-        source: "modules/waffle/critical/ShellWaffleCriticalPanels.qml"
-    }
-
-    LazyLoader {
-        readonly property bool enabled: Config.ready
-            && GlobalStates.deferredPanelsReady
-            && !root._familyPanelsSuspended
-            && (Config.options?.panelFamily ?? "ii") === "waffle"
-        loading: enabled
-        activeAsync: enabled
-        source: "ShellWafflePanels.qml"
-    }
-
-    LazyLoader {
-        loading: Config.ready && !root._familyPanelsSuspended && (Config.options?.panelFamily ?? "ii") === "iris"
-        activeAsync: Config.ready && !root._familyPanelsSuspended && (Config.options?.panelFamily ?? "ii") === "iris"
-        source: "modules/iris/critical/ShellIrisCriticalPanels.qml"
-    }
-
-    LazyLoader {
-        readonly property bool enabled: Config.ready
-            && GlobalStates.deferredPanelsReady
-            && !root._familyPanelsSuspended
-            && (Config.options?.panelFamily ?? "ii") === "iris"
-        loading: enabled
-        activeAsync: enabled
-        source: "ShellIrisPanels.qml"
+    // Each installed component's surface, once the family's panels are up and while the active family is one it is
+    // worn with. One that fails to load leaves the shell as it was: only its own panel is missing.
+    Variants {
+        model: Plugins.components
+        Scope {
+            id: component
+            required property string modelData
+            readonly property bool wanted: Config.ready && Plugins.ready && GlobalStates.deferredPanelsReady
+                && !root._familyPanelsSuspended && Plugins.wornWith(component.modelData, Config.options?.panelFamily ?? "ii")
+            // Compiled the first time it is wanted, kept while the shell runs, as the family parts are.
+            property bool used: false
+            onWantedChanged: if (component.wanted) component.used = true
+            Component.onCompleted: component.used = component.wanted
+            LazyLoader {
+                id: componentPanel
+                source: component.used ? Plugins.part(component.modelData, "panel") : ""
+                loading: component.wanted && componentPanel.source !== ""
+                activeAsync: component.wanted && componentPanel.source !== ""
+            }
+        }
     }
 
     // Close confirmation dialog (always loaded, handles IPC)
-    LazyLoader { active: Config.ready; source: "modules/closeConfirm/CloseConfirm.qml" }
+    LazyLoader { active: Config.ready; source: "modules/shared/closeConfirm/CloseConfirm.qml" }
 
     // Shared (always loaded via ToastManager)
     ToastManager {}
 
-    // === Panel Families ===
-    // AltSwitcher controller selection lives above the family loaders. Waffle
-    // receives the lightweight shared router; ii receives either that controller
-    // or the full visual tree according to its no-visual setting.
-    property list<string> families: ["ii", "waffle", "iris"]
-    property var panelFamilies: ({
-        "ii": [
-            "iiBar", "iiBackground", "iiBackdrop", "iiBootGreeting", "iiCheatsheet", "iiControlPanel", "iiDock", "iiLock",
-            "iiMediaControls", "iiNotificationPopup", "iiOnScreenDisplay", "iiOnScreenKeyboard",
-            "iiOverlay", "iiOverview", "iiPolkit", "iiRegionSelector", "iiScreenCorners",
-            "iiSessionScreen", "iiSidebarLeft", "iiSidebarRight", "iiTilingOverlay", "iiVerticalBar",
-            "iiWallpaperSelector", "iiWallpaperLauncher", "iiCoverflowSelector", "iiClipboard", "iiShellUpdate", "iiRecordingOsd", "iiDashboard",
-            "iiMascotCompanion"
-        ],
-        "waffle": [
-            "wBar", "wBackground", "wBackdrop", "wStartMenu", "wActionCenter", "wNotificationCenter", "wNotificationPopup", "wOnScreenDisplay", "wWidgets", "wTaskView", "wLock", "wPolkit", "wSessionScreen",
-            // Shared modules that work with waffle
-            // WaffleAltSwitcher is family-local and loaded by ShellWafflePanels;
-            // the shared `altSwitcher` target reaches it through the lightweight router.
-            "iiBootGreeting", "iiCheatsheet", "iiOnScreenKeyboard", "iiOverlay", "iiOverview",
-            "iiRegionSelector", "iiScreenCorners", "iiWallpaperSelector", "iiWallpaperLauncher", "iiCoverflowSelector", "iiClipboard",
-            "iiShellUpdate", "iiMascotCompanion"
-        ],
-        "iris": [
-            "irisBar", "irisBackground", "irisPalette", "irisControlCenter",
-            "irisNotificationPopup", "irisOnScreenDisplay", "irisSessionScreen",
-            "irisLock", "irisPolkit"
-        ]
-    })
+    // Installed families in the order the switch walks them (familyCycle), the rest after; each lists its panels in
+    // its plugin.json (`enabledPanels`).
+    readonly property list<string> families: {
+        const installed = Plugins.families
+        const cycle = Array.from(Config.options?.familyCycle ?? []).filter(family => installed.includes(family))
+        return [...new Set(cycle), ...installed.filter(family => !cycle.includes(family))]
+    }
 
     // === Panel Family Transition ===
     property string _pendingFamily: ""
@@ -938,10 +1059,12 @@ ShellRoot {
     property bool _transitionUsesOverlay: false
     property bool _familyPanelsSuspended: false
     property string _familySwapTarget: ""
+    property real _transitionStartedAt: 0
+    property bool _familyUp: false
     property bool _familyRestartPending: false
 
     function _ensureFamilyPanels(family: string): void {
-        const basePanels = root.panelFamilies[family] ?? []
+        const basePanels = Plugins.panels(family)
         const currentPanels = Config.options?.enabledPanels ?? []
 
         if (basePanels.length === 0) return
@@ -971,15 +1094,17 @@ ShellRoot {
     function cyclePanelFamily() {
         const currentFamily = Config.options?.panelFamily ?? "ii"
         const wanted = Array.from(Config.options?.familyCycle ?? families)
-        const order = wanted.filter((family, index) => families.includes(family) && wanted.indexOf(family) === index)
-        if (order.length === 0) return
+        const listed = wanted.filter((family, index) => families.includes(family) && wanted.indexOf(family) === index)
+        // A list of one family (or none) is no cycle: the key went there and then did nothing (11-07); go through all.
+        const order = listed.length >= 2 ? listed : families
+        if (order.length < 2) return
         const at = order.indexOf(currentFamily)
         const nextFamily = order[(at + 1) % order.length]
         if (nextFamily === currentFamily) return
         const currentIndex = families.indexOf(currentFamily)
         const nextIndex = families.indexOf(nextFamily)
 
-        // Determine direction: ii -> waffle = left, waffle -> ii = right
+        // Later in the cycle slides left, earlier slides right.
         const direction = nextIndex > currentIndex ? "left" : "right"
         root.startFamilyTransition(nextFamily, direction)
     }
@@ -1005,9 +1130,8 @@ ShellRoot {
             _transitionUsesOverlay = false
         }
         if (_transitionInProgress) return
-        const currentFamily = Config.options?.panelFamily ?? "ii"
-        if (currentFamily === "iris")
-            GlobalStates.endIrisEditing()
+        const leave = GlobalStates.familyVerb("family", "leave")
+        if (leave) leave()
 
         // Qt 6.11 can segfault during layer-shell teardown; restart the supervised shell.
         const qt611LayerShellRisk = Quickshell.hasQtVersion(6, 11)
@@ -1023,21 +1147,34 @@ ShellRoot {
         if (!(Config.options?.familyTransitionAnimation ?? true)) {
             _transitionInProgress = true
             _transitionUsesOverlay = false
+            root._warmFamily(targetFamily)
             root.beginSerializedFamilySwap(targetFamily)
             return
         }
 
         _transitionInProgress = true
         _transitionUsesOverlay = true
+        _transitionStartedAt = Date.now()
         _pendingFamily = targetFamily
         GlobalStates.familyTransitionTarget = targetFamily
         GlobalStates.familyTransitionDirection = direction
         GlobalStates.familyTransitionActive = true
     }
 
+    // The target's parts compile in the loader thread while the old family leaves, and the swap waits for them: its
+    // loaders would compile them on the GUI thread, a stall on a family not used yet this session.
+    property var _familyWarm: []
+    property int _familyWarmWaits: 0
+    readonly property bool _familyWarming: root._familyWarm.some(component => component.status === Component.Loading)
+    function _warmFamily(family: string): void {
+        root._familyWarmWaits = 0
+        root._familyWarm = ["critical", "panels"].map(part => Plugins.part(family, part)).filter(url => url !== "")
+            .map(url => Qt.createComponent(url, Component.Asynchronous))
+    }
+
     function _restartIntoFamily(targetFamily: string): void {
         if (root._familyRestartPending) return
-        const basePanels = Array.from(root.panelFamilies[targetFamily] ?? [])
+        const basePanels = Plugins.panels(targetFamily)
         if (basePanels.length === 0) {
             root._transitionInProgress = false
             return
@@ -1045,9 +1182,11 @@ ShellRoot {
 
         root._familyRestartPending = true
         Quickshell.execDetached([
-            Quickshell.shellPath("scripts/switch-family-restart.py"),
+            Quickshell.shellPath("scripts/lib/accel-run"),
+            "switch-family",
             targetFamily,
-            JSON.stringify(basePanels)
+            JSON.stringify(basePanels),
+            Quickshell.shellPath("scripts/inir")
         ])
         familyRestartFallbackTimer.restart()
     }
@@ -1078,6 +1217,8 @@ ShellRoot {
 
         const targetFamily = _pendingFamily
         _pendingFamily = ""
+        // The curtain is up and still: the same swap a switch without animation does, so the two differ by the curtain.
+        root._warmFamily(targetFamily)
         root.beginSerializedFamilySwap(targetFamily)
     }
 
@@ -1101,8 +1242,19 @@ ShellRoot {
         interval: 120
         repeat: false
         onTriggered: {
+            // The warm-up can only save what loading the family on the GUI thread costs (~0.9 s for Material, his log
+            // 10-30), so it is waited for about that long: a 5 s cap held Material's switch 6.4 s behind the curtain
+            // and tripped the overlay's watchdog.
+            if (root._familyWarming && root._familyWarmWaits++ < 20) {
+                familyLoadSettleTimer.interval = 50
+                familyLoadSettleTimer.restart()
+                return
+            }
+            if (root._familyWarmWaits > 0) console.info(`[FamilyTransition] warm-up waited ${root._familyWarmWaits * 50} ms${root._familyWarming ? " (still compiling)" : ""}`)
+            familyLoadSettleTimer.interval = 120
             const directSwap = !root._transitionUsesOverlay
             root._familyPanelsSuspended = false
+            root._familyWarm = []
             root._familySwapTarget = ""
             if (directSwap) {
                 root._transitionInProgress = false
@@ -1124,6 +1276,8 @@ ShellRoot {
             familyFinishSettleTimer.restart()
             return
         }
+        if (_transitionStartedAt > 0) console.info(`[FamilyTransition] ${Config.options?.panelFamily ?? ""} stood after ${Date.now() - _transitionStartedAt} ms`)
+        _transitionStartedAt = 0
         _transitionInProgress = false
         _transitionUsesOverlay = false
         GlobalStates.familyTransitionActive = false
@@ -1135,16 +1289,27 @@ ShellRoot {
         active: Config.ready
             && root._transitionUsesOverlay
             && (GlobalStates.familyTransitionActive || root._transitionInProgress)
-        source: "FamilyTransitionOverlay.qml"
+        source: "modules/common/FamilyTransitionOverlay.qml"
         onLoaded: {
+            // the curtain lifts once the new family stands, not on a fixed hold while its panels still build
+            item.swapPending = Qt.binding(() => root._pendingFamily !== "" || root._familyPanelsSuspended || !root._familyUp)
             item.exitComplete.connect(root.applyPendingFamily)
             item.enterComplete.connect(root.finishFamilyTransition)
         }
     }
 
+    /// Switch between the three shell families: Material ii (default), Waffle (Windows 11-like), and iRiS (the Island
+    /// family).
+    ///
+    /// ```kdl
+    /// Mod+Shift+W { spawn "inir" "panelFamily" "cycle"; }
+    /// ```
     IpcHandler {
         target: "panelFamily"
+        /// Switch to the next family in the switch list (`familyCycle`, in its order; all three by default, set in
+        /// any family's Settings)
         function cycle(): void { root.cyclePanelFamily() }
+        /// Set specific family ("ii", "waffle", or "iris")
         function set(family: string): void { root.setPanelFamily(family) }
     }
 }

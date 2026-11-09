@@ -78,9 +78,15 @@ Singleton {
 
     function deleteItem(index) {
         if (index >= 0 && index < list.length) {
-            list.splice(index, 1)
+            const gone = list.splice(index, 1)[0]
             root.list = list.slice(0)
             _persistAll()
+            Undo.offer(Translation.tr("Removed %1").arg(gone.content ?? ""), () => {
+                const back = root.list.slice(0)
+                back.splice(Math.min(index, back.length), 0, gone)
+                root.list = back
+                _persistAll()
+            })
         }
     }
 
@@ -173,6 +179,7 @@ Singleton {
     FileView {
         id: todoFileView
         path: Qt.resolvedUrl(root.filePath)
+        printErrors: false
         onLoaded: {
             const fileContents = todoFileView.text()
             try {
@@ -192,7 +199,8 @@ Singleton {
                 const parentDir = root.filePath.substring(0, root.filePath.lastIndexOf('/'))
                 Quickshell.execDetached(["/usr/bin/mkdir", "-p", parentDir])
                 root.list = []
-                todoFileView.setText(JSON.stringify(root.list))
+                // later: stock Quickshell forgets a write started inside its own load signal
+                Qt.callLater(() => todoFileView.setText(JSON.stringify(root.list)))
                 root._writeTxt()
                 startupUnlock.start()
             } else {
@@ -209,6 +217,7 @@ Singleton {
         id: txtFileView
         path: Qt.resolvedUrl(root.txtFilePath)
         watchChanges: true
+        printErrors: false
         onFileChanged: {
             if (!root._startupLock) {
                 txtDebounce.restart()
@@ -217,6 +226,8 @@ Singleton {
         onLoadFailed: (error) => {
             if (error == FileViewError.FileNotFound) {
                 _log("[Todo] txt not found, will be created on next list change")
+            } else {
+                console.log("[Todo] Error loading txt:", error)
             }
         }
     }

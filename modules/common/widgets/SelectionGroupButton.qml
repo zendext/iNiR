@@ -10,25 +10,24 @@ import qs.modules.common.functions
 
 GroupButton {
     id: root
-    horizontalPadding: SettingsMaterialPreset.unified ? 12
-        : Appearance.regaliaEverywhere ? Appearance.regalia.controlPaddingHorizontal : 11
-    verticalPadding: SettingsMaterialPreset.unified ? 7
-        : Appearance.regaliaEverywhere ? Appearance.regalia.controlPaddingVertical : 6
+    horizontalPadding: Appearance.regaliaEverywhere ? Appearance.regalia.controlPaddingHorizontal : 11
+    verticalPadding: Appearance.regaliaEverywhere ? Appearance.regalia.controlPaddingVertical : 6
     bounce: false
     property string buttonIcon
     property string buttonPreviewKind: ""
-    property real maxTextWidth: 180
+    // Room for a long name in a wide face too: at 180 the inir style's mono cut "Auto (first available)".
+    property real maxTextWidth: Math.round(240 * Appearance.fontSizeScale)
     property bool leftmost: false
     property bool rightmost: false
     readonly property bool showZzzPreview: Appearance.zzzEverywhere && buttonPreviewKind.length > 0
-    leftRadius: SettingsMaterialPreset.unified ? 8
-        : Appearance.regaliaEverywhere ? Appearance.regalia.controlRadius
+    // chosen while the group is off: on GroupButton's neutral plate, in full ink
+    readonly property bool held: root.toggled && !root.enabled
+    leftRadius: Appearance.regaliaEverywhere ? Appearance.regalia.controlRadius
         : Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
         : Appearance.editorialEverywhere
             ? ((toggled || leftmost) ? Appearance.rounding.small : Appearance.rounding.unsharpen)
         : (toggled || leftmost) ? (height / 2) : Appearance.rounding.unsharpenmore
-    rightRadius: SettingsMaterialPreset.unified ? 8
-        : Appearance.regaliaEverywhere ? Appearance.regalia.controlRadius
+    rightRadius: Appearance.regaliaEverywhere ? Appearance.regalia.controlRadius
         : Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
         : Appearance.editorialEverywhere
             ? ((toggled || rightmost) ? Appearance.rounding.small : Appearance.rounding.unsharpen)
@@ -41,31 +40,28 @@ GroupButton {
         enabled: Appearance.animationsEnabled
         animation: NumberAnimation { duration: Appearance.animation.elementResize.duration; easing.type: Appearance.animation.elementResize.type; easing.bezierCurve: Appearance.animation.elementResize.bezierCurve }
     }
+    // Unselected keys are the neutral highest container, the chosen one the accent (Lucid's button group); the
+    // secondary container made a whole row of heavy tinted keys.
     // ZZZ: idle segments are NEUTRAL plate, not bright secondary. Under zzz
     // colSecondaryContainer resolves to zzz.secondary (a signal) — using it for
     // the unselected base/hover made every segment glow and the hover glare.
     // Selected state stays the inherited GroupButton sticker (colBackgroundToggled).
-    colBackground: SettingsMaterialPreset.unified ? Appearance.colors.colLayer1
-        : Appearance.regaliaEverywhere ? Appearance.regalia.controlPlate
+    colBackground: Appearance.regaliaEverywhere ? Appearance.regalia.controlPlate
         : Appearance.zzzEverywhere ? ColorUtils.transparentize(Appearance.colors.colLayer1Hover, 1)
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
-        : Appearance.auroraEverywhere ? "transparent"
         : Appearance.editorialEverywhere ? "transparent"
-        : Appearance.colors.colSecondaryContainer
-    colBackgroundHover: SettingsMaterialPreset.unified ? Appearance.colors.colLayer1Hover
-        : Appearance.regaliaEverywhere ? Appearance.regalia.controlPlateHover
+        : SettingsMaterialPreset.controlColor
+    colBackgroundHover: Appearance.regaliaEverywhere ? Appearance.regalia.controlPlateHover
         : Appearance.zzzEverywhere ? Appearance.colors.colLayer1Hover
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
-        : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceHover
         : Appearance.editorialEverywhere ? Appearance.editorial.controlHover
-        : Appearance.colors.colSecondaryContainerHover
-    colBackgroundActive: SettingsMaterialPreset.unified ? Appearance.colors.colLayer1Active
-        : Appearance.regaliaEverywhere ? Appearance.regalia.controlPlateActive
+        : SettingsMaterialPreset.controlHoverColor
+    colBackgroundActive: Appearance.regaliaEverywhere ? Appearance.regalia.controlPlateActive
         : Appearance.zzzEverywhere ? Appearance.colors.colLayer1Active
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCardActive
         : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive
         : Appearance.editorialEverywhere ? Appearance.editorial.controlPressed
-        : Appearance.colors.colSecondaryContainerActive
+        : Appearance.colors.colSurfaceContainerHighestActive
 
     /**
      * Mini screen-top mockup: the tile is a screen, the shape is the bar. Every
@@ -83,8 +79,8 @@ GroupButton {
         readonly property bool hug: kind === "hug"
         readonly property bool rect: kind === "rect"
         readonly property bool card: kind === "card"
-        readonly property color barFill: root.toggled
-            ? ColorUtils.mix(Appearance.zzz.onSticker, Appearance.zzz.sticker, 0.75)
+        readonly property color barFill: root.held ? ColorUtils.applyAlpha(Appearance.colors.colOnSurface, 0.6)
+            : root.toggled ? ColorUtils.mix(Appearance.zzz.onSticker, Appearance.zzz.sticker, 0.75)
             : ColorUtils.applyAlpha(Appearance.zzz.ink, 0.5)
 
         Rectangle {
@@ -153,13 +149,14 @@ GroupButton {
                 visible: !root.showZzzPreview
                 text: root.buttonIcon
                 iconSize: Appearance.font.pixelSize.normal
-                color: Appearance.regaliaEverywhere
+                color: root.held ? Appearance.colors.colOnSurface
+                    : Appearance.regaliaEverywhere
                     ? (root.toggled ? Appearance.regalia.primaryPlateInk : Appearance.regalia.onColor)
                     : Appearance.zzzEverywhere
                         ? (root.toggled ? Appearance.zzz.onSticker : Appearance.zzz.ink)
                         : Appearance.editorialEverywhere
                             ? (root.toggled ? Appearance.editorial.accentInk : Appearance.editorial.accent)
-                        : (root.toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSecondaryContainer)
+                        : (root.toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSurfaceVariant)
             }
         }
 
@@ -194,13 +191,14 @@ GroupButton {
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
                 maximumLineCount: 1
-                color: Appearance.regaliaEverywhere
+                color: root.held ? Appearance.colors.colOnSurface
+                    : Appearance.regaliaEverywhere
                     ? (root.toggled ? Appearance.regalia.primaryPlateInk : Appearance.regalia.onColor)
                     : Appearance.zzzEverywhere
                         ? (root.toggled ? Appearance.zzz.onSticker : Appearance.zzz.ink)
                         : Appearance.editorialEverywhere
                             ? (root.toggled ? Appearance.editorial.accentInk : Appearance.editorial.ink)
-                        : (root.toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSecondaryContainer)
+                        : (root.toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSurfaceVariant)
                 text: root.buttonText
             }
         }

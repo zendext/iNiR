@@ -7,24 +7,20 @@ SHELL_INSTALL_DIR = $(SHAREDIR)/quickshell/inir
 DOC_DIR = $(SHAREDIR)/doc/inir-shell
 SYSTEMD_USER_DIR ?= $(PREFIX)/lib/systemd/user
 
-.PHONY: all build test-local install install-bin install-shell install-systemd install-icon install-desktop install-docs uninstall uninstall-bin uninstall-shell uninstall-systemd uninstall-icon uninstall-desktop uninstall-docs
+.PHONY: all build install install-bin install-shell install-systemd install-icon install-desktop install-docs uninstall uninstall-bin uninstall-shell uninstall-systemd uninstall-icon uninstall-desktop uninstall-docs
 
 all: build
 
 build:
 	@chmod +x scripts/inir
-	@chmod +x scripts/test-local-distribution.sh
 	@chmod +x setup
 	@find scripts -type f \( -name "*.sh" -o -name "*.fish" -o -name "*.py" \) -exec chmod +x {} +
-
-test-local: build
-	@bash scripts/test-local-distribution.sh
 
 install-bin:
 	@install -Dm755 scripts/inir $(BINDIR)/inir
 
 install-shell:
-	@python3 sdata/lib/runtime-payload.py copy --root . --target "$(SHELL_INSTALL_DIR)"
+	@bash -c 'source sdata/lib/runtime-payload.sh && runtime_payload copy --root . --target "$$1"' _ "$(SHELL_INSTALL_DIR)"
 	@chmod +x "$(SHELL_INSTALL_DIR)/setup" "$(SHELL_INSTALL_DIR)/scripts/inir"
 	@find "$(SHELL_INSTALL_DIR)/scripts" -type f \( -name "*.sh" -o -name "*.fish" -o -name "*.py" \) -exec chmod +x {} +
 	@printf '{\n  "version": "%s",\n  "commit": "manual",\n  "installed_at": "%s",\n  "installedAt": "%s",\n  "source": "make-install",\n  "repo_path": "",\n  "repoPath": "",\n  "install_mode": "package-managed",\n  "installMode": "package-managed",\n  "update_strategy": "package-manager",\n  "updateStrategy": "package-manager",\n  "package_manager": "manual",\n  "packageManager": "manual",\n  "package_name": "source-install",\n  "packageName": "source-install",\n  "package_update_hint": "sudo make install",\n  "packageUpdateHint": "sudo make install"\n}\n' "$$(cat VERSION)" "$$(date -Iseconds)" "$$(date -Iseconds)" > "$(SHELL_INSTALL_DIR)/version.json"

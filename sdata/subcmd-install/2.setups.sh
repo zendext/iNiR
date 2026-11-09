@@ -11,11 +11,6 @@ tui_title "System Setup"
 function setup_user_groups(){
   tui_info "Setting up user groups..."
   
-  # i2c group for ddcutil (external monitor brightness)
-  if [[ -z $(getent group i2c) ]]; then
-    x pkg_sudo groupadd i2c
-  fi
-  
   # Add user to required groups
   local groups_before=" $(id -nG) "
   local required_groups="video,i2c,input"
@@ -28,7 +23,21 @@ function setup_user_groups(){
     fi
   fi
 
-  x pkg_sudo usermod -aG "$required_groups" "$(whoami)"
+  # usermod refuses the whole list if one group is missing: i2c (ddcutil) never
+  # exists by default, and input/video only exist once udev has created them.
+  # Only what is missing from the group database (not this session, which
+  # predates a usermod): a user already in all of them needs no sudo.
+  local required missing_groups="" member_of=" $(id -nG "$(whoami)") "
+  for required in ${required_groups//,/ }; do
+    if ! getent group "$required" >/dev/null; then
+      x pkg_sudo groupadd --system "$required"
+    fi
+    [[ "$member_of" == *" $required "* ]] || missing_groups+="${missing_groups:+,}$required"
+  done
+
+  if [[ -n "$missing_groups" ]]; then
+    x pkg_sudo usermod -aG "$missing_groups" "$(whoami)"
+  fi
 
   local group group_changed=false
   for group in ${required_groups//,/ }; do
@@ -66,6 +75,7 @@ function setup_systemd_services(){
         || { [[ "${ask:-true}" == true ]] && tui_confirm "Enable Void session services (dbus, elogind, polkitd, turnstiled)?" "yes"; }; then
       if elevate sh -c 'ln -sfn /etc/sv/dbus /var/service/dbus && ln -sfn /etc/sv/elogind /var/service/elogind && ln -sfn /etc/sv/polkitd /var/service/polkitd && ln -sfn /etc/sv/turnstiled /var/service/turnstiled'; then
         log_success "Void session services enabled"
+        ensure_void_elogind_mounts || log_warning "Could not add elogind's boot mounts: a login can hang when D-Bus starts elogind first"
       else
         log_warning "Could not enable all Void session services"
         return 1
@@ -121,7 +131,8 @@ function setup_systemd_services(){
       else
         log_warning "Bluetooth service directory missing (/etc/sv/bluetoothd); reinstall the bluez package"
       fi
-      configure_void_ydotool_uinput || return 1
+      # ydotool is optional (toolkit): a missing permission is a warning, and inir doctor repairs it later.
+      configure_void_ydotool_uinput || log_warning "ydotool can't type yet; inir doctor sets up /dev/uinput once udev runs"
     fi
     return 0
   fi
@@ -133,8 +144,10 @@ function setup_systemd_services(){
     return 0
   fi
   
-  # i2c-dev module for ddcutil
-  v pkg_sudo sh -c 'printf "%s\n" i2c-dev > /etc/modules-load.d/i2c-dev.conf'
+  # i2c-dev module for ddcutil. Written only when it is not there: a reinstall needs no sudo.
+  if ! grep -qx 'i2c-dev' /etc/modules-load.d/i2c-dev.conf 2>/dev/null; then
+    v pkg_sudo sh -c 'printf "%s\n" i2c-dev > /etc/modules-load.d/i2c-dev.conf'
+  fi
   
   # ydotool service - create user service symlink if needed
   # Check multiple possible locations (varies by distro)
@@ -168,14 +181,16 @@ function setup_systemd_services(){
   # Enable ydotool only if service exists
   if $ydotool_service_found && has_usable_systemd_user_manager; then
     v systemctl --user daemon-reload
-    v systemctl --user enable ydotool --now 2>/dev/null || log_warning "Could not enable ydotool service"
+    systemctl --user enable ydotool --now 2>/dev/null || log_warning "Could not enable ydotool service"
   elif $ydotool_service_found; then
     log_info "ydotool service found, but no usable systemd user manager is active"
   fi
   
   # Bluetooth (optional)
-  if command -v bluetoothctl &>/dev/null; then
-    v pkg_sudo systemctl enable bluetooth --now
+  # Enabled is enough: without an adapter the unit stays inactive by its own condition, and
+  # starts when one appears. Optional, so it never stops the install.
+  if command -v bluetoothctl &>/dev/null && ! systemctl is-enabled --quiet bluetooth 2>/dev/null; then
+    pkg_sudo systemctl enable bluetooth --now || log_warning "Could not enable the Bluetooth service"
   fi
 
   # SDDM display manager. A machine without a login screen gets SDDM. One that already has another
@@ -218,27 +233,23 @@ function setup_systemd_services(){
 #####################################################################################
 function setup_super_daemon(){
   tui_info "Setting up Super-tap daemon..."
-  
-  local daemon_src="${REPO_ROOT}/scripts/daemon/inir_super_overview_daemon.py"
+
   local service_src="${REPO_ROOT}/scripts/systemd/inir-super-overview.service"
-  local daemon_dst="${HOME}/.local/bin/inir_super_overview_daemon.py"
+  local accel="${XDG_DATA_HOME:-${HOME}/.local/share}/inir/accel/current/inir-accel"
   local config_dir="${XDG_CONFIG_HOME:-${HOME}/.config}"
   local service_dst="${config_dir}/systemd/user/inir-super-overview.service"
   local service_wants="${config_dir}/systemd/user/default.target.wants/inir-super-overview.service"
   local runit_dir="${config_dir}/service/inir-super-overview"
   local runit_run="${runit_dir}/run"
-  local supervisor
-  
-  if [[ ! -f "$daemon_src" ]]; then
-    log_warning "Super-tap daemon not found in repo, skipping"
+  local supervisor accel_quoted
+
+  if [[ ! -x "$accel" ]]; then
+    log_warning "inir-accel is missing, Super-tap daemon skipped"
     return 0
   fi
-  
-  # Install daemon script
-  x mkdir -p "$(dirname "$daemon_dst")"
-  x cp "$daemon_src" "$daemon_dst"
-  x chmod +x "$daemon_dst"
-  
+  # the daemon was a python file copied here; inir-accel runs it now
+  rm -f "${HOME}/.local/bin/inir_super_overview_daemon.py"
+
   supervisor="$(inir_supervisor)"
   if [[ "$supervisor" == systemd ]]; then
     if [[ -f "$runit_run" ]] && grep -q '^# Managed by iNiR\.' "$runit_run"; then
@@ -246,25 +257,24 @@ function setup_super_daemon(){
       rm -rf "$runit_dir"
     fi
     x mkdir -p "$(dirname "$service_dst")"
-    x cp "$service_src" "$service_dst"
+    sed "s|@INIR_ACCEL@|$(printf '%s' "$accel" | sed 's/[&|\\]/\\&/g')|" "$service_src" > "$service_dst" || return 1
     v systemctl --user daemon-reload
     v systemctl --user enable inir-super-overview.service --now
   else
     rm -f "$service_dst" "$service_wants"
     x mkdir -p "$runit_dir"
-    local daemon_quoted
-    daemon_quoted="$(printf '%s' "$daemon_dst" | sed "s/'/'\\\\''/g")"
+    accel_quoted="$(printf '%s' "$accel" | sed "s/'/'\\\\''/g")"
     if [[ "$supervisor" == turnstile ]]; then
-      printf '#!/bin/sh\n# Managed by iNiR.\nexec chpst -e "$TURNSTILE_ENV_DIR" /usr/bin/env python3 '\''%s'\''\n' "$daemon_quoted" > "$runit_run"
+      printf '#!/bin/sh\n# Managed by iNiR.\nexec chpst -e "$TURNSTILE_ENV_DIR" '\''%s'\'' super-overview-daemon\n' "$accel_quoted" > "$runit_run"
     else
-      printf '#!/bin/sh\n# Managed by iNiR.\nexec /usr/bin/env python3 '\''%s'\''\n' "$daemon_quoted" > "$runit_run"
+      printf '#!/bin/sh\n# Managed by iNiR.\nexec '\''%s'\'' super-overview-daemon\n' "$accel_quoted" > "$runit_run"
     fi
     chmod +x "$runit_run"
     if command -v sv >/dev/null 2>&1 && sv status "$runit_dir" 2>/dev/null | grep -q '^run:'; then
       sv restart "$runit_dir" >/dev/null 2>&1 || return 1
     fi
   fi
-  
+
   log_success "Super-tap daemon installed (${supervisor})"
 }
 
@@ -323,12 +333,19 @@ function setup_desktop_settings(){
   # If preferred theme is not installed, fall back to Adwaita.
   # If user later changes icon theme in Settings, IconThemeService persists and syncs it.
   if command -v gsettings &>/dev/null; then
-    try gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-    try gsettings set org.gnome.desktop.interface gtk-theme "$gtk_theme"
-    try gsettings set org.gnome.desktop.interface icon-theme "$icon_theme"
-    try gsettings set org.gnome.desktop.interface cursor-theme "$cursor_theme"
-    try gsettings set org.gnome.desktop.interface cursor-size 24
-    try gsettings set org.gnome.desktop.interface font-name 'Rubik 11'
+    # From a TTY there is no session bus and every `gsettings set` is lost; the
+    # theme step then reads Adwaita back and writes it into settings.ini. A
+    # private bus lets dconf store the values for the real session.
+    local gset=(gsettings)
+    if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && command -v dbus-run-session &>/dev/null; then
+      gset=(dbus-run-session -- gsettings)
+    fi
+    try "${gset[@]}" set org.gnome.desktop.interface color-scheme 'prefer-dark'
+    try "${gset[@]}" set org.gnome.desktop.interface gtk-theme "$gtk_theme"
+    try "${gset[@]}" set org.gnome.desktop.interface icon-theme "$icon_theme"
+    try "${gset[@]}" set org.gnome.desktop.interface cursor-theme "$cursor_theme"
+    try "${gset[@]}" set org.gnome.desktop.interface cursor-size 24
+    try "${gset[@]}" set org.gnome.desktop.interface font-name 'Rubik 11'
   fi
   
   # KDE/Qt settings (Dolphin, etc.)
@@ -359,16 +376,6 @@ function setup_desktop_settings(){
     # Window size
     dconf write /org/gnome/nautilus/window-state/initial-size "(1100, 700)" 2>/dev/null || true
     log_success "Nautilus defaults configured"
-  fi
-
-  # Materialize the cursor everywhere XWayland apps look. niri already exports
-  # XCURSOR_* to the clients it spawns, but X11/Electron apps (Spotify, etc.)
-  # that request the core X cursor resolve it through ~/.icons/default, which
-  # otherwise inherits Adwaita and shows a different pointer. sync-cursor reads
-  # the theme from the niri KDL and writes the default-theme inheritance file.
-  if command -v python3 &>/dev/null && [[ -f "${REPO_ROOT}/scripts/niri-config.py" ]]; then
-    python3 "${REPO_ROOT}/scripts/niri-config.py" sync-cursor >/dev/null 2>&1 || true
-    log_success "Cursor theme synced for XWayland apps"
   fi
 
   # xdg-desktop-portal config for Niri (required for dark mode in GTK4/libadwaita apps)
@@ -416,5 +423,3 @@ fi
 # NOTE: SDDM theme setup is in 3.files.sh AFTER the theming templates are deployed.
 # NOTE: On Void, SDDM activation is offered by run_install only after all install
 # tasks complete because linking a runit service starts it immediately.
-# NOTE: install-python-packages is called in 3.files.sh after requirements.txt
-# is deployed to the target. No need to call it here.

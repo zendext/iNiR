@@ -115,23 +115,35 @@ function command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# The inir binary's install wizard runs setup quietly and follows it through the
+# descriptor in INIR_EVENTS_FD: one "kind<TAB>text" line per thing worth showing.
+function inir_event() {
+  [[ -n "${INIR_EVENTS_FD:-}" ]] || return 0
+  local text="${2//$'\n'/ }"
+  printf '%s\t%s\n' "$1" "${text//$'\t'/ }" >&"${INIR_EVENTS_FD}" 2>/dev/null || true
+}
+
 function log_info() {
+  inir_event info "$1"
   if ! ${quiet:-false}; then
     echo -e "  ${STY_BLUE}→${STY_RST} $1"
   fi
 }
 
 function log_success() {
+  inir_event ok "$1"
   if ! ${quiet:-false}; then
     echo -e "  ${STY_GREEN}✓${STY_RST} $1"
   fi
 }
 
 function log_warning() {
+  inir_event warn "$1"
   echo -e "  ${STY_YELLOW}⚠${STY_RST} $1"
 }
 
 function log_error() {
+  inir_event error "$1"
   echo -e "  ${STY_RED}✗${STY_RST} $1" >&2
 }
 
@@ -171,14 +183,13 @@ cp_file(){
 
 # Generate rsync exclusions from the same policy used by package delivery and manifests.
 # Resolve relative paths against the source checkout, not the copied directory's basename.
-INIR_PAYLOAD_TOOL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runtime-payload.py"
+source "$(dirname "${BASH_SOURCE[0]}")/runtime-payload.sh"
 _runtime_rsync() {
-  local source_path payload_root relative filters
+  local source_path relative filters
   source_path="$(realpath -e -- "$1")" || return
-  payload_root="$(cd "$(dirname "$INIR_PAYLOAD_TOOL")/../.." && pwd)" || return
-  relative="${source_path#"$payload_root"/}"
+  relative="${source_path#"$INIR_PAYLOAD_ROOT"/}"
   [[ "$relative" != "$source_path" ]] || { echo "Install source is outside repository" >&2; return 1; }
-  filters="$(python3 "$INIR_PAYLOAD_TOOL" filters --root "$payload_root" --subdir "$relative")" || return
+  filters="$(runtime_payload filters --root "$INIR_PAYLOAD_ROOT" --subdir "$relative")" || return
   local -a exclusions
   mapfile -t exclusions <<< "$filters"
   local target="$2"
@@ -272,27 +283,192 @@ function install_dir__skip_existed(){
   fi
 }
 
+# Marked iNiR blocks in shell profiles (~/.bashrc, ~/.profile, ...): `path` or `env`, each its start marker, the
+# body and its end marker after one blank line. Writing the same block again leaves the file byte-identical.
+#   inir_rc_block set NAME FILE   write block NAME, body on stdin
+#   inir_rc_block remove FILE     drop every iNiR block; FILE goes if nothing else is left
+#   inir_rc_block prune FILE      FILE goes only if it holds nothing but iNiR blocks
+# A profile that is a link (dotfile managers) is written where it points and stays a link, emptied, never removed.
+_inir_rc_markers() {
+  case "$1" in
+    path) printf '%s\n%s\n' "# iNiR launcher PATH" "# end iNiR launcher PATH" ;;
+    env) printf '%s\n%s\n' "# iNiR environment" "# end iNiR" ;;
+    *) return 1 ;;
+  esac
+}
+
+# _inir_rc_strip FILE OUT NAME...: FILE without those blocks and the blank lines right before each one. A start
+# marker with no end marker after it stays, like everything around it.
+_inir_rc_strip() {
+  local file="$1" out="$2" name start end nonl
+  shift 2
+  cp -- "$file" "$out" || return
+  for name; do
+    { read -r start; read -r end; } < <(_inir_rc_markers "$name")
+    nonl=0
+    [[ -s "$out" && -n "$(tail -c1 -- "$out")" ]] && nonl=1
+    START="$start" END="$end" LC_ALL=C awk -v nonl="$nonl" '
+      function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+      { line[NR] = $0 }
+      END {
+        n = 0; held = 0; inblock = 0
+        for (i = 1; i <= NR; i++) {
+          t = trim(line[i])
+          if (inblock) {
+            if (t == ENVIRON["END"]) { inblock = 0; held = 0 } else hold[++held] = i
+            continue
+          }
+          if (t == ENVIRON["START"] && i < NR) { inblock = 1; hold[++held] = i; continue }
+          if (t == "") { hold[++held] = i; continue }
+          for (j = 1; j <= held; j++) keep[++n] = hold[j]
+          held = 0; keep[++n] = i
+        }
+        for (j = 1; j <= held; j++) keep[++n] = hold[j]
+        for (j = 1; j <= n; j++) printf "%s%s", line[keep[j]], (keep[j] == NR && nonl ? "" : "\n")
+      }' "$out" > "$out.next" && mv -f -- "$out.next" "$out" || return
+  done
+}
+
+# _inir_rc_write FILE TEXT_FILE: put TEXT_FILE in FILE atomically, keeping FILE's mode; nothing when equal.
+_inir_rc_write() {
+  local real tmp
+  real="$(realpath -m -- "$1")" || return
+  if [[ -f "$real" ]] && cmp -s -- "$2" "$real"; then return 0; fi
+  tmp="${real}.inir.$$"
+  cp -- "$2" "$tmp" || return
+  [[ ! -e "$real" ]] || chmod "$(stat -c %a -- "$real")" "$tmp" || { rm -f -- "$tmp"; return 1; }
+  mv -f -- "$tmp" "$real"
+}
+
+_inir_rc_drop() {
+  if [[ -L "$1" ]]; then : > "$2/empty" && _inir_rc_write "$1" "$2/empty"; else rm -f -- "$1"; fi
+}
+
+inir_rc_block() {
+  local cmd="${1:-}" name file scratch text rest body start end
+  case "$cmd" in
+    set) name="${2:-}" file="${3:-}"; _inir_rc_markers "$name" >/dev/null && [[ $# -eq 3 ]] || cmd="" ;;
+    remove|prune) file="${2:-}"; [[ $# -eq 2 ]] || cmd="" ;;
+    *) cmd="" ;;
+  esac
+  if [[ -z "$cmd" ]]; then
+    echo "usage: inir_rc_block set path|env FILE (body on stdin) | remove FILE | prune FILE" >&2
+    return 2
+  fi
+  scratch="$(mktemp -d)" || return
+  local rc=0
+  case "$cmd" in
+    set)
+      body="$(cat)"
+      body="${body#"${body%%[!$'\n']*}"}"
+      { read -r start; read -r end; } < <(_inir_rc_markers "$name")
+      rest=""
+      if [[ -f "$file" ]]; then
+        _inir_rc_strip "$file" "$scratch/rest" "$name" && rest="$(<"$scratch/rest")" || rc=1
+        rest="${rest%"${rest##*[![:space:]]}"}"
+      fi
+      if ((rc == 0)); then
+        if [[ -n "$rest" ]]; then
+          printf '%s\n\n%s\n%s\n%s\n' "$rest" "$start" "$body" "$end" > "$scratch/new"
+        else
+          printf '%s\n%s\n%s\n' "$start" "$body" "$end" > "$scratch/new"
+        fi
+        _inir_rc_write "$file" "$scratch/new" || rc=1
+      fi
+      ;;
+    remove)
+      if [[ -f "$file" ]]; then
+        if ! _inir_rc_strip "$file" "$scratch/rest" path env; then
+          rc=1
+        elif ! cmp -s -- "$file" "$scratch/rest"; then
+          text="$(<"$scratch/rest")"
+          if [[ -z "${text//[[:space:]]/}" ]]; then
+            _inir_rc_drop "$file" "$scratch" || rc=1
+          else
+            printf '%s\n' "${text%"${text##*[![:space:]]}"}" > "$scratch/new" && _inir_rc_write "$file" "$scratch/new" || rc=1
+          fi
+        fi
+      fi
+      ;;
+    prune)
+      if [[ -f "$file" ]]; then
+        text="$(<"$file")"
+        if [[ -n "${text//[[:space:]]/}" ]] && _inir_rc_strip "$file" "$scratch/rest" path env; then
+          text="$(<"$scratch/rest")"
+          [[ -n "${text//[[:space:]]/}" ]] || _inir_rc_drop "$file" "$scratch" || rc=1
+        fi
+      fi
+      ;;
+  esac
+  rm -rf -- "$scratch"
+  return "$rc"
+}
+
+# v2 ran its helpers in a Python venv; inir-accel runs them now. It goes once the installed shell never reads it
+# (a rollback to v2 still does): an update calls this before touching anything and once the new shell loaded. The
+# fish file and the rc lines only ever carried its path.
+retire_python_venv() {
+  local runtime="${II_TARGET:-${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/inir}"
+  local fish="${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/inir-env.fish" rc
+  [[ -e "$runtime/sdata/uv/requirements.txt" ]] && return 0
+  rm -rf -- "${XDG_STATE_HOME:-$HOME/.local/state}/quickshell/.venv"
+  if [[ -f "$fish" ]] && ! grep -qv -e '^#' -e '^$' -e '^set -gx INIR_VENV ' -e '^set -gx ILLOGICAL_IMPULSE_VIRTUAL_ENV ' "$fish"; then
+    rm -f -- "$fish"
+  fi
+  for rc in bash zsh; do
+    [[ -f "$HOME/.${rc}rc" ]] && grep -q '^export INIR_VENV=' "$HOME/.${rc}rc" && grep -qxF '# iNiR environment' "$HOME/.${rc}rc" \
+      && write_inir_shell_env "$HOME/.${rc}rc" "$rc"
+  done
+  return 0
+}
+
+# Writes the iNiR environment block into a bash or zsh rc file.
+write_inir_shell_env() {
+  local rc_file="$1" shell_name="$2"
+  sed -i '/iNiR-env.sh/d' "$rc_file" 2>/dev/null || true
+  inir_rc_block set env "$rc_file" <<EOF
+# Terminal colors (Material You from the wallpaper) and the prompt only where someone types: ssh commands, scp and
+# scripts that read this file get clean output
+case \$- in *i*)
+  if [ -f ~/.local/state/quickshell/user/generated/terminal/sequences.txt ]; then
+    cat ~/.local/state/quickshell/user/generated/terminal/sequences.txt
+  fi
+  # Starship prompt (fish is wired via config.fish; ${shell_name} needs its own init)
+  if command -v starship >/dev/null 2>&1; then
+    eval "\$(starship init ${shell_name})"
+  fi
+  ;;
+esac
+EOF
+}
+
 function ensure_launcher_path_in_shells(){
   local launcher_dir="$1"
   [[ -n "$launcher_dir" ]] || return 0
 
-  local marker="# iNiR launcher PATH"
-  local end_marker="# end iNiR launcher PATH"
-  local sh_block="
-${marker}
-case \":\$PATH:\" in
+  local body="case \":\$PATH:\" in
   *:\"${launcher_dir}\":*) ;;
   *) export PATH=\"${launcher_dir}:\$PATH\" ;;
-esac
-${end_marker}
-"
+esac"
   local shell_file=""
 
-  for shell_file in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc" \
+  # Older installers created every profile; a ~/.bash_profile holding only our
+  # block hides ~/.profile from bash login shells, so those files go away.
+  for shell_file in "$HOME/.bash_profile" "$HOME/.zprofile" "$HOME/.zshrc"; do
+    inir_rc_block prune "$shell_file" || true
+  done
+
+  # Only profiles that exist get the block, plus one login profile per shell.
+  if [[ ! -f "$HOME/.profile" && ! -f "$HOME/.bash_profile" && ! -f "$HOME/.bash_login" ]]; then
+    : >"$HOME/.profile"
+  fi
+  if [[ "$(basename -- "${SHELL:-}")" == zsh && ! -f "$HOME/.zprofile" && ! -f "$HOME/.zshrc" ]]; then
+    : >"$HOME/.zprofile"
+  fi
+  for shell_file in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.bashrc" \
                     "$HOME/.zprofile" "$HOME/.zshrc"; do
-    touch "$shell_file"
-    sed -i "/${marker}/,/${end_marker}/d" "$shell_file" 2>/dev/null || true
-    printf '%s\n' "$sh_block" >> "$shell_file"
+    [[ -f "$shell_file" ]] || continue
+    printf '%s\n' "$body" | inir_rc_block set path "$shell_file" || true
   done
 
   local fish_conf_dir="${XDG_CONFIG_HOME}/fish/conf.d"
@@ -341,11 +517,140 @@ repair_legacy_niri_shell_startup() {
   done
 }
 
+# What v2 installs still carry, set right on every update and safe to repeat: the clipboard watcher on the
+# deleted clipboard-store.py, borders that made self-drawn windows opaque, Waffle's own hide-city switch, and
+# (only on the first update off v2, while its migrations.json is still there) the clock faded at Dimming 70.
+repair_v2_leftovers() {
+  INIR_V2_LEFTOVERS_REPAIRED=0
+  local niri="${XDG_CONFIG_HOME:-$HOME/.config}/niri" conf state file rules line tmp accel dest shell
+  # `inir completions install` linked into scripts/completions, which left the base: the binary writes its own.
+  for dest in "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/inir" \
+      "${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions/_inir" \
+      "${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions/inir.fish"; do
+    [[ -L "$dest" && "$(readlink "$dest")" == */scripts/completions/inir.* ]] || continue
+    case "$dest" in
+      */bash-completion/*) shell=bash ;;
+      */_inir) shell=zsh ;;
+      *) shell=fish ;;
+    esac
+    rm -f "$dest"
+    "${XDG_DATA_HOME:-$HOME/.local/share}/inir/cli/inir" completions install "$shell" >/dev/null 2>&1 || true
+    ((INIR_V2_LEFTOVERS_REPAIRED++)) || true
+  done
+  declare -F inir_config_file >/dev/null || source "${REPO_ROOT}/scripts/lib/config-path.sh"
+  conf="$(inir_config_file)"
+  state="$(inir_config_dir)/migrations.json"
+
+  file="$niri/config.d/50-startup.kdl"
+  if [[ -f "$file" ]] && grep -q 'scripts/clipboard-store\.py' "$file"; then
+    sed -i 's|scripts/clipboard-store\.py|scripts/lib/accel-run clipboard-store|g' "$file" || return 1
+    ((INIR_V2_LEFTOVERS_REPAIRED++)) || true
+  fi
+
+  rules="$niri/config.d/30-window-rules.kdl"
+  if [[ -f "$rules" ]] && ! grep -Eqs '^[[:space:]]*draw-border-with-background[[:space:]]' "$niri/config.kdl" "$niri"/config.d/*.kdl; then
+    # the first window-rule with no match or exclude: the one every window takes
+    line="$(awk '
+      /^[[:space:]]*\/\// { next }
+      /^[[:space:]]*window-rule[[:space:]]*\{[[:space:]]*$/ { start = NR; scoped = 0; next }
+      start && /^[[:space:]]*(match|exclude)[[:space:]]/ { scoped = 1 }
+      start && /^[[:space:]]*\}[[:space:]]*$/ { if (!scoped) { print start; exit } start = 0 }
+    ' "$rules")"
+    if [[ -n "$line" ]]; then
+      sed -i "${line}a\\    draw-border-with-background false" "$rules" || return 1
+      ((INIR_V2_LEFTOVERS_REPAIRED++)) || true
+    fi
+  fi
+
+  # the shell and its Settings window carry app id "inir-settings" (the welcome "inir") since 2.34: the rule that
+  # opens Settings at two thirds matched only org.quickshell (Niri's KDL and Umbriel's TOML spell it differently)
+  local old_id new_id
+  for file in "$rules" "${XDG_CONFIG_HOME:-$HOME/.config}/umbriel/config.d/30-window-rules.toml"; do
+    case "$file" in
+      *.kdl) old_id='app-id=r#"^org\.quickshell$"# title="^' new_id='app-id=r#"^(inir|inir-settings|org\.quickshell)$"# title="^' ;;
+      *) old_id='match.app_id = "^org\\.quickshell$"' new_id='match.app_id = "^(inir|inir-settings|org\\.quickshell)$"' ;;
+    esac
+    [[ -f "$file" ]] && grep -qF "$old_id" "$file" || continue
+    OLD="$old_id" NEW="$new_id" perl -0pi -e 's/\Q$ENV{OLD}\E/$ENV{NEW}/g' "$file" || return 1
+    ((INIR_V2_LEFTOVERS_REPAIRED++)) || true
+  done
+
+  # the opt-in Super-tap daemon ran a python file from ~/.local/bin; inir-accel runs it now
+  # (until accel is in place the old python keeps working, and the next update gets here)
+  accel="${XDG_DATA_HOME:-$HOME/.local/share}/inir/accel/current/inir-accel"
+  for file in "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/inir-super-overview.service" \
+      "${XDG_CONFIG_HOME:-$HOME/.config}/service/inir-super-overview/run"; do
+    if [[ -x "$accel" && -f "$file" ]] && grep -q 'inir_super_overview_daemon\.py' "$file"; then
+      line="$(printf '%s' "$accel" | sed 's/[&|\\]/\\&/g')"
+      sed -i "s|/usr/bin/env python3 .*inir_super_overview_daemon\.py'\\?|'${line}' super-overview-daemon|" "$file" || return 1
+      rm -f "$HOME/.local/bin/inir_super_overview_daemon.py"
+      if [[ "$file" == *.service ]]; then
+        systemctl --user daemon-reload >/dev/null 2>&1 && systemctl --user try-restart inir-super-overview.service >/dev/null 2>&1
+      elif command -v sv >/dev/null 2>&1 && sv status "${file%/run}" 2>/dev/null | grep -q '^run:'; then
+        sv restart "${file%/run}" >/dev/null 2>&1
+      fi
+      ((INIR_V2_LEFTOVERS_REPAIRED++)) || true
+    fi
+  done
+
+  if [[ -f "$conf" ]]; then
+    # the state file is the only sign of a v2 clock; keep it until jq can run
+    command -v jq >/dev/null 2>&1 || return 0
+    tmp="${conf}.inir-repair.$$"
+    if jq -e '.waffles.widgetsPanel | has("weatherHideLocation")' "$conf" >/dev/null 2>&1; then
+      jq '(.waffles.widgetsPanel.weatherHideLocation == true) as $hidden
+          | .weather.hideLocation = ((.weather.hideLocation // .bar.weather.hideLocation // false) or $hidden)
+          | del(.waffles.widgetsPanel.weatherHideLocation)' "$conf" >"$tmp" && mv "$tmp" "$conf" || { rm -f "$tmp"; return 1; }
+      ((INIR_V2_LEFTOVERS_REPAIRED++)) || true
+    fi
+    if [[ -f "$state" ]] && ! grep -q '046-desktop-clock-full-strength' "$state" \
+        && jq -e '.background.widgets.clock.dim == 70' "$conf" >/dev/null 2>&1; then
+      jq '.background.widgets.clock.dim = 0' "$conf" >"$tmp" && mv "$tmp" "$conf" || { rm -f "$tmp"; return 1; }
+      ((INIR_V2_LEFTOVERS_REPAIRED++)) || true
+    fi
+    repair_v2_shipped_wallpapers || return 1
+  fi
+  rm -f "$state"
+  return 0
+}
+
+# v2's welcome wizard set the wallpaper to a picture inside the shell's own files (assets/wallpapers/qs-niri.jpg), and
+# those pictures left the base: each one the config still names goes to the person's wallpaper folder (from their own
+# copy there, else from the checkout's history) and the config and the wallpaper state follow it. The update runs it
+# before the payload sync too, so the old shell moves to the copy before its picture goes.
+repair_v2_shipped_wallpapers() {
+  command -v jq >/dev/null 2>&1 || return 0
+  declare -F inir_config_file >/dev/null || source "${REPO_ROOT}/scripts/lib/config-path.sh"
+  local conf pictures dir path name dest rel commit tmp
+  local state="${XDG_STATE_HOME:-$HOME/.local/state}/quickshell/user/generated/wallpaper/path.txt"
+  conf="$(inir_config_file)"
+  [[ -f "$conf" ]] || return 0
+  tmp="${conf}.inir-repair.$$"
+  pictures="$(xdg-user-dir PICTURES 2>/dev/null || true)"
+  [[ -n "$pictures" && "$pictures" == /* && "$pictures" != "$HOME" ]] || pictures="$HOME/Pictures"
+  dir="$pictures/Wallpapers"
+  while IFS= read -r path; do
+    [[ -s "$path" ]] && continue
+    name="${path##*/}" dest="$dir/$name" rel="assets/wallpapers/${path##*/}"
+    if [[ ! -s "$dest" ]]; then
+      commit="$(git -C "$REPO_ROOT" rev-list -1 HEAD -- "$rel" 2>/dev/null || true)"
+      [[ -n "$commit" ]] && git -C "$REPO_ROOT" cat-file -e "${commit}^:$rel" 2>/dev/null || continue
+      mkdir -p "$dir" || return 1
+      git -C "$REPO_ROOT" show "${commit}^:$rel" >"$dest.tmp" && mv "$dest.tmp" "$dest" || { rm -f "$dest.tmp"; return 1; }
+    fi
+    jq --arg from "$path" --arg to "$dest" 'walk(if type == "string" then (split($from) | join($to)) else . end)' \
+      "$conf" >"$tmp" && mv "$tmp" "$conf" || { rm -f "$tmp"; return 1; }
+    [[ -f "$state" && "$(<"$state")" == *"$path"* ]] && printf '%s' "$dest" >"$state"
+    ((INIR_V2_LEFTOVERS_REPAIRED++)) || true
+  done < <(grep -oE '(file://)?/[^"]*/quickshell/(inir|ii)/assets/wallpapers/[^"/]+' "$conf" | sed 's|^file://||' | sort -u)
+  return 0
+}
+
 sync_user_desktop_integration_from_repo() {
   INIR_DESKTOP_INTEGRATION_CHANGED=0
 
   local launcher_target="${XDG_BIN_HOME}/inir"
-  local icon_source="${REPO_ROOT}/assets/icons/desktop-symbolic.svg"
+  local icon_source="${REPO_ROOT}/assets/icons/inir.svg"
   local icon_target="${XDG_DATA_HOME}/icons/hicolor/scalable/apps/inir.svg"
   local applications_dir="${XDG_DATA_HOME}/applications"
   local name source target tmp command
@@ -605,6 +910,26 @@ inir_supervisor() {
   else
     printf 'runsvdir\n'
   fi
+}
+
+# elogind's runit service mounts /run/user before starting it, but D-Bus can start elogind first: that later mount
+# hides every /run/user/<uid> and logins hang on turnstile. Mounted at stage 1, the order stops mattering.
+ensure_void_elogind_mounts() {
+  [[ "${OS_GROUP_ID:-}" == void && -d /etc/runit/core-services && -e /etc/sv/elogind ]] || return 0
+  local target=/etc/runit/core-services/90-inir-elogind.sh tmp rc
+  tmp=$(mktemp) || return 1
+  cat >"$tmp" <<'EOF'
+# iNiR: the mounts elogind's runit service makes, done before any service can start elogind through D-Bus
+mkdir -p /sys/fs/cgroup/elogind
+mountpoint -q /sys/fs/cgroup/elogind || mount -t cgroup -o none,name=elogind cgroup /sys/fs/cgroup/elogind
+for _inir_d in /run/systemd /run/user; do
+  mountpoint -q "$_inir_d" || { mkdir -p "$_inir_d" && mount -t tmpfs -o nosuid,nodev,noexec,mode=0755 none "$_inir_d"; }
+done
+unset _inir_d
+EOF
+  if cmp -s "$tmp" "$target"; then rm -f "$tmp"; return 0; fi
+  elevate install -Dm644 "$tmp" "$target"; rc=$?
+  rm -f "$tmp"; return $rc
 }
 
 configure_void_ydotool_uinput() {
@@ -1069,67 +1394,72 @@ RUN_EOF
   update_inir_startup_supervisor() {
     local file="$1"
     local supervisor="$2"
-    python3 - "$file" "$supervisor" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-path = Path(sys.argv[1])
-supervisor = sys.argv[2]
-text = path.read_text()
-
-text = re.sub(
-    r'(?ms)^[ \t]*// BEGIN inir-(?:systemd-environment|runsvdir-fallback|turnstile-environment)\n'
-    r'.*?^[ \t]*// END inir-(?:systemd-environment|runsvdir-fallback|turnstile-environment)\n?',
-    '',
-    text,
-)
-text = re.sub(r'(?m)^[ \t]*spawn-sh-at-startup.*runsvdir.*\n?', '', text)
-text = re.sub(
-    r'(?m)^[ \t]*spawn-at-startup "bash" "-c" '
-    r'"systemctl --user import-environment XDG_MENU_PREFIX && kbuildsycoca6"\n?',
-    '',
-    text,
-)
-# Remove all supervisor comment variants.
-text = re.sub(
-    r'(?m)^[ \t]*// iNiR is managed by the (?:user systemd service \(inir\.service\)|runit user service \(service/inir\)|turnstile user service \(service/inir\))\.\n'
-    r'^[ \t]*// Do not add a compositor startup entry here or you\'ll get two shells\.\n?',
-    '',
-    text,
-)
-
-if supervisor == "systemd":
-    supervisor_comment = '''// iNiR is managed by the user systemd service (inir.service).
-// Do not add a compositor startup entry here or you'll get two shells.'''
-    block = '''// BEGIN inir-systemd-environment
+    local comment block tmp text
+    case "$supervisor" in
+      systemd)
+        comment="// iNiR is managed by the user systemd service (inir.service)."
+        block='// BEGIN inir-systemd-environment
 // Export XDG_MENU_PREFIX into the systemd user session and rebuild the
 // sycoca database so KDE/Qt apps see the correct .desktop entries.
 spawn-at-startup "bash" "-c" "systemctl --user import-environment XDG_MENU_PREFIX && kbuildsycoca6"
-// END inir-systemd-environment'''
-elif supervisor == "runsvdir":
-    supervisor_comment = '''// iNiR is managed by the runit user service (service/inir).
-// Do not add a compositor startup entry here or you'll get two shells.'''
-    block = '''// BEGIN inir-runsvdir-fallback
+// END inir-systemd-environment' ;;
+      runsvdir)
+        comment="// iNiR is managed by the runit user service (service/inir)."
+        block="// BEGIN inir-runsvdir-fallback
 // iNiR shell supervisor (runsvdir fallback for non-systemd).
 // Do not add a compositor startup entry here or you'll get two shells.
-spawn-sh-at-startup "exec runsvdir ~/.config/service"
-// END inir-runsvdir-fallback'''
-else:
-    supervisor_comment = '''// iNiR is managed by the turnstile user service (service/inir).
-// Do not add a compositor startup entry here or you'll get two shells.'''
-    block = r'''// BEGIN inir-turnstile-environment
+spawn-sh-at-startup \"exec runsvdir ~/.config/service\"
+// END inir-runsvdir-fallback" ;;
+      *)
+        comment="// iNiR is managed by the turnstile user service (service/inir)."
+        block=$(cat <<'KDL'
+// BEGIN inir-turnstile-environment
 // Publish Niri's session environment to Turnstile-managed user services.
-spawn-sh-at-startup "export PATH=\"$HOME/.local/bin:$PATH\"; export INIR_VENV=\"$HOME/.local/state/quickshell/.venv\"; export ILLOGICAL_IMPULSE_VIRTUAL_ENV=\"$INIR_VENV\"; if command -v turnstile-update-runit-env >/dev/null 2>&1 && [ -n \"${WAYLAND_DISPLAY:-}\" ] && [ -n \"${XDG_RUNTIME_DIR:-}\" ] && [ -n \"${DBUS_SESSION_BUS_ADDRESS:-}\" ]; then turnstile-update-runit-env PATH INIR_VENV ILLOGICAL_IMPULSE_VIRTUAL_ENV WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS NIRI_SOCKET; if command -v sv >/dev/null 2>&1 && [ -d \"$HOME/.config/service/inir\" ]; then sv restart \"$HOME/.config/service/inir\" >/dev/null 2>&1 || true; fi; fi"
+spawn-sh-at-startup "export PATH=\"$HOME/.local/bin:$PATH\"; if command -v turnstile-update-runit-env >/dev/null 2>&1 && [ -n \"${WAYLAND_DISPLAY:-}\" ] && [ -n \"${XDG_RUNTIME_DIR:-}\" ] && [ -n \"${DBUS_SESSION_BUS_ADDRESS:-}\" ]; then turnstile-update-runit-env PATH WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS NIRI_SOCKET; if command -v sv >/dev/null 2>&1 && [ -d \"$HOME/.config/service/inir\" ]; then sv restart \"$HOME/.config/service/inir\" >/dev/null 2>&1 || true; fi; fi"
 // The shell runs outside this session on Turnstile (QS_DISABLE_POLKIT=1), so Niri starts the agent that answers password prompts.
 spawn-sh-at-startup "for agent in /usr/libexec/polkit-gnome-authentication-agent-1 /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1; do if [ -x \"$agent\" ]; then exec \"$agent\"; fi; done"
-// END inir-turnstile-environment'''
-
-suffix = f"\n\n{supervisor_comment}\n"
-if block:
-    suffix += f"\n{block}\n"
-path.write_text(text.rstrip() + suffix)
-PY
+// END inir-turnstile-environment
+KDL
+) ;;
+    esac
+    tmp="$(mktemp "$(dirname "$(realpath -m -- "$file")")/.inir-niri.XXXXXX")" || return 1
+    # Whatever an earlier run wrote (any supervisor's block and comment, the old runsvdir and kbuildsycoca lines)
+    # goes, then this supervisor's comment and block are appended.
+    LC_ALL=C awk '
+      { line[NR] = $0 }
+      END {
+        names = "(systemd-environment|runsvdir-fallback|turnstile-environment)"
+        for (i = 1; i <= NR; i++) {
+          if (line[i] ~ ("^[ \t]*// BEGIN inir-" names "$")) {
+            for (j = i + 1; j <= NR && line[j] !~ ("^[ \t]*// END inir-" names); j++) ;
+            if (j <= NR) { for (k = i; k <= j; k++) drop[k] = 1; i = j }
+          }
+        }
+        for (i = 1; i <= NR; i++) {
+          if (drop[i]) continue
+          if (line[i] ~ /^[ \t]*spawn-sh-at-startup.*runsvdir/) drop[i] = 1
+          else if (line[i] ~ /^[ \t]*spawn-at-startup "bash" "-c" "systemctl --user import-environment XDG_MENU_PREFIX && kbuildsycoca6"$/) {
+            drop[i] = 1
+            # the two-line note v2.33 put above it goes too: the block brings the same note, and left behind it
+            # explained nothing
+            if (line[i - 1] ~ /^[ \t]*\/\/ sycoca database so KDE\/Qt apps see the correct \.desktop entries\.$/ \
+                && line[i - 2] ~ /^[ \t]*\/\/ Export XDG_MENU_PREFIX into the systemd user session and rebuild the$/) {
+              drop[i - 1] = 1; drop[i - 2] = 1
+              if (line[i - 3] ~ /^[ \t]*$/ && line[i + 1] ~ /^[ \t]*$/) drop[i + 1] = 1
+            }
+          }
+          else if (line[i] ~ /^[ \t]*\/\/ iNiR is managed by the (user systemd service \(inir\.service\)|runit user service \(service\/inir\)|turnstile user service \(service\/inir\))\.$/ \
+                   && line[i + 1] ~ /^[ \t]*\/\/ Do not add a compositor startup entry here or you.ll get two shells\./) { drop[i] = 1; drop[i + 1] = 1; i++ }
+        }
+        for (i = 1; i <= NR; i++) if (!drop[i]) print line[i]
+      }' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+    text="$(<"$tmp")"
+    # the new text lands whole or not at all; a linked config stays a link
+    local real
+    real="$(realpath -m -- "$file")" || { rm -f "$tmp"; return 1; }
+    printf '%s\n\n%s\n%s\n\n%s\n' "${text%"${text##*[![:space:]]}"}" "$comment" \
+      "// Do not add a compositor startup entry here or you'll get two shells." "$block" > "$tmp" \
+      && chmod "$(stat -c %a -- "$real")" "$tmp" && mv -f -- "$tmp" "$real" || { rm -f "$tmp"; return 1; }
   }
 
   [[ -f "$startup_target" ]] && update_inir_startup_supervisor "$startup_target" "$supervisor"

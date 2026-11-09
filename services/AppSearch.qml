@@ -677,27 +677,68 @@ Singleton {
         }
 
 
-        // Give up
-        return str;
+        // Give up: an unknown id is not an icon name, the provider would only warn and paint its checkerboard
+        return "";
     }
 
     // Returns a ready-to-use icon source (handles both icon names and absolute paths)
     function getIconSource(str, fallback): string {
-        fallback = fallback ?? "image-missing"
-        const icon = guessIcon(str);
-        // Absolute path - return as file:// URL
-        if (icon.startsWith("/")) {
-            return "file://" + icon;
+        return root.iconSource([guessIcon(str)], fallback);
+    }
+
+    // The source an app's icon draws from: the first candidate (an icon name or a path) the icon theme or the disk has,
+    // then the fallback, then the generic app icon, else "" for the caller's own glyph. Never a name the theme lacks:
+    // Quickshell hands those to Qt's provider, which paints its magenta and black checkerboard. A pin whose app was
+    // gone did that, because callers passed the app's name as the "fallback icon".
+    function iconSource(candidates, fallback): string {
+        const list = (Array.isArray(candidates) ? candidates : [candidates]).concat([fallback, "application-x-executable"]);
+        for (const raw of list) {
+            const icon = String(raw ?? "");
+            if (!icon.length || icon.includes("image-missing")) continue;
+            if (icon.startsWith("/") || icon.startsWith("file://")) return root.resolveIcon(icon, "");
+            if (root.iconExists(icon)) return Quickshell.iconPath(icon);
         }
-        // Icon name - resolve via theme
-        return Quickshell.iconPath(icon, fallback);
+        return "";
+    }
+
+    // The name people know an app by. AppImage launchers carry their version in Name ("limusic (1.2.0)"); the
+    // version is not the app's name.
+    function cleanAppName(name): string {
+        return String(name ?? "").replace(/\s*[(\[]v?\d+(\.\d+)+[^)\]]*[)\]]\s*$/i, "").trim();
+    }
+    function appName(appId): string {
+        const id = String(appId ?? "");
+        return root.cleanAppName(root.lookupDesktopEntry(id)?.name) || id;
+    }
+
+    // Which app an id names, wherever the shell lists one it was handed (a pin, a notification, a sound stream): the
+    // desktop entry the first hint matches, the name to show and an icon that draws. Without an entry the hint keeps
+    // its own name and only an icon the theme has under that exact name, never a fuzzy look-alike from another app.
+    function appIdentity(hints, fallbackIcon): var {
+        const list = (Array.isArray(hints) ? hints : [hints]).map(hint => String(hint ?? "").trim()).filter(hint => hint.length > 0);
+        let entry = null;
+        for (const hint of list) {
+            entry = root.lookupDesktopEntry(hint);
+            if (entry) break;
+        }
+        const exact = [];
+        for (const hint of list) exact.push(hint, hint.toLowerCase(), root.getReverseDomainNameAppName(hint).toLowerCase());
+        return {
+            entry: entry,
+            installed: entry !== null,
+            // "appimagekit_71b8…-limusic" reads limusic; "org.gnome.Nautilus" reads Nautilus.
+            name: root.cleanAppName(entry?.name) || root.getReverseDomainNameAppName(String(list[0] ?? "").replace(/^appimagekit_[0-9a-f]+[-_]/i, "")),
+            icon: root.iconSource([entry?.icon ?? ""].concat(exact), fallbackIcon)
+        };
     }
 
     // Resolves an icon name/path directly (for when you already have the icon from a DesktopEntry)
     // Now handles broken absolute paths from Electron apps
+    // A name the theme lacks goes the way of iconSource (the fallback, then the generic app icon, else ""): handed to
+    // Quickshell as name?fallback it logged "Could not load icon" on every draw (Unity Hub's editor entry, 11-07).
     function resolveIcon(iconNameOrPath, fallback): string {
-        fallback = fallback ?? "image-missing"
-        if (!iconNameOrPath) return Quickshell.iconPath(fallback, "");
+        fallback = fallback ?? "application-x-executable"
+        if (!iconNameOrPath) return root.iconSource([], fallback);
         
         // Preserve absolute icon paths; only repair the duplicated Electron
         // resources segment that some apps expose.
@@ -711,7 +752,6 @@ Singleton {
             return iconNameOrPath.startsWith("file://") ? iconNameOrPath : "file://" + path;
         }
         
-        // Icon name - resolve via theme
-        return Quickshell.iconPath(iconNameOrPath, fallback);
+        return root.iconExists(iconNameOrPath) ? Quickshell.iconPath(iconNameOrPath) : root.iconSource([], fallback);
     }
 }

@@ -3,6 +3,8 @@
 
 # shellcheck shell=bash
 
+source "$(dirname "${BASH_SOURCE[0]}")/runtime-payload.sh"
+
 #####################################################################################
 # Configuration
 #####################################################################################
@@ -23,7 +25,7 @@ generate_manifest() {
     commit=$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || echo "unknown")
     local entries
     entries=$(mktemp) || return
-    if ! python3 "$repo_root/sdata/lib/runtime-payload.py" manifest --root "$repo_root" > "$entries"; then
+    if ! runtime_payload manifest --root "$repo_root" > "$entries"; then
         rm -f "$entries"
         return 1
     fi
@@ -76,7 +78,7 @@ get_orphan_files() {
             done < "$runtime_dirs_manifest"
         fi
 
-    } | python3 "$REPO_ROOT/sdata/lib/runtime-payload.py" filter-installed --root "$REPO_ROOT" | sort -u > "$current_files"
+    } | runtime_payload filter-installed --root "$REPO_ROOT" | sort -u > "$current_files"
     ); then
         rm -f "$current_files"
         return 1
@@ -128,22 +130,43 @@ cleanup_old_backups() {
 #####################################################################################
 
 # Restart inir.service and confirm from its own log that the new files loaded: 0 loaded, 1 failed (errors printed), 2 not confirmed.
-# Quickshell 0.3 logs "Configuration Loaded", or "Failed to load configuration" followed by "error in …" / "caused by …" lines.
+# Quickshell 0.3 and qs-rs log "Configuration Loaded", or "Failed to load configuration" followed by why; then the
+# base logs "[Plugins] family <id> loading", then "loaded" once the family's panels are up or "failed to load" when a
+# part doesn't compile (a shell without panels). A base that never says "loading" (a rollback to v2.33) is taken as
+# loaded 15 s after the configuration; one that does is waited for, however slow its panels are.
 # The service owns the shell: it is never killed by hand or started twice (KillMode=process keeps this script alive).
 restart_shell_and_verify() {
-    local timeout="${1:-30}" since out deadline
+    local timeout="${1:-30}" since out deadline loaded_at=0
     command -v systemctl >/dev/null 2>&1 && systemctl --user cat inir.service >/dev/null 2>&1 || return 2
     since=$(date +%s)
-    systemctl --user restart inir.service >/dev/null 2>&1 || return 2
+    # --no-block: the unit is Type=dbus, so a shell that never loads would hold restart until its start timeout
+    # a crash loop just before (the version being rolled back) leaves the start limit hit
+    systemctl --user reset-failed inir.service >/dev/null 2>&1 || true
+    systemctl --user restart --no-block inir.service >/dev/null 2>&1 || return 2
     command -v journalctl >/dev/null 2>&1 || return 2
     deadline=$((SECONDS + timeout))
     while (( SECONDS < deadline )); do
         out=$(journalctl --user -u inir.service --since "@${since}" -o cat --no-pager 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
         if grep -q "Failed to load configuration" <<<"$out"; then
-            grep -E "(error in|caused by) " <<<"$out" | sed 's/^[[:space:]]*[A-Z]*:[[:space:]]*/  /' | head -5
+            sleep 1
+            journalctl --user -u inir.service --since "@${since}" -o cat --no-pager 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' \
+                | sed -n '/Failed to load configuration/,$p' | sed '1d; s/^[[:space:]]*[A-Z]*:[[:space:]]*/  /' | head -5
             return 1
         fi
-        grep -q "Configuration Loaded" <<<"$out" && return 0
+        if grep -q "\[Plugins\] family .* failed to load" <<<"$out"; then
+            grep -B3 "\[Plugins\] family .* failed to load" <<<"$out" | sed 's/^[[:space:]]*[A-Z]*:[[:space:]]*/  /' | head -5
+            return 1
+        fi
+        grep -q "\[Plugins\] family .* loaded" <<<"$out" && return 0
+        if grep -q "Configuration Loaded" <<<"$out" && ! grep -q "\[Plugins\] family .* loading" <<<"$out"; then
+            (( loaded_at )) || loaded_at=$SECONDS
+            (( SECONDS - loaded_at >= 15 )) && return 0
+        fi
+        # a runtime that dies before it loads anything (a crash, a missing library) leaves the unit failed
+        if systemctl --user is-failed --quiet inir.service; then
+            tail -n 5 <<<"$out" | sed 's/^[[:space:]]*[A-Z]*:[[:space:]]*/  /'
+            return 1
+        fi
         sleep 1
     done
     return 2

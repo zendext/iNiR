@@ -60,6 +60,10 @@ Button {
     property color colBackgroundToggledHover: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlateHover : Appearance.colors.colPrimaryHover
     property color colBackgroundToggledActive: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlateActive : Appearance.colors.colPrimaryActive
 
+    // Disabled, the chosen one is held on a raised neutral plate: a primary fill under the group's dimming read as a
+    // smear (Bar › Corner style while the bar isn't Classic, 11-03), the value still has to read.
+    property color colBackgroundToggledDisabled: ColorUtils.mix(Appearance.colors.colSurfaceContainerHighest, Appearance.colors.colOnSurface, 0.78)
+
     property real radius: root.down ? root.buttonRadiusPressed : root.buttonRadius
     property real leftRadius: root.down ? root.buttonRadiusPressed : root.buttonRadius
     property real rightRadius: root.down ? root.buttonRadiusPressed : root.buttonRadius
@@ -69,7 +73,7 @@ Button {
             colBackgroundToggled) :
         (root.down ? colBackgroundActive : 
             root.hovered ? colBackgroundHover : 
-            colBackground)) : colBackground
+            colBackground)) : (root.toggled ? colBackgroundToggledDisabled : colBackground)
 
     onDownChanged: {
         if (root.down) {
@@ -123,8 +127,35 @@ Button {
         }
     }
 
+    // Space presses a focused button past the MouseArea: what a press does still runs, the click follows on release
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Space && !event.isAutoRepeat && root.downAction)
+            root.downAction()
+    }
+
     // MouseArea only for cursor shape and left-click handling
     property alias mouseArea: buttonMouseArea
+    // Keyboard focus, M3's focus ring (RippleButton has the recipe): 3 px of secondary 2 px outside the shape. A group
+    // that is one Tab stop says which of its buttons wears it.
+    property bool focusRingShown: root.visualFocus
+    Rectangle {
+        readonly property real out: 5
+        visible: root.focusRingShown && !Appearance.editorialEverywhere && !Appearance.regaliaEverywhere
+            && !(Appearance.cookieEverywhere && root.cookieMorphing)
+        z: 2
+        x: -out
+        y: -out
+        width: root.width + 2 * out
+        height: root.height + 2 * out
+        color: "transparent"
+        border.width: 3
+        border.color: Appearance.colors.colSecondary
+        topLeftRadius: root.leftRadius + out
+        bottomLeftRadius: root.leftRadius + out
+        topRightRadius: root.rightRadius + out
+        bottomRightRadius: root.rightRadius + out
+    }
+
     MouseArea {
         id: buttonMouseArea
         anchors.fill: parent

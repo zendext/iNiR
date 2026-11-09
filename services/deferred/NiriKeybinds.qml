@@ -4,21 +4,24 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import qs.modules.common.functions
 import qs.services
+import "../UmbrielModel.js" as UmbrielModel
 
 /**
  * Keybinds for Niri compositor with iNiR shell.
  * Dynamically parses user's ~/.config/niri/config.kdl
  * Falls back to defaults if parsing fails.
  *
+ * Under Umbriel the cheatsheet reads ~/.config/umbriel/config.d/70-binds.toml and
+ * 90-user-extra.toml instead (read-only: Umbriel's keys are edited in its files).
+ *
  * Read/write support: setBind() and removeBind() write back
- * to the keybinds KDL file via niri-config.py.
+ * to the keybinds KDL file via inir-accel niri-config.
  */
 Singleton {
     id: root
 
-    // ── Legacy cheatsheet model (parse_niri_keybinds.py) ──────────────────
+    // ── Legacy cheatsheet model (inir-accel niri-keybinds) ────────────────
     property var keybinds: ({
         children: defaultKeybinds
     })
@@ -27,7 +30,7 @@ Singleton {
     property string configPath: ""
     property string errorMessage: ""
 
-    // ── Enriched editor model (niri-config.py get-binds) ──────────────────
+    // ── Enriched editor model (inir-accel niri-config get-binds) ──────────────────
     property var allBinds: []
     property var enrichedCategories: []
 
@@ -37,8 +40,7 @@ Singleton {
     signal bindError(string message)
 
     // ── Script paths ──────────────────────────────────────────────────────
-    readonly property string parserScript: FileUtils.trimFileProtocol(Qt.resolvedUrl("../../scripts/parse_niri_keybinds.py"))
-    readonly property string niriConfigScript: FileUtils.trimFileProtocol(Qt.resolvedUrl("../../scripts/niri-config.py"))
+    readonly property string accelRun: Quickshell.shellPath("scripts/lib/accel-run")
 
     // Internal: pending key combos tracked for signal emission
     property string _pendingSetCombo: ""
@@ -46,50 +48,119 @@ Singleton {
 
     // ── Public API ────────────────────────────────────────────────────────
 
+    readonly property bool umbriel: CompositorService.isUmbriel
+    readonly property string umbrielConfigDir: Quickshell.env("HOME") + "/.config/umbriel/config.d"
+
     function reload(): void {
+        if (root.umbriel) {
+            root._readUmbrielBinds()
+            return
+        }
+        if (!CompositorService.niriNative)
+            return
         keybindParser.running = true
         enrichedBindsLoader.running = true
     }
 
-    function setBind(keyCombo: string, action: string, options: string): void {
+    function _readUmbrielBinds(): void {
+        const groups = UmbrielModel.bindsFrom([umbrielBinds.text(), umbrielUserBinds.text()], "Super")
+        root.allBinds = []
+        root.enrichedCategories = []
+        if (groups.length === 0)
+            return
+        root.keybinds = { children: groups, configPath: umbrielBinds.path }
+        root.configPath = umbrielBinds.path
+        root.loaded = true
+    }
+
+    FileView {
+        id: umbrielBinds
+        path: root.umbriel ? root.umbrielConfigDir + "/70-binds.toml" : ""
+        watchChanges: true
+        printErrors: false
+        onLoaded: root._readUmbrielBinds()
+        onFileChanged: reload()
+    }
+
+    FileView {
+        id: umbrielUserBinds
+        path: root.umbriel ? root.umbrielConfigDir + "/90-user-extra.toml" : ""
+        watchChanges: true
+        printErrors: false
+        onLoaded: root._readUmbrielBinds()
+        onLoadFailed: root._readUmbrielBinds()
+        onFileChanged: reload()
+    }
+
+    // False when a save is already in flight; the result comes back as bindSaved or bindError.
+    function setBind(keyCombo: string, action: string, options: string): bool {
+        if (!CompositorService.niriNative)
+            return false
         if (setBindProcess.running) {
             console.warn("[NiriKeybinds] setBind: process already running, ignoring")
-            return
+            return false
         }
         root._pendingSetCombo = keyCombo
-        const args = ["/usr/bin/python3", root.niriConfigScript, "set-bind", keyCombo, action]
+        const args = [root.accelRun, "niri-config", "set-bind", keyCombo, action]
         if (options && options.length > 0)
             args.push("--options", options)
         setBindProcess.command = args
         setBindProcess.running = true
+        return true
+    }
+
+    // inir-accel niri-config prints {"error", "detail"} JSON on a non-zero exit too.
+    function _failureText(output: string, fallback: string): string {
+        try {
+            const result = JSON.parse(output)
+            if (result?.detail)
+                console.warn("[NiriKeybinds] niri said:", result.detail)
+            return result?.error ?? fallback
+        } catch (e) {
+            return output.length > 0 ? output : fallback
+        }
     }
 
     function removeBind(keyCombo: string): void {
+        if (!CompositorService.niriNative) return
+        root._removeBind(keyCombo, true)
+    }
+
+    // A rename drops the old combo after saving the new one: nothing was removed, so no Undo.
+    function removeBindQuietly(keyCombo: string): void {
+        if (!CompositorService.niriNative) return
+        root._removeBind(keyCombo, false)
+    }
+
+    function _removeBind(keyCombo: string, offerUndo: bool): void {
         if (removeBindProcess.running) {
             console.warn("[NiriKeybinds] removeBind: process already running, ignoring")
             return
         }
         root._pendingRemoveCombo = keyCombo
-        removeBindProcess.command = ["/usr/bin/python3", root.niriConfigScript, "remove-bind", keyCombo]
+        removeBindProcess.command = [root.accelRun, "niri-config", "remove-bind", keyCombo]
         removeBindProcess.running = true
+        const gone = root.allBinds.find(bind => bind.keyCombo === keyCombo)
+        if (offerUndo && gone && String(gone.actionRaw ?? "").length > 0)
+            Undo.offer(Translation.tr("Removed %1").arg(keyCombo), () => root.setBind(keyCombo, gone.actionRaw, gone.optionsStr ?? ""))
     }
 
-    // Niri's config is the truth (a managed block in 90-user-extra.kdl, niri-config.py);
+    // Niri's config is the truth (a managed block in 90-user-extra.kdl, inir-accel niri-config);
     // "custom" is an Alt+Tab the person bound themselves.
     property string altTabSource: ""
     function refreshAltTab(): void {
-        if (!altTabReader.running) altTabReader.running = true
+        if (CompositorService.niriNative && !altTabReader.running) altTabReader.running = true
     }
     function setAltTabSource(source: string): void {
         if (source !== "inir" && source !== "niri") return
-        if (altTabWriter.running) return
+        if (altTabWriter.running || !CompositorService.niriNative) return
         root.altTabSource = source
-        altTabWriter.command = ["/usr/bin/python3", root.niriConfigScript, "set-alt-tab", source]
+        altTabWriter.command = [root.accelRun, "niri-config", "set-alt-tab", source]
         altTabWriter.running = true
     }
     Process {
         id: altTabReader
-        command: ["/usr/bin/python3", root.niriConfigScript, "get-alt-tab"]
+        command: [root.accelRun, "niri-config", "get-alt-tab"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try { root.altTabSource = JSON.parse(text).source ?? "" } catch (e) { root.altTabSource = "" }
@@ -112,7 +183,7 @@ Singleton {
     // ── Legacy keybind parser (cheatsheet) ───────────────────────────────
     Process {
         id: keybindParser
-        command: ["/usr/bin/python3", root.parserScript]
+        command: [Quickshell.shellPath("scripts/lib/accel-run"), "niri-keybinds"]
 
         stdout: StdioCollector {
             id: keybindCollector
@@ -151,10 +222,10 @@ Singleton {
         }
     }
 
-    // ── Enriched binds loader (niri-config.py get-binds) ─────────────────
+    // ── Enriched binds loader (inir-accel niri-config get-binds) ─────────────────
     Process {
         id: enrichedBindsLoader
-        command: ["/usr/bin/python3", root.niriConfigScript, "get-binds"]
+        command: [root.accelRun, "niri-config", "get-binds"]
         running: false
 
         stdout: StdioCollector {
@@ -181,7 +252,7 @@ Singleton {
                     console.warn("[NiriKeybinds] get-binds JSON parse error:", e)
                 }
             } else if (exitCode !== 0) {
-                console.warn("[NiriKeybinds] get-binds failed (exit", exitCode + "), niri-config.py may not support get-binds yet")
+                console.warn("[NiriKeybinds] get-binds failed (exit", exitCode + "), or inir-accel is missing")
             }
         }
     }
@@ -208,7 +279,7 @@ Singleton {
                         root.bindSaved(combo)
                     } else {
                         const msg = result.error ?? "set-bind returned failure"
-                        console.warn("[NiriKeybinds] setBind failed:", msg)
+                        console.warn("[NiriKeybinds] setBind failed:", combo, msg, result.detail ?? "")
                         root.errorMessage = msg
                         root.bindError(msg)
                     }
@@ -219,7 +290,7 @@ Singleton {
                     root.bindSaved(combo)
                 }
             } else {
-                const msg = output.length > 0 ? output : ("set-bind exited " + exitCode)
+                const msg = root._failureText(output, "set-bind exited " + exitCode)
                 console.warn("[NiriKeybinds] setBind failed:", msg)
                 root.errorMessage = msg
                 root.bindError(msg)
@@ -260,7 +331,7 @@ Singleton {
                     root.bindRemoved(combo)
                 }
             } else {
-                const msg = output.length > 0 ? output : ("remove-bind exited " + exitCode)
+                const msg = root._failureText(output, "remove-bind exited " + exitCode)
                 console.warn("[NiriKeybinds] removeBind failed:", msg)
                 root.errorMessage = msg
                 root.bindError(msg)
@@ -271,7 +342,7 @@ Singleton {
     // ── File watchers ─────────────────────────────────────────────────────
     FileView {
         id: configWatcher
-        path: Quickshell.env("HOME") + "/.config/niri/config.kdl"
+        path: CompositorService.niriNative ? Quickshell.env("HOME") + "/.config/niri/config.kdl" : ""
         watchChanges: true
 
         onFileChanged: {
@@ -307,8 +378,8 @@ Singleton {
         {
             name: "System",
             children: [{ keybinds: [
-                { mods: ["Super"], key: "Tab", comment: "Niri Overview" },
-                { mods: ["Super", "Shift"], key: "E", comment: "Quit Niri" },
+                { mods: ["Super"], key: "Tab", comment: root.umbriel ? "Umbriel Overview" : "Niri Overview" },
+                { mods: ["Super", "Shift"], key: "E", comment: root.umbriel ? "Quit Umbriel" : "Quit Niri" },
                 { mods: ["Super"], key: "Escape", comment: "Toggle shortcuts inhibit" },
                 { mods: ["Super", "Shift"], key: "O", comment: "Power off monitors" }
             ]}]

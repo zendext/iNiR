@@ -8,7 +8,7 @@ set -euo pipefail
 THEME_NAME="ii-pixel"
 THEME_SRC="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/dots/sddm/pixel"
 THEME_DIR="/usr/share/sddm/themes/${THEME_NAME}"
-SYNC_SCRIPT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/scripts/sddm/sync-pixel-sddm.py"
+ACCEL_RUN="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/scripts/lib/accel-run"
 # Use a high-priority drop-in name so SDDM's alphabetical merge picks our values
 # LAST and we win against KDE's kde_settings.conf or any other foreign drop-in.
 # Old name (legacy, pre-2.26): /etc/sddm.conf.d/inir-theme.conf — cleaned up below.
@@ -125,6 +125,9 @@ fi
 # This allows IPC-triggered updates (inir shell update) to refresh the theme
 # without needing a terminal for sudo prompts.
 
+# The login draws with the shell's own shape library; the sddm user can only read what sits in the theme.
+SHAPES_SRC="${THEME_SRC%/dots/sddm/pixel}/modules/common/widgets/shapes"
+
 # Checksum comparison: skip copy if source and target are identical.
 # Only compare QML/JS/conf files (not assets like background.png which are user-generated).
 theme_needs_update=true
@@ -140,13 +143,15 @@ if $theme_needs_update; then
     log_info "Installing ${THEME_NAME} to ${THEME_DIR}..."
     if [[ -d "${THEME_DIR}" ]] && [[ -O "${THEME_DIR}" ]]; then
         # User already owns the directory — no sudo needed
-        mkdir -p "${THEME_DIR}/assets"
+        mkdir -p "${THEME_DIR}/assets" "${THEME_DIR}/shapes"
         cp -rf "${THEME_SRC}/." "${THEME_DIR}/"
+        cp -rf "${SHAPES_SRC}/." "${THEME_DIR}/shapes/"
         log_ok "Theme files updated (no sudo needed — user owns dir)"
     else
         # First install or owned by root — requires elevation (sudo or pkexec)
-        elevate mkdir -p "${THEME_DIR}/assets"
+        elevate mkdir -p "${THEME_DIR}/assets" "${THEME_DIR}/shapes"
         elevate cp -rf "${THEME_SRC}/." "${THEME_DIR}/"
+        elevate cp -rf "${SHAPES_SRC}/." "${THEME_DIR}/shapes/"
         log_ok "Theme files installed"
 
         # Transfer ownership to the current user so the sync script can update colors
@@ -171,6 +176,21 @@ for font in "$FONTS_SRC"/rubik/Rubik-*.ttf "$FONTS_SRC"/inter/Inter-{Regular,Med
     fi
 done
 
+# Icons come from the Material Symbols the shell already installs, not a second 14 MB copy in the theme.
+symbols_src="$(fc-match -f '%{file}' 'Material Symbols Rounded:style=Regular' 2>/dev/null || true)"
+if [[ -f "$symbols_src" && "$(fc-query -f '%{family}' "$symbols_src" 2>/dev/null)" == *"Material Symbols Rounded"* ]]; then
+    target="${THEME_DIR}/fonts/MaterialSymbolsRounded.ttf"
+    if ! cmp -s "$symbols_src" "$target"; then
+        if [[ -O "${THEME_DIR}" ]]; then
+            install -Dm644 "$symbols_src" "$target"
+        else
+            elevate install -Dm644 "$symbols_src" "$target"
+        fi
+    fi
+else
+    log_warn "Material Symbols Rounded is not installed; login icons will be missing"
+fi
+
 # Create a placeholder background (symlinked to wallpaper later by sync script)
 if [[ ! -f "${THEME_DIR}/assets/background.png" ]]; then
     log_info "No background.png yet — creating placeholder..."
@@ -182,18 +202,8 @@ if [[ ! -f "${THEME_DIR}/assets/background.png" ]]; then
         log_ok "Default wallpaper set as background"
     else
         # Create a minimal 1x1 black PNG as placeholder
-        python3 -c "
-import struct, zlib
-def make_png():
-    sig = b'\x89PNG\r\n\x1a\n'
-    def chunk(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
-    ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0))
-    idat = chunk(b'IDAT', zlib.compress(b'\x00\x14\x1b\x20'))
-    iend = chunk(b'IEND', b'')
-    return sig + ihdr + idat + iend
-import sys; sys.stdout.buffer.write(make_png())
-" > "${THEME_DIR}/assets/background.png"
-        log_warn "Placeholder background created — run sync-pixel-sddm.py to set wallpaper"
+        base64 -d <<<'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMQkVYAAACWAFAcPXLAAAAAAElFTkSuQmCC' > "${THEME_DIR}/assets/background.png"
+        log_warn "Placeholder background created; the next wallpaper change sets the real one"
     fi
 fi
 
@@ -274,7 +284,10 @@ migrate_legacy_sddm_conf
 
 # Run initial color sync now that files are in place
 log_info "Running initial color sync..."
-if python3 "$SYNC_SCRIPT" 2>/dev/null; then
+# Under sudo the sync runs as the person: it reads their config and writes the theme dir they were given.
+sync_runner=()
+[[ -n "${SUDO_USER:-}" && "$EUID" -eq 0 ]] && sync_runner=(sudo -u "$SUDO_USER" -H)
+if "${sync_runner[@]}" "$ACCEL_RUN" sddm-sync 2>/dev/null; then
     log_ok "Colors synced from Material You palette"
 else
     log_warn "Color sync skipped (run after first wallpaper generation)"

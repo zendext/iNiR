@@ -19,7 +19,7 @@ Singleton {
     property var schedule: []
     property var seasonalAnime: []
     property var topAiring: []
-    property string currentDay: Qt.formatDate(new Date(), "dddd").toLowerCase()
+    property string currentDay: Qt.locale("C").toString(new Date(), "dddd").toLowerCase()
     
     // Season selection for Seasonal tab
     property string selectedSeason: getCurrentSeason()
@@ -193,7 +193,7 @@ Singleton {
         root.lastError = ""
         
         const dayNum = root._dayToNum[targetDay] ?? 1
-        const isAdult = Config.options?.sidebar?.animeSchedule?.showNsfw ?? false
+        const isAdult = Config.options?.animeSchedule?.showNsfw ?? false
         
         // Get current airing anime that air on this day
         const query = `
@@ -281,7 +281,7 @@ Singleton {
         
         const season = selectedSeason
         const year = selectedYear
-        const isAdult = Config.options?.sidebar?.animeSchedule?.showNsfw ?? false
+        const isAdult = Config.options?.animeSchedule?.showNsfw ?? false
         
         const query = `
             query ($season: MediaSeason, $year: Int, $isAdult: Boolean) {
@@ -326,7 +326,7 @@ Singleton {
         root.loadingTop = true
         root.lastError = ""
         
-        const isAdult = Config.options?.sidebar?.animeSchedule?.showNsfw ?? false
+        const isAdult = Config.options?.animeSchedule?.showNsfw ?? false
         
         const query = `
             query ($isAdult: Boolean) {
@@ -368,7 +368,7 @@ Singleton {
         let broadcast = ""
         if (nextEp?.airingAt) {
             const d = new Date(nextEp.airingAt * 1000)
-            broadcast = Qt.formatDateTime(d, "ddd hh:mm") + " (Ep " + nextEp.episode + ")"
+            broadcast = Translation.locale.toString(d, "ddd hh:mm") + " (Ep " + nextEp.episode + ")"
         }
         
         return {
@@ -415,7 +415,7 @@ Singleton {
     }
     
     Component.onCompleted: {
-        if (Config.options?.sidebar?.animeSchedule?.enable) {
+        if (Config.options?.animeSchedule?.enable) {
             Qt.callLater(() => root.fetchSchedule("today"))
         }
     }

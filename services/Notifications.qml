@@ -41,9 +41,14 @@ Singleton {
         property bool isTransient: notification?.hints.transient ?? false
         property string appIcon: notification?.appIcon ?? ""
         property string appName: notification?.appName ?? ""
+        // The sender's desktop entry (the protocol's desktop-entry hint), when it gives one: the app's identity.
+        property string desktopEntry: notification?.desktopEntry ?? ""
         property string body: notification?.body ?? ""
         property string image: notification?.image ?? ""
         property string summary: notification?.summary ?? ""
+        // The sender takes a typed answer in place (a chat app's Reply): `replyTo` sends it.
+        readonly property bool canReply: notification?.hasInlineReply ?? false
+        readonly property string replyHint: notification?.inlineReplyPlaceholder ?? ""
         property double time
         property string urgency: notification?.urgency.toString() ?? "normal"
         property Timer timer
@@ -65,6 +70,7 @@ Singleton {
             "actions": notif.actions,
             "appIcon": notif.appIcon,
             "appName": notif.appName,
+            "desktopEntry": notif.desktopEntry,
             "body": notif.body,
             "image": notif.image,
             "summary": notif.summary,
@@ -174,7 +180,7 @@ Singleton {
         (GameMode?.active ?? false) && (GameMode?.suppressNotifications ?? false)
     readonly property bool notificationSurfaceOpen:
         (GlobalStates?.sidebarRightOpen ?? false)
-        || (GlobalStates?.waffleNotificationCenterOpen ?? false)
+        || (GlobalStates?.familyNotificationsOpen ?? false)
     readonly property bool notificationPolicyActive:
         manualDndActive || quietHoursActive || gameModeSuppressionActive
     readonly property string notificationPolicyReason: manualDndActive ? "dnd"
@@ -277,10 +283,30 @@ Singleton {
         return String(name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")
     }
 
+    // One app, one key, whatever name it sends today: its desktop entry when it gives one, else the entry its name
+    // resolves to, else the name itself. "Firefox" and "firefox", or a client that renames itself, stay one app.
+    function appKey(source): string {
+        const hinted = String(source?.desktopEntry ?? "").replace(/\.desktop$/, "")
+        if (hinted.length > 0)
+            return root._normalizeAppKey(DesktopEntries.byId(hinted)?.id ?? hinted)
+        const name = String(source?.appName ?? "")
+        const found = name.length > 0 ? DesktopEntries.heuristicLookup(name) : null
+        return root._normalizeAppKey(found?.id ?? (name.length > 0 ? name : source?.appIcon))
+    }
+
+    // Delivered quietly (Apple's term): into the history, with no banner, sound, unread mark or reaction.
+    function _notificationQuiet(notification): bool {
+        const quiet = Config.options?.notifications?.silentApps ?? []
+        return quiet.length > 0 && quiet.includes(root.appKey(notification))
+    }
+
     function _notificationBlocked(notification): bool {
         const blocked = Config.options?.notifications?.blockedApps ?? []
         if (!blocked || blocked.length === 0)
             return false
+        // Settings writes an app's key; a token typed by hand (Waffle) still matches the name as before.
+        if (blocked.includes(root.appKey(notification)))
+            return true
 
         const appName = root._normalizeAppKey(notification?.appName)
         // appName is the notification protocol's application identity. Fall
@@ -401,9 +427,10 @@ Singleton {
         }
 
         // 3) Defaults by urgency (use enum comparison, not fragile toString).
-        // iRiS banners have their own, shorter, duration for low and normal.
-        if (Config.options?.panelFamily === "iris" && notification.urgency !== NotificationUrgency.Critical)
-            return Math.max(1000, Number(Config.options?.iris?.notifications?.duration ?? 4000));
+        // A family with banners of its own (setting `bannerDuration`, iRiS) times low and normal itself.
+        const familyDuration = Number(Plugins.setting(Plugins.active, "bannerDuration", 0));
+        if (familyDuration > 0 && notification.urgency !== NotificationUrgency.Critical)
+            return Math.max(1000, familyDuration);
         if (notification.urgency === NotificationUrgency.Low) {
             return Config.options?.notifications?.timeoutLow ?? 5000;
         } else if (notification.urgency === NotificationUrgency.Critical) {
@@ -415,78 +442,104 @@ Singleton {
         return Config.options?.notifications?.timeoutNormal ?? 7000;
     }
 
-	NotificationServer {
-        id: notifServer
-        // actionIconsSupported: true
-        actionsSupported: true
-        bodyHyperlinksSupported: true
-        bodyImagesSupported: true
-        bodyMarkupSupported: true
-        bodySupported: true
-        imageSupported: true
-        keepOnReload: false
-        persistenceSupported: true
+    // The server lives in the shell alone: the Settings window (its own process) reads this service too, and a
+    // second server there waited on the bus name and took every notification while the shell restarted.
+    readonly property NotificationServer notifServer: serverLoader.item
+    LazyLoader {
+        id: serverLoader
+        active: !Config.isSettingsProcess
+        component: NotificationServer {
+            // actionIconsSupported: true
+            actionsSupported: true
+            bodyHyperlinksSupported: true
+            bodyImagesSupported: true
+            bodyMarkupSupported: true
+            bodySupported: true
+            imageSupported: true
+            inlineReplySupported: true
+            keepOnReload: false
+            persistenceSupported: true
 
-        onNotification: (notification) => {
-            // Niri's screenshot-window IPC always emits a desktop notification, even
-            // when iNiR only asked it for an internal preview cache frame. Match the
-            // stable message signature rather than appName (which differs across
-            // packaging/desktop integration), and suppress it only during an internal
-            // preview capture so real user screenshots keep their notification.
-            const summaryLower = String(notification.summary ?? "").toLowerCase()
-            const bodyLower = String(notification.body ?? "").toLowerCase()
-            const niriScreenshotNotice = summaryLower.includes("screenshot captured")
-                && bodyLower.includes("paste the image from the clipboard")
-            if (GlobalStates.windowPreviewCaptureActive && niriScreenshotNotice)
-                return
+            onNotification: (notification) => {
+                // Niri's screenshot-window IPC always emits a desktop notification, even
+                // when iNiR only asked it for an internal preview cache frame. Match the
+                // stable message signature rather than appName (which differs across
+                // packaging/desktop integration), and suppress it only during an internal
+                // preview capture so real user screenshots keep their notification.
+                const summaryLower = String(notification.summary ?? "").toLowerCase()
+                const bodyLower = String(notification.body ?? "").toLowerCase()
+                const niriScreenshotNotice = summaryLower.includes("screenshot captured")
+                    && bodyLower.includes("paste the image from the clipboard")
+                if (GlobalStates.windowPreviewCaptureActive && niriScreenshotNotice)
+                    return
 
-            // User app filters are an ingress policy: blocked notifications never
-            // enter history, unread state, sound playback or popup presentation.
-            if (root._notificationBlocked(notification))
-                return
+                // User app filters are an ingress policy: blocked notifications never
+                // enter history, unread state, sound playback or popup presentation.
+                if (root._notificationBlocked(notification))
+                    return
 
-            if (!_ingressAllowed(notification)) {
-                return;
-            }
-
-            notification.tracked = true
-            const newNotifObject = notifComponent.createObject(root, {
-                "notificationId": notification.id + root.idOffset,
-                "notification": notification,
-                "time": Date.now(),
-            });
-            if (!newNotifObject) {
-                console.warn("[Notifications] Failed to create notification wrapper")
-                return
-            }
-            root.list = [...root.list, newNotifObject];
-
-            // Optional notification sound
-            if ((Config.options?.sounds?.notifications ?? true) && !root.silent) {
-                Audio.playEvent(notification.urgency === NotificationUrgency.Critical
-                    ? "notificationCritical" : "notification");
-            }
-
-            // Popup
-            if (!root.popupInhibited) {
-                newNotifObject.popup = true;
-
-                const timeout = _timeoutForNotification(notification);
-                if (timeout !== 0) {
-                    newNotifObject.timer = notifTimerComponent.createObject(root, {
-                        "notificationId": newNotifObject.notificationId,
-                        "interval": timeout,
-                    });
+                if (!_ingressAllowed(notification)) {
+                    return;
                 }
 
-                // Legacy mode: increment manual counter
-                if (Config.options?.notifications?.useLegacyCounter ?? false) {
-                    root._manualUnreadCounter++;
+                notification.tracked = true
+                const newNotifObject = notifComponent.createObject(root, {
+                    "notificationId": notification.id + root.idOffset,
+                    "notification": notification,
+                    "time": Date.now(),
+                });
+                if (!newNotifObject) {
+                    console.warn("[Notifications] Failed to create notification wrapper")
+                    return
                 }
+                const job = LiveActivities.follow(notification, newNotifObject.notificationId)
+                // One job keeps one entry: a progress notice re-sent under the same synchronous tag replaces the last one.
+                const syncTag = LiveActivities.syncTag(notification)
+                if (syncTag.length > 0) {
+                    for (const old of root.list.filter(n => n.notification && n.notification !== notification
+                            && n.appName === newNotifObject.appName && LiveActivities.syncTag(n.notification) === syncTag))
+                        root.discardNotification(old.notificationId)
+                }
+                root.list = [...root.list, newNotifObject];
+
+                // A family that shows jobs live (flag `liveJobs`, iRiS's Island) keeps their notice in the list, without a popup.
+                if (job && Plugins.flag(Plugins.active, "liveJobs")) {
+                    notifFileView.setText(stringifyList(root.list));
+                    return
+                }
+
+                if (root._notificationQuiet(notification)) {
+                    notifFileView.setText(stringifyList(root.list));
+                    return
+                }
+
+                // Optional notification sound
+                if ((Config.options?.sounds?.notifications ?? true) && !root.silent) {
+                    Audio.playEvent(notification.urgency === NotificationUrgency.Critical
+                        ? "notificationCritical" : "notification");
+                }
+
+                // Popup
+                if (!root.popupInhibited) {
+                    newNotifObject.popup = true;
+
+                    const timeout = _timeoutForNotification(notification);
+                    if (timeout !== 0) {
+                        newNotifObject.timer = notifTimerComponent.createObject(root, {
+                            "notificationId": newNotifObject.notificationId,
+                            "interval": timeout,
+                        });
+                    }
+
+                    // Legacy mode: increment manual counter
+                    if (Config.options?.notifications?.useLegacyCounter ?? false) {
+                        root._manualUnreadCounter++;
+                    }
+                }
+                root.notify(newNotifObject);
+                // console.log(notifToString(newNotifObject));
+                notifFileView.setText(stringifyList(root.list));
             }
-            root.notify(newNotifObject);
-            // console.log(notifToString(newNotifObject));
-            notifFileView.setText(stringifyList(root.list));
         }
     }
 
@@ -526,9 +579,9 @@ Singleton {
             // Destroy the Notif QML object to prevent memory leak
             notif.destroy();
         }
-        const notifServerIndex = notifServer.trackedNotifications.values.findIndex((notif) => notif.id + root.idOffset === id);
+        const notifServerIndex = (root.notifServer?.trackedNotifications.values ?? []).findIndex((notif) => notif.id + root.idOffset === id);
         if (notifServerIndex !== -1) {
-            notifServer.trackedNotifications.values[notifServerIndex].dismiss()
+            (root.notifServer?.trackedNotifications.values ?? [])[notifServerIndex].dismiss()
         }
         root.discard(id); // Emit signal
 
@@ -553,7 +606,7 @@ Singleton {
         for (const notif of doomed) {
             const id = notif.notificationId
             root._discardingIds.add(id);
-            const tracked = notifServer.trackedNotifications.values.find(server => server.id + root.idOffset === id)
+            const tracked = (root.notifServer?.trackedNotifications.values ?? []).find(server => server.id + root.idOffset === id)
             if (tracked)
                 tracked.dismiss()
             root.discard(id);
@@ -575,7 +628,7 @@ Singleton {
         root.list = []
         triggerListChange()
         notifFileView.setText(stringifyList(root.list));
-        notifServer.trackedNotifications.values.forEach((notif) => {
+        (root.notifServer?.trackedNotifications.values ?? []).forEach((notif) => {
             notif.dismiss()
         })
         root.discardAll();
@@ -663,12 +716,22 @@ Singleton {
         }
     }
 
+    // A typed answer to a notification that takes one; the sender closes it or sends a new one.
+    function replyTo(id, text) {
+        const reply = String(text ?? "").trim()
+        if (reply.length === 0) return false
+        const notif = (root.notifServer?.trackedNotifications.values ?? []).find((n) => n.id + root.idOffset === id)
+        if (!notif?.hasInlineReply) return false
+        notif.sendInlineReply(reply)
+        return true
+    }
+
     function attemptInvokeAction(id, notifIdentifier) {
         _log("[Notifications] Attempting to invoke action with identifier: " + notifIdentifier + " for notification ID: " + id);
-        const notifServerIndex = notifServer.trackedNotifications.values.findIndex((notif) => notif.id + root.idOffset === id);
+        const notifServerIndex = (root.notifServer?.trackedNotifications.values ?? []).findIndex((notif) => notif.id + root.idOffset === id);
         _log("Notification server index: " + notifServerIndex);
         if (notifServerIndex !== -1) {
-            const notifServerNotif = notifServer.trackedNotifications.values[notifServerIndex];
+            const notifServerNotif = (root.notifServer?.trackedNotifications.values ?? [])[notifServerIndex];
             const action = notifServerNotif?.actions?.find((action) => action.identifier === notifIdentifier);
 
             if (action) {
@@ -735,21 +798,26 @@ Singleton {
         }
     }
 
+    /// Notification management.
     IpcHandler {
         target: "notifications"
 
+        /// Send test notifications
         function test(): void {
             root.sendTestNotifications()
         }
 
+        /// Dismiss all notifications
         function clearAll(): void {
             root.discardAllNotifications()
         }
 
+        /// Toggle Do Not Disturb mode
         function toggleSilent(): void {
             root.silent = !root.silent
         }
 
+        /// Press a button on the newest notification that has it, as a click would (e.g. `open` on a new iNiR notice)
         function invokeAction(identifier: string): string {
             const notif = root.list.slice().reverse().find(n => (n.actions ?? []).some(a => a.identifier === identifier))
             if (!notif) return "No notification offers " + identifier
@@ -775,6 +843,7 @@ Singleton {
                     "actions": [], // Notification actions are meaningless if they're not tracked by the server or the sender is dead
                     "appIcon": notif.appIcon,
                     "appName": notif.appName,
+                    "desktopEntry": notif.desktopEntry ?? "",
                     "body": notif.body,
                     "image": notif.image,
                     "summary": notif.summary,
@@ -799,7 +868,8 @@ Singleton {
                 const parentDir = root.filePath.substring(0, root.filePath.lastIndexOf('/'))
                 Quickshell.execDetached(["/usr/bin/mkdir", "-p", parentDir])
                 root.list = []
-                notifFileView.setText(stringifyList(root.list));
+                // later: stock Quickshell forgets a write started inside its own load signal
+                Qt.callLater(() => notifFileView.setText(stringifyList(root.list)))
             } else {
                 console.log("[Notifications] Error loading file: " + error)
             }

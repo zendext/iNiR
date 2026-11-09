@@ -50,11 +50,14 @@ create_snapshot() {
     if [[ -f "${XDG_CONFIG_HOME}/niri/config.kdl" ]]; then
         cp "${XDG_CONFIG_HOME}/niri/config.kdl" "${snapshot_dir}/niri-config.kdl"
     fi
-    
-    # Copy migrations state
-    if [[ -f "${INIR_CONFIG_DIR}/migrations.json" ]]; then
-        cp "${INIR_CONFIG_DIR}/migrations.json" "${snapshot_dir}/"
+    # the update edits the split files too
+    if [[ -d "${XDG_CONFIG_HOME}/niri/config.d" ]]; then
+        cp -a "${XDG_CONFIG_HOME}/niri/config.d" "${snapshot_dir}/niri-config.d"
     fi
+    
+    # which qs-rs and inir-accel versions are switched on (sdata/lib/prebuilt.sh)
+    prebuilt_links >"${snapshot_dir}/prebuilt-links"
+
 
     # Copy managed desktop-item state. It lives in XDG state, not the config
     # tree, so include it explicitly in snapshots and restores.
@@ -126,8 +129,10 @@ show_snapshots() {
 ###############################################################################
 # Restore snapshot
 ###############################################################################
+# auto=true is the update undoing itself: the checkout stays where it is (never reset someone's clone)
+# and the caller restarts the shell and checks it loaded.
 restore_snapshot() {
-    local snapshot_id="$1"
+    local snapshot_id="$1" auto="${2:-false}"
     local snapshot_dir="${SNAPSHOTS_DIR}/${snapshot_id}"
     local installed_strategy
     installed_strategy=$(get_installed_update_strategy)
@@ -141,7 +146,7 @@ restore_snapshot() {
     fi
     
     if [[ ! -d "$snapshot_dir" ]]; then
-        log_error "Snapshot not found: $snapshot_id"
+        log_error "Snapshot not found: $snapshot_id; pick one with: ./setup rollback"
         return 1
     fi
     
@@ -158,11 +163,11 @@ restore_snapshot() {
     local runtime_target="${XDG_CONFIG_HOME}/quickshell/inir"
     local runtime_launcher="${runtime_target}/scripts/inir"
     if [[ ! -f "$runtime_launcher" ]]; then
-        log_error "Runtime launcher not found: ${runtime_launcher}"
+        log_error "Runtime launcher not found: ${runtime_launcher}; restore it with: ./setup install"
         return 1
     fi
     if ! bash "$runtime_launcher" stop -c "$runtime_target"; then
-        log_error "Could not stop the shell before restoring the snapshot"
+        log_error "Could not stop the shell before restoring the snapshot; stop it with: systemctl --user stop inir.service, then ./setup rollback"
         return 1
     fi
     
@@ -175,6 +180,12 @@ restore_snapshot() {
         rsync -a --delete "${snapshot_dir}/ii/" "${XDG_CONFIG_HOME}/quickshell/inir/"
     fi
     
+    # ~/.local/bin/inir is a copy of the runtime's own launcher: it goes back with it
+    local bin_launcher="${XDG_BIN_HOME:-$HOME/.local/bin}/inir"
+    if [[ -f "$bin_launcher" && ! -L "$bin_launcher" && -f "$runtime_launcher" ]]; then
+        install -m 0755 "$runtime_launcher" "$bin_launcher"
+    fi
+
     # Restore user config
     if [[ -f "${snapshot_dir}/config.json" ]]; then
         log_info "Restoring user config..."
@@ -187,12 +198,13 @@ restore_snapshot() {
         log_info "Restoring niri config..."
         cp "${snapshot_dir}/niri-config.kdl" "${XDG_CONFIG_HOME}/niri/config.kdl"
     fi
-    
-    # Restore migrations state
-    if [[ -f "${snapshot_dir}/migrations.json" ]]; then
-        mkdir -p "${INIR_CONFIG_DIR}"
-        cp "${snapshot_dir}/migrations.json" "${INIR_CONFIG_DIR}/"
+    if [[ -d "${snapshot_dir}/niri-config.d" ]]; then
+        mkdir -p "${XDG_CONFIG_HOME}/niri/config.d"
+        cp -a "${snapshot_dir}/niri-config.d/." "${XDG_CONFIG_HOME}/niri/config.d/"
     fi
+    
+    prebuilt_restore_links "${snapshot_dir}/prebuilt-links"
+
 
     if [[ -f "${snapshot_dir}/desktop-items.json" ]]; then
         log_info "Restoring managed desktop items..."
@@ -202,7 +214,7 @@ restore_snapshot() {
     fi
     
     # Checkout git to that commit (stay on branch if possible)
-    if [[ -n "$commit_before" && "$commit_before" != "unknown" ]]; then
+    if [[ "$auto" != true && -n "$commit_before" && "$commit_before" != "unknown" ]]; then
         log_info "Checking out commit ${commit_before}..."
         # Try to find a branch containing this commit to avoid detached HEAD
         local branch=$(git -C "$REPO_ROOT" branch --contains "$commit_before" 2>/dev/null | grep -v "HEAD detached" | head -1 | sed 's/^[* ]*//')
@@ -217,7 +229,8 @@ restore_snapshot() {
     # Update version tracking
     local version=$(jq -r '.version_before // "unknown"' "$meta" 2>/dev/null || echo "unknown")
     set_installed_version "$version" "$commit_before" "rollback"
-    
+    [[ "$auto" == true ]] && return 0
+
     # Restart shell (only if we have access to the session)
     if [[ -n "$NIRI_SOCKET" ]] || [[ -n "$WAYLAND_DISPLAY" ]]; then
         log_info "Restarting shell..."
@@ -235,6 +248,22 @@ restore_snapshot() {
         tui_info "Run: inir start (in your Niri session)"
         tui_success "Snapshot restored"
     fi
+}
+
+# The snapshot this update took before pulling (its commit_after is the checkout now), restored in place
+# and the shell restarted on it: 0 only when the old version loaded again.
+restore_update_snapshot() {
+    local head snap after
+    head=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null) || return 1
+    for snap in $(list_snapshots); do
+        [[ "$(jq -r '.reason' "${SNAPSHOTS_DIR}/${snap}/snapshot.json" 2>/dev/null)" == update ]] || continue
+        after=$(jq -r '.commit_after' "${SNAPSHOTS_DIR}/${snap}/snapshot.json" 2>/dev/null)
+        [[ "$(git -C "$REPO_ROOT" rev-parse -q --verify "${after}^{commit}" 2>/dev/null)" == "$head" ]] || return 1
+        restore_snapshot "$snap" true || return 1
+        restart_shell_and_verify 30 >/dev/null
+        return
+    done
+    return 1
 }
 
 ###############################################################################
@@ -318,7 +347,8 @@ run_rollback() {
         fi
         echo ""
         
-        if tui_confirm "Continue with rollback?" "no"; then
+        # under -y the pick above is the go-ahead
+        if ! $ask || tui_confirm "Continue with rollback?" "no"; then
             restore_snapshot "$snapshot_id"
         else
             echo "Cancelled."

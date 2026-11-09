@@ -12,13 +12,13 @@ import qs.services
  * Niri animation presets. Shipped ones are read from the running iNiR
  * (defaults/niri-animation-presets.json), extra ones from
  * ~/.config/inir/niri-animation-presets.json. The truth is the animations block
- * of config.d/60-animations.kdl, which niri-config.py rewrites and matches back
+ * of config.d/60-animations.kdl, which inir-accel niri-config rewrites and matches back
  * to a preset ("" = custom).
  */
 Singleton {
     id: root
 
-    readonly property string script: Quickshell.shellPath("scripts/niri-config.py")
+    readonly property string accelRun: Quickshell.shellPath("scripts/lib/accel-run")
     readonly property string animationsFile: FileUtils.trimFileProtocol(`${Directories.config}/niri/config.d/60-animations.kdl`)
     readonly property string userPresetsFile: FileUtils.trimFileProtocol(`${Directories.shellConfig}/niri-animation-presets.json`)
 
@@ -36,7 +36,7 @@ Singleton {
     signal applied(string id)
 
     function ensure(): void {
-        if (!CompositorService.isNiri) return
+        if (!CompositorService.niriNative) return
         wanted = true
         refresh()
     }
@@ -48,13 +48,13 @@ Singleton {
     }
 
     function apply(id: string): bool {
-        if (!CompositorService.isNiri || applying) return false
+        if (!CompositorService.niriNative || applying) return false
         if (loaded && !presets.some(p => p.id === id)) return false
         wanted = true
         error = ""
         pendingId = id
         applying = true
-        applyProcess.command = ["python3", root.script, "apply-animation-preset", id]
+        applyProcess.command = [root.accelRun, "niri-config", "apply-animation-preset", id]
         applyProcess.running = true
         return true
     }
@@ -153,7 +153,7 @@ Singleton {
 
     Process {
         id: listProcess
-        command: ["python3", root.script, "get-animation-presets"]
+        command: [root.accelRun, "niri-config", "get-animation-presets"]
         stdout: StdioCollector {
             id: listOutput
             onStreamFinished: {
@@ -210,19 +210,30 @@ Singleton {
         onFileChanged: refreshDebounce.restart()
     }
 
+    /// Presets for Niri's own window, workspace and overview animations. Applying one rewrites the animations in
+    /// `config.d/60-animations.kdl` and keeps `off` and `slowdown` as they were. The same picker lives in Settings in
+    /// every family. Your own presets go in `~/.config/inir/niri-animation-presets.json` as `{"presets": [...]}`, in
+    /// the same shape as `defaults/niri-animation-presets.json`; one with a shipped id replaces it.
+    ///
+    /// ```kdl
+    /// Super+Alt+A { spawn "inir" "niriAnimations" "apply" "snappy"; }
+    /// ```
     IpcHandler {
         target: "niriAnimations"
 
+        /// List the presets; `*` marks the one your config matches
         function list(): string {
             root.ensure()
             if (!root.loaded) return "loading, ask again"
             return root.presets.map(p => (p.id === root.activeId ? "* " : "  ") + p.id + "  " + p.name + " · " + p.description).join("\n")
         }
+        /// Print the preset your config matches, or `custom` after hand edits
         function active(): string {
             root.ensure()
             if (!root.loaded) return "loading"
             return root.activeId.length > 0 ? root.activeId : "custom"
         }
+        /// Apply a preset: `snappy`, `niri`, `material`, `bouncy`, `gentle`, `instant` or one of yours
         function apply(id: string): string {
             return root.apply(id) ? "applying " + id : "unknown or busy: " + id
         }

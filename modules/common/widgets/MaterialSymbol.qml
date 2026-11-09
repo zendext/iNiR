@@ -14,6 +14,8 @@ Item {
     // Opt-in gradient down the glyph's own colour (the iRiS tile pack uses it so a
     // glyph keeps its identity hue). Off, the glyph is one flat colour as always.
     property bool glyphGradient: false
+    // The variable font's wght axis: a family can draw its glyphs lighter or bolder.
+    property int glyphWeight: Font.Normal
     readonly property bool gradientActive: root.glyphGradient && !root.useJp && !root.useNerd && root.text.length > 0
     property alias font: iconText.font
     property alias style: iconText.style
@@ -41,7 +43,10 @@ Item {
     implicitWidth: effectiveSize
     implicitHeight: effectiveSize
     
-    readonly property real clampedFill: Math.max(0, Math.min(1, fill))
+    // These glyphs' filled form is broken in the variable font (the sun comes out striped at any size and renderer),
+    // so they always draw as outlines.
+    readonly property bool fillBreaks: root.text === "partly_cloudy_day" || root.text === "routine"
+    readonly property real clampedFill: root.fillBreaks ? 0 : Math.max(0, Math.min(1, fill))
     readonly property real effectiveFill: animateFill && !Appearance.regaliaEverywhere
         ? (clampedFill < 0.01 ? 0 : (clampedFill > 0.99 ? 1 : clampedFill))
         : Math.round(clampedFill)
@@ -60,14 +65,17 @@ Item {
         verticalAlignment: Text.AlignVCenter
 
         renderType: root.textRenderType
+        // Icons are often centred by hand ((box - icon) / 2) and land on half a pixel; a glyph there flips a pixel
+        // as a surface scales in and settles. Drawn on whole pixels it stays put.
+        transform: Translate { x: Math.round(root.x) - root.x; y: Math.round(root.y) - root.y }
         font {
             hintingPreference: (root.useNerd && root.hasNerdGlyph) ? Font.PreferFullHinting : Font.PreferNoHinting
             family: root.useJp ? "Zen Kaku Gothic New"
                 : (root.useNerd && root.hasNerdGlyph)
                 ? (Appearance?.font.family.monospace ?? "JetBrainsMono Nerd Font")
-                : (Appearance?.font.family.iconMaterial ?? "Material Symbols Rounded")
+                : (FamilyStyle.glyphFont || (Appearance?.font.family.iconMaterial ?? "Material Symbols Rounded"))
             pixelSize: root.useJp ? root.iconSize * 0.92 : root.effectiveFontSize
-            weight: root.useJp ? Font.Medium : Font.Normal
+            weight: root.useJp ? Font.Medium : root.glyphWeight
             variableAxes: (root.useJp || (root.useNerd && root.hasNerdGlyph)) ? ({}) : ({
                 "FILL": root.effectiveFill,
                 "opsz": root.effectiveOpsz,
@@ -75,18 +83,20 @@ Item {
         }
     }
 
-    Rectangle {
-        id: gradientFill
+    // Built only for the icons that ask for it: a few hundred icons carried a hidden gradient each.
+    Loader {
         anchors.fill: iconText
-        visible: root.gradientActive
-        gradient: Gradient {
-            orientation: Gradient.Vertical
-            GradientStop { position: 0.0; color: Qt.lighter(root.color, 1.45) }
-            GradientStop { position: 1.0; color: Qt.darker(root.color, 1.18) }
+        active: root.gradientActive
+        sourceComponent: Rectangle {
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: Qt.lighter(root.color, 1.45) }
+                GradientStop { position: 1.0; color: Qt.darker(root.color, 1.18) }
+            }
+            layer.enabled: true
+            layer.smooth: true
+            layer.effect: GE.OpacityMask { maskSource: iconText }
         }
-        layer.enabled: root.gradientActive
-        layer.smooth: true
-        layer.effect: GE.OpacityMask { maskSource: iconText }
     }
 
     Behavior on fill {

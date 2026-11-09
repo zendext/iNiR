@@ -1,109 +1,76 @@
-# Compositor Integration
+# Compositors
 
-iNiR is built and tested for Niri. Legacy Hyprland compatibility code remains from the project's origins as a fork of end-4's Hyprland dots, but Hyprland is not the primary supported/tested target.
+iNiR runs on two compositors: **Niri** and **Umbriel**, the compositor from the Noctalia team. The shell finds out which one it runs under by itself; you pick at the login screen, and you can have both installed. Hyprland code is still in the source from the project's early days, but it is not tested, and other compositors are not supported.
 
-## Detection
+Compositor blur needs Niri 26.04 or newer. On older versions the **Allow compositor blur** switch is hidden.
 
-`CompositorService` figures out which compositor is running by checking environment variables at startup:
+## Change displays, input and layout
 
-1. `$HYPRLAND_INSTANCE_SIGNATURE` set? Hyprland.
-2. `$NIRI_SOCKET` set? Niri.
-3. `$XDG_CURRENT_DESKTOP` contains "GNOME"? GNOME (unsupported, but detected).
-4. None of the above? Unknown.
+Use **Settings › Compositor**. It has these areas:
 
-Code that behaves differently per compositor uses guards:
+- **Displays**: monitor, resolution, refresh rate, output position, scale, rotation and variable refresh rate (VRR).
+- **Keyboard**, **Touchpad**, **Mouse**, **Cursor** and **General Input**.
+- **Layout**: window gaps, focus, borders, focus ring, shadows, struts and overview zoom.
+- **Window Rules**.
 
-```qml
-if (CompositorService.isNiri) {
-    // niri-only path
-}
+**Settings › Monitors** is different. It only chooses which monitors show the shell.
 
-visible: CompositorService.isHyprland  // hide on other compositors
-```
+## Change keybinds
 
-## Niri
+**Settings › Shortcuts** lists every keybind by category. Use **Add keybind** to add one: a key combination, an action and optional options. Each existing row can be edited or removed, and **Undo** on the notice brings a removed one back.
 
-Primary compositor. Full IPC integration.
+## Where Niri settings live
 
-### How it connects
+iNiR keeps its Niri settings in `~/.config/niri/config.d/`:
 
-`NiriService` opens a Unix socket at `$NIRI_SOCKET` and subscribes to the event stream. Every workspace change, window open/close, output hotplug, and keyboard layout switch arrives as a JSON event and updates reactive QML properties.
-
-For commands (focus workspace, move window, etc.), a separate socket connection sends requests and reads responses.
-
-### What it exposes
-
-| Property | What it tracks |
-|----------|---------------|
-| `workspaces` | All workspaces with IDs, names, active state, output assignment |
-| `windows` | All windows with title, app ID, position, size, workspace |
-| `outputs` | All monitors with name, scale, resolution, position |
-| `activeWindow` | Currently focused window |
-| `focusedWorkspaceId` | Current workspace on the focused monitor |
-| `keyboardLayoutNames` | Available keyboard layouts |
-| `displayScales` | Per-monitor scale factors |
-
-### Niri config management
-
-iNiR manages Niri's config through modular KDL files in `~/.config/niri/config.d/`:
-
-| File | What it controls |
-|------|-----------------|
-| `10-input-and-cursor.kdl` | Mouse, touchpad, keyboard, cursor theme |
-| `20-layout-and-overview.kdl` | Workspace layout, gaps, struts |
-| `30-window-rules.kdl` | Window rules (floating, size, opacity) |
+| File | Controls |
+|---|---|
+| `10-input-and-cursor.kdl` | Input and cursor |
+| `15-outputs.kdl` | Displays saved from Settings |
+| `20-layout-and-overview.kdl` | Layout, gaps, borders, shadows and overview |
+| `30-window-rules.kdl` | Window rules |
 | `40-environment.kdl` | Environment variables for apps |
-| `50-startup.kdl` | Autostart entries (clipboard, polkit, etc.) |
-| `60-animations.kdl` | Window animation settings |
-| `70-binds.kdl` | All keybinds |
-| `80-layer-rules.kdl` | Layer shell rules (for the shell itself) |
-| `90-user-extra.kdl` | User overrides. Never touched by updates. |
+| `50-startup.kdl` | Processes started at login |
+| `60-animations.kdl` | Animations |
+| `70-binds.kdl` | Keybinds |
+| `80-layer-rules.kdl` | Layer rules for the shell |
+| `90-user-extra.kdl` | Your own settings. Updates never touch it |
 
-`scripts/niri-config.py` does surgical edits to these files, preserving comments and unknown settings. It never rewrites entire files.
+## Umbriel
 
-## Hyprland compatibility paths
+[Umbriel](https://github.com/noctalia-dev/umbriel) scrolls columns like Niri, and also lays a workspace out as dwindle, master or stacking, tabs a column, pins windows and keeps a scratchpad. Every family works on it: the bar, the dock, Orbit, the overview, Alt+Tab, window previews, the cheatsheet, autostart, keyboard layouts and the lock screen.
 
-Legacy paths use the built-in Quickshell Hyprland module plus `hyprctl` for queries that the module does not cover. They are retained for compatibility and code reuse, but their presence should not be read as the same support/test guarantee as Niri.
+### Add it
 
-### Differences from Niri
+With iNiR installed, install Umbriel from your distribution (CachyOS has it; on Arch it is `umbriel-git` in the AUR; on Fedora, Terra's `umbriel-nightly`; elsewhere [its guide](https://docs.noctalia.dev/umbriel/installation/)), log out and pick **Umbriel** at the login screen. Nothing else: on that first login iNiR puts its config in `~/.config/umbriel/`, brings your Niri keybinds and keyboard layout along, and the shell starts as it does on Niri. A config of your own in `~/.config/umbriel/` is never touched.
 
-| Aspect | Niri | Hyprland |
-|--------|------|----------|
-| IPC | Unix socket, JSON events | Quickshell module + hyprctl |
-| Window sorting | Native via IPC | Complex 300+ line sort (monitor > workspace > column > Y) |
-| Workspace model | Scrolling (infinite horizontal) | Fixed grid |
-| Config | KDL, modular files | hyprland.conf |
+`inir compositor add umbriel` does the same from a terminal, and installs Umbriel too where iNiR knows how (CachyOS's repository, then the AUR on Arch; Terra on Fedora).
 
-### What's Hyprland-only
+The installer asks where iNiR runs. **Niri and Umbriel** sets iNiR up on both (it installs Umbriel when it is missing); **Niri only**, offered when Umbriel is already installed, leaves Umbriel exactly as it is: no config, and the shell does not start there. Without a terminal to ask, `./setup install --compositor niri|umbriel|both` picks; with none of them, Umbriel gets iNiR the first time you log into it. `inir compositor remove umbriel` takes iNiR off Umbriel later, `inir compositor add umbriel` brings it back, and `inir compositor` alone shows what is installed, what starts iNiR and your pick.
 
-- `HyprlandData.qml`: window list, workspaces, monitors, layers
-- `HyprlandKeybinds.qml`: keybind parsing for cheatsheet
-- `HyprlandXkb.qml`: keyboard layout tracking
+### Where Umbriel settings live
 
-### What doesn't work on Hyprland
+| File | Controls |
+|---|---|
+| `config.toml` | Loads the rest, in order |
+| `config.d/10-input.toml` | Keyboard, touchpad and cursor |
+| `config.d/20-layout.toml` | Layout, gaps, corners, shadows and the overview |
+| `config.d/30-window-rules.toml` | Window rules |
+| `config.d/40-environment.toml` | Environment variables for apps |
+| `config.d/50-startup.toml` | Processes started at login, including **Settings › Autostart** |
+| `config.d/70-binds.toml` | Keybinds |
+| `config.d/80-layer-rules.toml` | Layer rules for the shell |
+| `config.d/90-user-extra.toml` | Your own settings. Updates never touch it, and it loads last |
 
-Some features require Niri-specific IPC that has no Hyprland equivalent:
+Your Niri keybinds (including the ones you added or removed), keyboard layout and key repeat come along: iNiR writes them to `config.d/60-from-niri.toml` when Umbriel is added, at every Umbriel login and on every update, and `inir compositor sync` does it again after you change them in Niri.
 
-- Workspace scrolling gestures
-- Column-based window management
-- Some Overview features
+`inir update` refreshes iNiR's files and keeps any file you changed, and puts them in place by itself when Umbriel is installed and has no config yet. A config from the early iNiR-Umbriel port no longer loads in today's Umbriel: it is moved whole to `~/.config/umbriel.inir-old-<date>` and replaced. iNiR starts with either compositor as soon as one is installed (Niri alone if that was your pick), so one added later needs no other step. Colours for borders, the overview and tab bars follow your theme: iNiR writes them to `~/.local/state/quickshell/user/generated/umbriel-colors.toml`, which the config loads. Check a change with `umbriel config validate`.
 
-Where a legacy path is still wired, missing Niri-only features should be gated rather than crashing. That is a compatibility goal, not a claim that the complete shell is validated on Hyprland.
+Keys Umbriel adds: **Mod+W** tabs a column, **Mod+P** pins a window, **Mod+Shift+Tab** cycles the workspace layout, **Mod+`** shows the scratchpad and **Mod+Shift+`** sends a window there.
 
-## Shared abstractions
+### What differs from Niri
 
-`CompositorService` provides compositor-agnostic APIs that modules use instead of talking to Niri/Hyprland directly:
-
-- `sortedToplevels`: sorted window list (delegates to the active compositor's sorting logic)
-- `filterCurrentWorkspace(toplevels, screen)`: workspace-aware window filtering
-- `powerOffMonitors()` / `powerOnMonitors()`: DPMS control
-
-This means most UI components don't need compositor guards at all. They just read `CompositorService.sortedToplevels` and it works regardless of which compositor is running.
-
-## For contributors
-
-**Use compositor guards** when shared code contains a compositor-specific path. Niri remains the supported product target, but legacy/unsupported environments should not crash merely because an old adapter is present.
-
-**Prefer shared abstractions** over direct NiriService/HyprlandData access when possible. If you need something that only Niri provides, gate it with `CompositorService.isNiri` and provide a fallback (even if the fallback is just hiding the feature).
-
-For product acceptance, test Niri. If a change deliberately touches a retained Hyprland compatibility path, verify that path separately and describe the result as compatibility evidence rather than broad support.
+- **Settings › Compositor** (Material) and the window, keyboard and display rows of iRiS edit Niri's files, so they are hidden under Umbriel; its `config.d` files hold the same settings.
+- **Compositor blur**: iRiS's *Blur* glass asks Umbriel to blur behind the shell through a layer rule. Material and Waffle use their own glass.
+- Window previews are stills, refreshed when you open a surface that shows them; on Niri they can be live.
+- Alt+Tab is iNiR's switcher. Screenshots of a whole screen or a region use `inir region`, as on Niri.

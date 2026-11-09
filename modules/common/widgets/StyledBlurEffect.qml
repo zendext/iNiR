@@ -6,7 +6,9 @@ MultiEffect {
     id: root
     source: wallpaper
     anchors.fill: source
-    saturation: Appearance.effectsEnabled ? 0.2 : 0
+    contrast: Appearance.aurora.backdropContrast
+    brightness: Appearance.aurora.backdropBrightness
+    saturation: Appearance.effectsEnabled ? Appearance.aurora.backdropSaturation : 0
     blurEnabled: Appearance.effectsEnabled
     blurMax: 64
     blur: Appearance.effectsEnabled ? 1 : 0
