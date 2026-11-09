@@ -8,7 +8,7 @@ import "functions/ConfigMigrations.js" as ConfigMigrations
 
 Singleton {
     id: root
-    property string filePath: Directories.shellConfigPath
+    property string filePath: Quickshell.env("INIR_LINKED_CONFIG_FILE") || Directories.shellConfigPath
     property alias options: configOptionsJsonAdapter
     property bool ready: false
     property int revision: 0

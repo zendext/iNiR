@@ -1869,6 +1869,15 @@ shell_exec_bin() {
 }
 
 apply_qt_runtime_env() {
+    # FileView atomically replaces its path. Keep a linked profile by writing to its target.
+    local config_file
+    config_file="$(inir_config_file)"
+    unset INIR_LINKED_CONFIG_FILE
+    if [[ -L "$config_file" && -f "$config_file" ]]; then
+        INIR_LINKED_CONFIG_FILE="$(realpath -e -- "$config_file")" || return 1
+        export INIR_LINKED_CONFIG_FILE
+    fi
+
     # Must run before Qt reads env at QGuiApplication construction.
     apply_gpu_policy
     # inir.service is started by systemd, not as a direct Niri child. Mirror

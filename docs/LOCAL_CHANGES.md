@@ -39,7 +39,9 @@ when it lives outside the normal iNiR data directory. The builder fetches the
 pinned Hub commit, applies the patches, and uses `inir hub build`. The launcher
 and setup load the resulting catalogue first and the official catalogue second.
 Bump both manifests for a family when its package changes. Stop the running shell
-before switching the source checkout or its linked families.
+before switching the source checkout or its linked families. The launcher
+resolves a linked user configuration before starting QML so atomic writes
+update the profile and preserve its link.
 
 ## Regression checks
 
